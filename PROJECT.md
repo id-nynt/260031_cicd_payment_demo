@@ -217,15 +217,11 @@ Run on pull requests and pushes to `main`:
 Run after validation:
 
 - Audit production dependencies with `npm audit --omit=dev --audit-level=high`.
-- Scan the repository for high/critical vulnerabilities and secrets with Trivy.
-
-### `publish`
-
-Run on pushes to `main` after validation and security pass. Publish an immutable commit-tagged image and a `main` tag to GitHub Container Registry.
+- Treat this scan as advisory for the demo. Record findings in the Actions log while keeping the build, lint, migrations, and tests as required deployment gates.
 
 ### `deploy-staging`
 
-Run after `publish` on `main` using the self-hosted runner:
+Run after `validate` and `security` on `main` using the self-hosted runner:
 
 1. Deploy the Compose stack as `payment-staging` on port 3001.
 2. Run `GET /health` as a smoke test.

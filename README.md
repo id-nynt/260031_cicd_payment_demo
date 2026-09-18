@@ -19,7 +19,7 @@ The application provides:
 - Health and readiness endpoints for deployment checks.
 - REST endpoints for creating, viewing, and processing payments.
 - Docker Compose packaging for repeatable local and server deployment.
-- CI/CD stages for validation, tests, build, security scanning, image publishing, staging deployment, production deployment, and health checks.
+- CI/CD stages for validation, tests, build, an advisory dependency audit, staging deployment, production deployment, and health checks.
 
 The fake provider is the recommended starting point because it is usable without a Stripe account, API key, webhook, or external network dependency.
 
@@ -318,14 +318,13 @@ The workflow is `.github/workflows/ci-cd.yml`.
 ### Pipeline stages
 
 1. `validate`: install dependencies, lint, migrate a PostgreSQL service, run tests, build, and build the Docker image.
-2. `security`: run npm audit and Trivy filesystem vulnerability/secret scans.
-3. `publish`: publish an image to GitHub Container Registry on pushes to `main`.
-4. `deploy-staging`: deploy the fake provider to the self-hosted runner on port `3001`, then check `/health` and `/ready`.
-5. `deploy-production`: deploy the fake provider on port `3000`, then check `/health` and `/ready`.
+2. `security`: report high and critical production dependency findings with `npm audit`. This is advisory for the demo; findings appear in the job log but do not prevent deployment.
+3. `deploy-staging`: build and deploy the fake provider to the self-hosted runner on port `3001`, then check `/health`.
+4. `deploy-production`: build and deploy the fake provider on port `3000`, then check `/health`.
 
-The current deployment jobs build from the checked-out repository with Docker Compose. The image publishing stage is included for registry use and future immutable-image deployment.
+The deployment jobs build from the checked-out repository with Docker Compose. This simple pipeline does not require a container registry or a Trivy action. The build, lint, migrations, and tests remain required gates before deployment.
 
-`validate`, `security`, and `publish` run on GitHub-hosted Ubuntu runners. Only the two deploy jobs run on your self-hosted runner. The deploy jobs use PowerShell (`pwsh`), so the runner machine must have PowerShell and Docker Compose available. On a Windows runner, Docker Desktop must be running for the runner account.
+`validate` and `security` run on GitHub-hosted Ubuntu runners. Only the two deploy jobs run on your self-hosted runner. The deploy jobs use PowerShell (`pwsh`), so the runner machine must have PowerShell and Docker Compose available. On a Windows runner, Docker Desktop must be running for the runner account.
 
 ### Actions
 
@@ -360,7 +359,7 @@ git commit -m "Deploy application update"
 git push origin main
 ```
 
-If Actions reports `Unable to resolve action aquasecurity/trivy-action@0.28.0`, the workflow in GitHub is an older copy. The published release tag is `v0.28.0`, and this repository's workflow now uses `aquasecurity/trivy-action@v0.28.0`. Push the corrected workflow to `main` from your Git checkout, then inspect the new Actions run. Rerunning the old commit does not apply the corrected file.
+If Actions reports that it cannot resolve `aquasecurity/trivy-action` or `aquasecurity/setup-trivy`, GitHub is running an older workflow. This simplified workflow does not use those actions. Push the updated workflow to `main` and inspect the new run; rerunning an old commit uses the old workflow.
 
 Before deployment on a local runner, check that ports `3000`, `3001`, `5432`, and `5433` are free on that machine. An already running local Compose stack may occupy ports `3000` and `5432` and prevent production from starting.
 

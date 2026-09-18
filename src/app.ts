@@ -9,6 +9,7 @@ import { PaymentRepository } from './payments.js';
 import { createProviders, StripePaymentProvider } from './providers.js';
 import { checkoutPage, receiptPage } from './ui.js';
 import { paymentPage } from './payment-page.js';
+import { createTelemetry } from './telemetry.js';
 
 const paymentInput = z.object({
   amount: z.number().int().positive(),
@@ -25,6 +26,7 @@ export function buildApp(config: Config) {
   const app = Fastify({ logger: true, bodyLimit: 1024 * 1024 });
   const pool = createPool(config);
   const repository = new PaymentRepository(pool);
+  const telemetry = createTelemetry(app, pool, config);
   const providers = createProviders(config);
   const allowedProviders = config.PAYMENT_PROVIDER === 'both' ? ['fake', 'stripe'] : [config.PAYMENT_PROVIDER];
   const providerFor = (name: 'fake' | 'stripe') => name === 'stripe' ? providers.stripe : providers.fake;
@@ -69,6 +71,7 @@ main{background:white;border:1px solid #e3e8f0;border-radius:16px;padding:32px;b
       const card = parsed.data.demoCardNumber?.replace(/\s/g, '');
       const payment = await repository.create({ ...parsed.data, id: paymentId, idempotencyKey: key, provider: selectedProvider.name, providerPaymentId: external.id, receiverName: config.MERCHANT_NAME, maskedPaymentMethod: card ? `•••• ${card.slice(-4)}` : null });
       const updated = external.status === 'pending' ? payment : await repository.updateStatus(payment.id, external.status, external.id);
+      telemetry.recordPayment(selectedProvider.name, (updated ?? payment).status);
       return reply.code(201).send(updated ?? payment);
     } catch (error) {
       request.log.error(error, 'payment creation failed');
@@ -89,6 +92,7 @@ main{background:white;border:1px solid #e3e8f0;border-radius:16px;padding:32px;b
       const payment = await repository.create({ ...parsed.data, id: paymentId, idempotencyKey: key, provider: 'stripe', receiverName: config.MERCHANT_NAME });
       const intent = await providers.stripe.createPaymentIntent({ ...parsed.data, paymentId });
       const updated = await repository.updateStatus(payment.id, intent.status, intent.id);
+      telemetry.recordPayment('stripe', (updated ?? payment).status);
       return reply.code(201).send({ payment: updated ?? payment, clientSecret: intent.clientSecret });
     } catch (error) {
       request.log.error(error, 'Stripe payment intent creation failed');
@@ -113,11 +117,15 @@ main{background:white;border:1px solid #e3e8f0;border-radius:16px;padding:32px;b
     if (!(await repository.recordWebhook(event.id, event.type))) return reply.send({ received: true, duplicate: true });
     const object = event.data.object as { metadata?: { paymentId?: string }; id?: string };
     const paymentId = object.metadata?.paymentId;
-    if (paymentId && event.type === 'payment_intent.succeeded') await repository.updateStatus(paymentId, 'succeeded', object.id);
-    if (paymentId && event.type === 'payment_intent.payment_failed') await repository.updateStatus(paymentId, 'failed', object.id);
+    if (paymentId && event.type === 'payment_intent.succeeded') {
+      if (await repository.updateStatus(paymentId, 'succeeded', object.id)) telemetry.recordPayment('stripe', 'succeeded');
+    }
+    if (paymentId && event.type === 'payment_intent.payment_failed') {
+      if (await repository.updateStatus(paymentId, 'failed', object.id)) telemetry.recordPayment('stripe', 'failed');
+    }
     return reply.send({ received: true });
   });
 
-  app.addHook('onClose', async () => { await pool.end(); });
+  app.addHook('onClose', async () => { await telemetry.shutdown(); await pool.end(); });
   return app;
 }

@@ -81,6 +81,10 @@ jobs:
       COMPOSE_PROJECT_NAME: payment-staging
       APP_PORT: 3001
       POSTGRES_PORT: 5433
+      METRICS_PORT: 9465
+      PROMETHEUS_PORT: 9091
+      DEPLOYMENT_ENVIRONMENT: staging
+      NODE_ENV: production
       PAYMENT_PROVIDER: fake
       FAKE_PAYMENT_OUTCOME: succeeded
       MERCHANT_NAME: Staging Merchant
@@ -107,6 +111,29 @@ jobs:
           docker compose ps
           docker compose logs --tail=100 app
           exit 1
+      - name: Staging telemetry smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if metrics=$(curl --fail --silent http://127.0.0.1:9465/metrics) && [[ $metrics == *payment_http_requests_total* ]]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=100 otel-collector
+          exit 1
+      - name: Staging Prometheus scrape smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent http://127.0.0.1:9091/-/ready >/dev/null &&
+              curl --fail --silent --get --data-urlencode 'query=up{job="payment-collector"}' http://127.0.0.1:9091/api/v1/query | grep -Eq '"value":\[[^]]*,"1"\]'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=100 prometheus
+          exit 1
 
   deploy-production:
     name: Deploy production
@@ -119,6 +146,10 @@ jobs:
       COMPOSE_PROJECT_NAME: payment-production
       APP_PORT: 3000
       POSTGRES_PORT: 5432
+      METRICS_PORT: 9464
+      PROMETHEUS_PORT: 9090
+      DEPLOYMENT_ENVIRONMENT: production
+      NODE_ENV: production
       PAYMENT_PROVIDER: fake
       FAKE_PAYMENT_OUTCOME: succeeded
       MERCHANT_NAME: Production Merchant
@@ -144,4 +175,27 @@ jobs:
           done
           docker compose ps
           docker compose logs --tail=100 app
+          exit 1
+      - name: Production telemetry smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if metrics=$(curl --fail --silent http://127.0.0.1:9464/metrics) && [[ $metrics == *payment_http_requests_total* ]]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=100 otel-collector
+          exit 1
+      - name: Production Prometheus scrape smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent http://127.0.0.1:9090/-/ready >/dev/null &&
+              curl --fail --silent --get --data-urlencode 'query=up{job="payment-collector"}' http://127.0.0.1:9090/api/v1/query | grep -Eq '"value":\[[^]]*,"1"\]'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=100 prometheus
           exit 1

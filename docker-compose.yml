@@ -1,4 +1,27 @@
 services:
+  otel-collector:
+    image: otel/opentelemetry-collector:0.160.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:${METRICS_PORT:-9464}:9464"
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - payment-prometheus:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      otel-collector:
+        condition: service_started
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -18,21 +41,27 @@ services:
   app:
     build: .
     environment:
-      NODE_ENV: development
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: 3000
       DATABASE_URL: postgres://payment:payment@postgres:5432/payment
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-fake}
       FAKE_PAYMENT_OUTCOME: ${FAKE_PAYMENT_OUTCOME:-succeeded}
       MERCHANT_NAME: ${MERCHANT_NAME:-Demo Merchant}
+      OTEL_SERVICE_NAME: payment-service
+      OTEL_DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-local}
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     ports:
       - "${APP_PORT:-3000}:3000"
     command: ["sh", "-c", "node dist/db/migrate.js && node dist/server.js"]
 
 volumes:
   payment-postgres:
+  payment-prometheus:

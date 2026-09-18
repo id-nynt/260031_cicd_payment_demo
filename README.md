@@ -17,6 +17,8 @@ The application provides:
 - PostgreSQL persistence for payment records, payer/receiver information, status, and masked card details.
 - Configurable merchant/receiver name.
 - Health and readiness endpoints for deployment checks.
+- OpenTelemetry measurements for HTTP traffic, latency, errors, database readiness, and payment outcomes.
+- Prometheus server with a query UI and seven-day local metric retention.
 - REST endpoints for creating, viewing, and processing payments.
 - Docker Compose packaging for repeatable local and server deployment.
 - CI/CD stages for validation, tests, build, an advisory dependency audit, staging deployment, production deployment, and health checks.
@@ -72,7 +74,7 @@ Node.js is only required when running the application directly or running the qu
 1. Open a terminal in the project directory.
 2. Make sure Docker Desktop or Docker Engine is running.
 3. Use the fake provider. No Stripe credentials are required.
-4. Build and start the application and PostgreSQL database.
+4. Build and start the application, PostgreSQL, OpenTelemetry Collector, and Prometheus.
 5. Open the checkout page in a browser.
 6. Submit a demo payment using one of the demo cards above.
 
@@ -182,19 +184,127 @@ View logs:
 docker compose logs -f app
 ```
 
-Stop the application while keeping database data:
+Stop the stack while keeping database and Prometheus data:
 
 ```powershell
 docker compose down
 ```
 
-Stop the application and remove the local database volume:
+Stop the stack and remove the local database and Prometheus volumes:
 
 ```powershell
 docker compose down -v
 ```
 
-The last command deletes local demo transaction data and should only be used when that is intended.
+The last command deletes local demo transaction data and metric history; use it only when that is intended.
+
+## Observe real telemetry
+
+The Docker stack starts an OpenTelemetry Collector and a real Prometheus server. The app sends metrics to the collector over OTLP/HTTP every 5 seconds. Prometheus scrapes the collector every 5 seconds and keeps seven days of history in a Docker volume. The collector also writes debug summaries to its Docker logs:
+
+```text
+Browser or traffic script -> Payment Service -> OpenTelemetry SDK
+                   -> OTLP/HTTP -> Collector -> Prometheus -> query UI/history
+                                             -> collector logs
+```
+
+The collector's raw metrics endpoint is bound to `127.0.0.1:9464` and the Prometheus UI to `127.0.0.1:9090` by default. Both are accessible only on the Docker host. The OTLP receiver is available only inside the Compose network.
+
+### Actions: local verification
+
+1. Start the Docker stack. Wait until `/ready` responds with `{"status":"ready"}`.
+2. Open `http://localhost:3000/checkout`. Select `Demo card simulation` and make a successful payment with `4242 4242 4242 4242`.
+3. Start another checkout and make a rejected payment with `4000 0000 0000 0002`. Both payment attempts should reach a receipt.
+4. Optionally run the traffic helper to repeat these two outcomes three times and add one deliberately invalid HTTP request.
+5. Wait about 5–10 seconds for the app to export metrics.
+6. Open Prometheus and confirm that its collector target is UP. Run the queries below to inspect request counts, errors, latency, and health. You can also inspect raw measurements and collector logs.
+
+### Commands: local verification (PowerShell)
+
+```powershell
+docker compose up -d --build
+Invoke-RestMethod http://localhost:3000/ready
+npm run traffic:demo -- 3
+Start-Sleep -Seconds 10
+npm run telemetry:show
+```
+
+Open `http://localhost:9090` in a browser. Under **Status > Target health** (or `/targets`), `payment-collector` should be **UP**. In the Prometheus query page, paste one expression at a time and click **Execute**. Use the **Table** view for current values or **Graph** for history. Wait 10–20 seconds after generating traffic for the app to export and Prometheus to scrape it.
+
+| Question | PromQL expression |
+|---|---|
+| Is scraping working? | `up{job="payment-collector"}` — expect `1`. |
+| How many payment API requests? | `sum(payment_http_requests_total{route="/payments"})` |
+| HTTP error percentage across all routes since app start? | `100 * sum(payment_http_errors_total) / clamp_min(sum(payment_http_requests_total), 1)` |
+| Mean HTTP latency across all routes, in milliseconds since app start? | `sum(payment_http_request_duration_milliseconds_sum) / clamp_min(sum(payment_http_request_duration_milliseconds_count), 1)` |
+| Is the database reachable? | `payment_service_ready` — expect `1`. |
+| How many fake payments succeeded or failed? | `sum by (status) (payment_transactions_total{provider="fake"})` |
+
+For recent traffic rather than cumulative values, try `sum(rate(payment_http_requests_total[1m]))` or a one-minute average latency: `sum(rate(payment_http_request_duration_milliseconds_sum[1m])) / sum(rate(payment_http_request_duration_milliseconds_count[1m]))`. A graph needs at least two samples in the selected time window. Choose a time range that includes your test traffic.
+
+You can also check the Prometheus API from PowerShell:
+
+```powershell
+Invoke-RestMethod 'http://localhost:9090/-/ready'
+Invoke-RestMethod 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22payment-collector%22%7D'
+```
+
+Inspect the raw measurements and collector log:
+
+```powershell
+curl.exe -s http://127.0.0.1:9464/metrics | Select-String 'payment_http_requests_total|payment_http_errors_total|payment_http_request_duration_milliseconds_(sum|count)|payment_service_ready|payment_transactions_total'
+docker compose logs --tail=80 otel-collector
+docker compose logs --tail=80 app
+```
+
+The traffic helper requires Node.js 22 on the computer running it. The browser flow needs only Docker and a browser.
+
+### What the measurements mean
+
+| Measurement | What to look for |
+|---|---|
+| `payment_http_requests_total` | Completed requests grouped by method, route, and HTTP status. |
+| `payment_http_errors_total` | Requests with HTTP 4xx or 5xx responses. Divide by total requests for the cumulative HTTP error percentage since app start. |
+| `payment_http_request_duration_milliseconds_sum` and `_count` | Divide sum by count for average latency in milliseconds; `_bucket` lines show the distribution. |
+| `payment_service_ready` | `1` when PostgreSQL is reachable; `0` when it is not. Also check `/health` for service liveness. |
+| `payment_transactions_total` | Recorded payment outcomes grouped by provider and `succeeded` or `failed` status. |
+
+For example, the traffic helper with a count of `3` should add three successful and three rejected payments, plus one HTTP 400. A rejected demo payment returns HTTP 201 because it was recorded as a transaction; its business failure appears in `payment_transactions_total{status="failed"}`, not the HTTP error counter. Exact totals and latency vary with other traffic and service restarts.
+
+### Alternate local ports
+
+If ports `3000`, `5432`, `9464`, or `9090` are already occupied, use free host ports. For example:
+
+```powershell
+$env:APP_PORT='3300'
+$env:POSTGRES_PORT='55432'
+$env:METRICS_PORT='19464'
+$env:PROMETHEUS_PORT='19090'
+docker compose up -d --build
+$env:PAYMENT_BASE_URL='http://127.0.0.1:3300'
+$env:METRICS_URL='http://127.0.0.1:19464/metrics'
+npm run traffic:demo -- 3
+Start-Sleep -Seconds 10
+npm run telemetry:show
+```
+
+With those overrides, open `http://localhost:19090` for Prometheus. Set the same port variables whenever you run `docker compose` commands for that stack.
+
+### On the GitHub Actions runner
+
+Staging uses app port `3001`, collector port `9465`, and Prometheus port `9091`; production uses app port `3000`, collector port `9464`, and Prometheus port `9090`. The deployment workflow verifies `/health`, `/ready`, collector request metrics, and that Prometheus reports its scrape target as UP. After deployment, use the payment UI repeatedly or run the traffic helper from your development computer with `PAYMENT_BASE_URL` set to the runner's reachable app URL.
+
+Run these commands on the runner itself to inspect its local collector:
+
+```bash
+curl -fsS http://127.0.0.1:9465/metrics | grep '^payment_'   # staging
+curl -fsS http://127.0.0.1:9464/metrics | grep '^payment_'   # production
+curl -fsS http://127.0.0.1:9091/-/ready                  # staging Prometheus
+curl -fsS http://127.0.0.1:9090/-/ready                  # production Prometheus
+COMPOSE_PROJECT_NAME=payment-staging docker compose logs --tail=80 otel-collector
+```
+
+On the runner, open `http://localhost:9091` for staging or `http://localhost:9090` for production. From another computer, use an SSH tunnel, for example `ssh -L 9091:127.0.0.1:9091 user@RUNNER_IP`, then open `http://localhost:9091`. Do not expose the unauthenticated Prometheus UI publicly. The collector exporter supplies live cumulative measurements; Prometheus stores samples for seven days, even across app restarts. After a restart, allow a new export/scrape cycle before evaluating queries. `docker compose down -v` deletes the history.
 
 ## Run quality checks locally
 
@@ -320,8 +430,8 @@ The workflow is `.github/workflows/ci-cd.yml`.
 1. `build`: install dependencies, lint, compile TypeScript, and build the Docker image on a GitHub-hosted Ubuntu runner.
 2. `test`: start PostgreSQL, apply migrations, and run tests in a separate GitHub-hosted job.
 3. `security`: report high and critical production dependency findings with `npm audit`. This is advisory for the demo; findings appear in the job log but do not prevent deployment.
-4. `deploy-staging`: build and deploy the fake provider to the self-hosted runner on port `3001`, then check `/health` and `/ready`.
-5. `deploy-production`: build and deploy the fake provider on port `3000`, then check `/health` and `/ready`.
+4. `deploy-staging`: build and deploy the fake provider, collector, and Prometheus on ports `3001`, `9465`, and `9091`, then check `/health`, `/ready`, exported metrics, and Prometheus scrape status.
+5. `deploy-production`: build and deploy the same stack on ports `3000`, `9464`, and `9090`, then run the same checks.
 
 The deployment jobs build from the checked-out repository with Docker Compose. This simple pipeline does not require a container registry or a Trivy action. Both the build and test jobs must pass before deployment.
 
@@ -362,7 +472,7 @@ git push origin main
 
 If Actions reports that it cannot resolve `aquasecurity/trivy-action` or `aquasecurity/setup-trivy`, GitHub is running an older workflow. This simplified workflow does not use those actions. Push the updated workflow to `main` and inspect the new run; rerunning an old commit uses the old workflow.
 
-Before deployment on a local runner, check that ports `3000`, `3001`, `5432`, and `5433` are free on that machine. An already running local Compose stack may occupy ports `3000` and `5432` and prevent production from starting.
+Before deployment on a local runner, check that ports `3000`, `3001`, `5432`, `5433`, `9464`, `9465`, `9090`, and `9091` are free on that machine. An already running local Compose stack may occupy production ports and prevent it from starting. The collector and Prometheus ports listen only on loopback.
 
 On the runner, check the required tools and Docker access before triggering Actions:
 

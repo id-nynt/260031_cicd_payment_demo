@@ -195,6 +195,16 @@ db:migrate  Apply database migrations
 db:generate Generate ORM migration files
 ```
 
+## Telemetry checkpoint before BDI
+
+The app uses OpenTelemetry Metrics to record bounded-cardinality observations from real requests. Fastify hooks record completed HTTP request count, HTTP 4xx/5xx count, and response time in milliseconds. A readiness gauge checks PostgreSQL. A payment outcome counter distinguishes successful and rejected transactions; rejected demo payments are business failures even though their HTTP response is 201.
+
+Docker Compose starts an OpenTelemetry Collector and a Prometheus server. The app exports metrics to the collector over OTLP/HTTP every 5 seconds. The collector exposes Prometheus text on a loopback-only host port and writes metric summaries to its Docker logs; Prometheus scrapes that endpoint every 5 seconds and retains seven days of samples in a Docker volume. Staging uses collector port 9465 and Prometheus port 9091; production uses collector port 9464 and Prometheus port 9090. No card number, CVC, email, or other customer data is included in metric attributes; HTTP metrics use only method, route template, and status code.
+
+To verify the checkpoint, start Compose, run `npm run traffic:demo -- 3`, wait about 10 seconds, and run `npm run telemetry:show`. Open `http://localhost:9090` and check that the `payment-collector` target is UP. Query `payment_http_requests_total`, `payment_http_errors_total`, `payment_http_request_duration_milliseconds_sum`, `payment_service_ready`, and `payment_transactions_total`. The expected evidence is nonzero HTTP request and latency measurements, one HTTP 400 error, readiness `1`, and three successful plus three failed demo payments. The deployment jobs check that the collector exposes request metrics and Prometheus scrapes it successfully before reporting success.
+
+This setup provides live observations and a seven-day local history for time-window queries. It is demo monitoring, not a durable remote metrics store or alerting system.
+
 ## GitHub Actions CI/CD
 
 Create `.github/workflows/ci-cd.yml` with these jobs:

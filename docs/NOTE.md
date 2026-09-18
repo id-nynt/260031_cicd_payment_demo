@@ -51,7 +51,7 @@ Commands:
 - Open PowerShell and start Ubuntu:
   ```
   wsl -d Ubuntu
-  cd ~
+  cd ~/actions-runner
   ```
 - Follow GitHub's provided commands to download and configure the runner.
 - Start it with:
@@ -215,3 +215,43 @@ The available telemetry includes:
 | `payment_transactions_total`                 | Successful/failed payment outcomes |
 
 Checkpoint: ✅ Real application activity produces observable telemetry that can later be consumed by the BDI framework.
+
+### 3.5. Telemetry works after GitHub Actions
+
+- Commit new change, Git push
+
+- GitHub Actions
+
+- deploy staging
+  - staging app :3001
+    ↓
+  - staging OTel Collector :9465
+    ↓
+  - generate traffic
+    ↓
+  - see real staging metrics
+
+  ```
+  $env:PAYMENT_BASE_URL='http://localhost:3001'
+  npm run traffic:demo -- 3
+  Start-Sleep -Seconds 10
+
+  curl.exe -s http://127.0.0.1:9465/metrics | Select-String 'payment_'
+  ```
+
+- deploy production
+  - production app :3000
+    ↓
+  - production OTel Collector :9464
+    ↓
+  - generate traffic
+    ↓
+  - see real production metrics
+
+  ```
+  $env:PAYMENT_BASE_URL='http://localhost:3000'
+  npm run traffic:demo -- 3
+  Start-Sleep -Seconds 10
+
+  curl.exe -s http://127.0.0.1:9464/metrics | Select-String 'payment_'
+  ```

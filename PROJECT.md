@@ -199,7 +199,7 @@ db:generate Generate ORM migration files
 
 Create `.github/workflows/ci-cd.yml` with these jobs:
 
-### `validate`
+### `build`
 
 Run on pull requests and pushes to `main`:
 
@@ -207,28 +207,33 @@ Run on pull requests and pushes to `main`:
 2. Set up Node.js 22 with npm caching.
 3. Install dependencies with `npm ci`.
 4. Run `npm run lint`.
-5. Run `npm run typecheck`.
-6. Start a PostgreSQL service container.
-7. Run migrations and tests.
-8. Build the application and Docker image.
+5. Build the application and Docker image.
+
+### `test`
+
+Run separately from `build` on pull requests and pushes to `main`:
+
+1. Start a PostgreSQL service container.
+2. Install dependencies and apply migrations.
+3. Run `npm test`.
 
 ### `security`
 
-Run after validation:
+Run after build and test:
 
 - Audit production dependencies with `npm audit --omit=dev --audit-level=high`.
 - Treat this scan as advisory for the demo. Record findings in the Actions log while keeping the build, lint, migrations, and tests as required deployment gates.
 
 ### `deploy-staging`
 
-Run after `validate` and `security` on `main` using the self-hosted runner:
+Run after `build`, `test`, and `security` on `main` using a self-hosted runner with Bash and Docker Compose:
 
 1. Deploy the Compose stack as `payment-staging` on port 3001.
-2. Run `GET /health` as a smoke test.
+2. Use Bash to poll `/health` and `/ready` as smoke tests.
 
 ### `deploy-production`
 
-Run after staging succeeds using the `production` GitHub Environment. Configure required reviewers so production requires approval. Deploy the production Compose stack on port 3000 and run `/health`.
+Run after staging succeeds using the `production` GitHub Environment. Configure required reviewers so production requires approval. Deploy the production Compose stack on port 3000 and use Bash to poll `/health` and `/ready`.
 
 The included workflow is designed for a project/demo VM or local self-hosted runner. For separate online staging and production VMs, replace the Compose deploy steps with SSH or cloud-provider deployment actions and keep separate environment secrets.
 

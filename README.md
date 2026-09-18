@@ -317,22 +317,23 @@ The workflow is `.github/workflows/ci-cd.yml`.
 
 ### Pipeline stages
 
-1. `validate`: install dependencies, lint, migrate a PostgreSQL service, run tests, build, and build the Docker image.
-2. `security`: report high and critical production dependency findings with `npm audit`. This is advisory for the demo; findings appear in the job log but do not prevent deployment.
-3. `deploy-staging`: build and deploy the fake provider to the self-hosted runner on port `3001`, then check `/health`.
-4. `deploy-production`: build and deploy the fake provider on port `3000`, then check `/health`.
+1. `build`: install dependencies, lint, compile TypeScript, and build the Docker image on a GitHub-hosted Ubuntu runner.
+2. `test`: start PostgreSQL, apply migrations, and run tests in a separate GitHub-hosted job.
+3. `security`: report high and critical production dependency findings with `npm audit`. This is advisory for the demo; findings appear in the job log but do not prevent deployment.
+4. `deploy-staging`: build and deploy the fake provider to the self-hosted runner on port `3001`, then check `/health` and `/ready`.
+5. `deploy-production`: build and deploy the fake provider on port `3000`, then check `/health` and `/ready`.
 
-The deployment jobs build from the checked-out repository with Docker Compose. This simple pipeline does not require a container registry or a Trivy action. The build, lint, migrations, and tests remain required gates before deployment.
+The deployment jobs build from the checked-out repository with Docker Compose. This simple pipeline does not require a container registry or a Trivy action. Both the build and test jobs must pass before deployment.
 
-`validate` and `security` run on GitHub-hosted Ubuntu runners. Only the two deploy jobs run on your self-hosted runner. The deploy jobs use PowerShell (`pwsh`), so the runner machine must have PowerShell and Docker Compose available. On a Windows runner, Docker Desktop must be running for the runner account.
+`build`, `test`, and `security` run on GitHub-hosted Ubuntu runners. The deploy jobs use your existing self-hosted runner with Bash, Docker, the Docker Compose plugin, and `curl`. On Windows, install Git for Windows so Bash is available and keep Docker Desktop running for the runner account. On Linux, the runner account must be able to run `docker info` without `sudo`. The workflow does not use PowerShell.
 
 ### Actions
 
 1. Push this repository to GitHub.
-2. On the target machine, install Docker and Git.
+2. On the target machine, install Docker, the Docker Compose plugin, Git, Bash, and curl. Verify `docker info` works as the account running the runner service.
 3. In GitHub, open `Settings > Actions > Runners > New self-hosted runner`.
 4. Follow GitHub's displayed commands to download, configure, and start the runner.
-5. Ensure the runner service remains online and has permission to run Docker commands.
+5. Ensure the runner service remains online, has the `self-hosted` label, and has permission to run Docker commands.
 6. Create GitHub Environments named `staging` and `production`.
 7. Add a required reviewer to `production` if production deployment must be approved manually.
 8. Push to `main` and watch the Actions run.
@@ -362,6 +363,18 @@ git push origin main
 If Actions reports that it cannot resolve `aquasecurity/trivy-action` or `aquasecurity/setup-trivy`, GitHub is running an older workflow. This simplified workflow does not use those actions. Push the updated workflow to `main` and inspect the new run; rerunning an old commit uses the old workflow.
 
 Before deployment on a local runner, check that ports `3000`, `3001`, `5432`, and `5433` are free on that machine. An already running local Compose stack may occupy ports `3000` and `5432` and prevent production from starting.
+
+On the runner, check the required tools and Docker access before triggering Actions:
+
+```bash
+docker info
+docker compose version
+curl --version
+```
+
+The staging checkout is at `http://RUNNER_IP:3001/checkout` and production is at `http://RUNNER_IP:3000/checkout` if those ports are reachable through the host firewall. `localhost` in the Actions smoke test means the runner machine itself, so it is not a public URL. Use a domain and HTTPS reverse proxy when making the app available online.
+
+If Actions reports `pwsh: command not found`, GitHub is running an older workflow. Push the current workflow, which uses Bash for both deployment jobs, and inspect the new run.
 
 ## Monitoring and troubleshooting
 

@@ -14,8 +14,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
-    name: Build and test
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: docker build --tag payment-service:${{ github.sha }} .
+
+  test:
+    name: Test
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -39,15 +53,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run lint
       - run: npm run db:migrate
       - run: npm test
-      - run: npm run build
-      - run: docker build --tag payment-service:${{ github.sha }} .
 
   security:
     name: Dependency audit (advisory)
-    needs: validate
+    needs: [build, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,11 +73,10 @@ jobs:
   deploy-staging:
     name: Deploy staging
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [validate, security]
+    needs: [build, test, security]
     runs-on: self-hosted
     environment:
       name: staging
-      url: http://localhost:3001
     env:
       COMPOSE_PROJECT_NAME: payment-staging
       APP_PORT: 3001
@@ -76,15 +86,27 @@ jobs:
       MERCHANT_NAME: Staging Merchant
     steps:
       - uses: actions/checkout@v4
+      - name: Check runner tools
+        shell: bash
+        run: |
+          docker info >/dev/null
+          docker compose version
+          curl --version
       - name: Deploy staging Compose stack
-        shell: pwsh
+        shell: bash
         run: docker compose up -d --build
       - name: Staging smoke test
-        shell: pwsh
+        shell: bash
         run: |
-          Start-Sleep -Seconds 10
-          $response = Invoke-WebRequest http://localhost:3001/health -UseBasicParsing
-          if ($response.StatusCode -ne 200) { throw "Staging health check failed" }
+          for attempt in {1..12}; do
+            if curl --fail --silent http://127.0.0.1:3001/health && curl --fail --silent http://127.0.0.1:3001/ready; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose ps
+          docker compose logs --tail=100 app
+          exit 1
 
   deploy-production:
     name: Deploy production
@@ -93,7 +115,6 @@ jobs:
     runs-on: self-hosted
     environment:
       name: production
-      url: http://localhost:3000
     env:
       COMPOSE_PROJECT_NAME: payment-production
       APP_PORT: 3000
@@ -103,12 +124,24 @@ jobs:
       MERCHANT_NAME: Production Merchant
     steps:
       - uses: actions/checkout@v4
+      - name: Check runner tools
+        shell: bash
+        run: |
+          docker info >/dev/null
+          docker compose version
+          curl --version
       - name: Deploy production Compose stack
-        shell: pwsh
+        shell: bash
         run: docker compose up -d --build
       - name: Production smoke test
-        shell: pwsh
+        shell: bash
         run: |
-          Start-Sleep -Seconds 10
-          $response = Invoke-WebRequest http://localhost:3000/health -UseBasicParsing
-          if ($response.StatusCode -ne 200) { throw "Production health check failed" }
+          for attempt in {1..12}; do
+            if curl --fail --silent http://127.0.0.1:3000/health && curl --fail --silent http://127.0.0.1:3000/ready; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose ps
+          docker compose logs --tail=100 app
+          exit 1

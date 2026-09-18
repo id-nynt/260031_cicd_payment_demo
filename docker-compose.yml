@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: payment
+      POSTGRES_PASSWORD: payment
+      POSTGRES_DB: payment
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - payment-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment -d payment"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgres://payment:payment@postgres:5432/payment
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-fake}
+      FAKE_PAYMENT_OUTCOME: ${FAKE_PAYMENT_OUTCOME:-succeeded}
+      MERCHANT_NAME: ${MERCHANT_NAME:-Demo Merchant}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    command: ["sh", "-c", "node dist/db/migrate.js && node dist/server.js"]
+
+volumes:
+  payment-postgres:

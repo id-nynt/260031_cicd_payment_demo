@@ -1,0 +1,3 @@
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS payer_name TEXT NOT NULL DEFAULT 'Demo payer';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS payer_email TEXT NOT NULL DEFAULT 'demo@example.com';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS receiver_name TEXT NOT NULL DEFAULT 'Demo Merchant';

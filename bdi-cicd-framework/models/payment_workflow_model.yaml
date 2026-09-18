@@ -1,0 +1,41 @@
+# Generated from 01_pipeline.yaml and 02_goal.yaml
+workflow:
+  name: Payment Service CI/CD
+  entities(E):
+  - build
+  - test
+  - security
+  - staging
+  - production
+  dependencies(D):
+  - from: build
+    to: security
+  - from: test
+    to: security
+  - from: build
+    to: staging
+  - from: test
+    to: staging
+  - from: security
+    to: staging
+  - from: staging
+    to: production
+  observable_properties(O):
+    status:
+      values: &id001
+      - success
+      - failure
+      - cancelled
+      - skipped
+      - timeout
+    duration:
+      value: time
+  recovery(R): []
+execution:
+  max_retries: 0
+  observation_schema:
+    status: *id001
+    duration_unit: milliseconds
+    required_for: []
+    attempt_id_required: false
+recovery_policy: {}

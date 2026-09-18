@@ -1,0 +1,5 @@
+MAS payment_promotion_gate {
+  infrastructure: Local
+  environment: harness.ProjectGateEnvironment
+  agents: gate_agent;
+}

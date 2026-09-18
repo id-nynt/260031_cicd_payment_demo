@@ -46,9 +46,11 @@ services:
       DATABASE_URL: postgres://payment:payment@postgres:5432/payment
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-fake}
       FAKE_PAYMENT_OUTCOME: ${FAKE_PAYMENT_OUTCOME:-succeeded}
+      EXPERIMENT_MODE: ${EXPERIMENT_MODE:-normal}
       MERCHANT_NAME: ${MERCHANT_NAME:-Demo Merchant}
       OTEL_SERVICE_NAME: payment-service
       OTEL_DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-local}
+      CI_RUN_ID: ${CI_RUN_ID:-local}
       OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}

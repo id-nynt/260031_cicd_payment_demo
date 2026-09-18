@@ -30,6 +30,7 @@ export function createTelemetry(app: FastifyInstance, pool: Pool, config: Config
     })]
   });
   const meter = provider.getMeter('payment-service');
+  const runAttributes = { ci_run_id: config.CI_RUN_ID };
   const requests = meter.createCounter('payment.http.requests', {
     description: 'Completed HTTP requests'
   });
@@ -44,14 +45,18 @@ export function createTelemetry(app: FastifyInstance, pool: Pool, config: Config
     description: 'Recorded payment outcomes by provider and status'
   });
   const readiness = meter.createObservableGauge('payment.service.ready', {
-    description: '1 when PostgreSQL is reachable, otherwise 0'
+    description: '1 when the service is ready and PostgreSQL is reachable, otherwise 0'
   });
   readiness.addCallback(async (result) => {
+    if (config.EXPERIMENT_MODE === 'unhealthy') {
+      result.observe(0, runAttributes);
+      return;
+    }
     try {
       await pool.query('SELECT 1');
-      result.observe(1);
+      result.observe(1, runAttributes);
     } catch {
-      result.observe(0);
+      result.observe(0, runAttributes);
     }
   });
 
@@ -62,6 +67,7 @@ export function createTelemetry(app: FastifyInstance, pool: Pool, config: Config
   app.addHook('onResponse', async (request, reply) => {
     const start = started.get(request);
     const attributes = {
+      ...runAttributes,
       method: request.method,
       route: request.routeOptions.url ?? 'unmatched',
       status_code: String(reply.statusCode)

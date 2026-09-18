@@ -19,9 +19,10 @@ The application provides:
 - Health and readiness endpoints for deployment checks.
 - OpenTelemetry measurements for HTTP traffic, latency, errors, database readiness, and payment outcomes.
 - Prometheus server with a query UI and seven-day local metric retention.
+- Optional v2 fault modes for repeatable CI/CD and telemetry experiments; normal behaviour remains the default.
 - REST endpoints for creating, viewing, and processing payments.
 - Docker Compose packaging for repeatable local and server deployment.
-- CI/CD stages for validation, tests, build, an advisory dependency audit, staging deployment, production deployment, and health checks.
+- CI/CD stages for build, tests, an advisory dependency audit, staging deployment, a Jason/BDI promotion gate, production deployment, and health checks.
 
 The fake provider is the recommended starting point because it is usable without a Stripe account, API key, webhook, or external network dependency.
 
@@ -266,7 +267,7 @@ The traffic helper requires Node.js 22 on the computer running it. The browser f
 | `payment_http_requests_total` | Completed requests grouped by method, route, and HTTP status. |
 | `payment_http_errors_total` | Requests with HTTP 4xx or 5xx responses. Divide by total requests for the cumulative HTTP error percentage since app start. |
 | `payment_http_request_duration_milliseconds_sum` and `_count` | Divide sum by count for average latency in milliseconds; `_bucket` lines show the distribution. |
-| `payment_service_ready` | `1` when PostgreSQL is reachable; `0` when it is not. Also check `/health` for service liveness. |
+| `payment_service_ready` | `1` when the service is ready and PostgreSQL is reachable; `0` when either check fails. Also check `/health` for process liveness. |
 | `payment_transactions_total` | Recorded payment outcomes grouped by provider and `succeeded` or `failed` status. |
 
 For example, the traffic helper with a count of `3` should add three successful and three rejected payments, plus one HTTP 400. A rejected demo payment returns HTTP 201 because it was recorded as a transaction; its business failure appears in `payment_transactions_total{status="failed"}`, not the HTTP error counter. Exact totals and latency vary with other traffic and service restarts.
@@ -305,6 +306,72 @@ COMPOSE_PROJECT_NAME=payment-staging docker compose logs --tail=80 otel-collecto
 ```
 
 On the runner, open `http://localhost:9091` for staging or `http://localhost:9090` for production. From another computer, use an SSH tunnel, for example `ssh -L 9091:127.0.0.1:9091 user@RUNNER_IP`, then open `http://localhost:9091`. Do not expose the unauthenticated Prometheus UI publicly. The collector exporter supplies live cumulative measurements; Prometheus stores samples for seven days, even across app restarts. After a restart, allow a new export/scrape cycle before evaluating queries. `docker compose down -v` deletes the history.
+
+## V2 controlled experiments
+
+The `experiment-v2` branch adds `EXPERIMENT_MODE`. It defaults to `normal` and changes only the fake-payment path, except for the `unhealthy` readiness check. These are deliberate test faults, not real payment-provider failures. Do not use the fault modes with real card details or on a public service.
+
+| Mode | Observable behaviour |
+|---|---|
+| `normal` | Existing fake checkout and receipt flow; `/health` and `/ready` return 200. |
+| `high_latency` | Each new valid fake `POST /payments` waits 800 ms before processing. |
+| `high_error_rate` | Every third new valid fake `POST /payments` returns HTTP 503 before a transaction is created. The per-instance counter resets when the app restarts. Other requests do not count. |
+| `unhealthy` | `/health` remains 200, `/ready` returns 503, and `payment_service_ready` reports `0`. This is an intentional readiness failure; direct payment requests are not disabled. |
+
+An ordinary rejected demo card remains HTTP 201 with payment status `failed`; it is **not** an injected HTTP error. The Stripe path is not delayed or failed by these modes. Reusing an existing idempotency key returns the existing payment and does not advance the error counter.
+
+### Actions: test v2 without touching the baseline
+
+1. Use the `experiment-v2` branch. Give its Compose stack a separate project name and host ports so existing staging/production containers and data stay untouched.
+2. Start in `normal`, run the experiment traffic helper, then switch the app container through the other modes. Keep the same port and project variables in the PowerShell session.
+3. Wait 10–20 seconds after traffic and inspect the Prometheus UI at `http://localhost:19091`.
+4. Restore `normal` or stop only this isolated stack when finished.
+
+### Commands: isolated PowerShell session
+
+```powershell
+$env:COMPOSE_PROJECT_NAME='payment-v2-check'
+$env:APP_PORT='3301'
+$env:POSTGRES_PORT='55433'
+$env:METRICS_PORT='19465'
+$env:PROMETHEUS_PORT='19091'
+$env:PAYMENT_BASE_URL='http://127.0.0.1:3301'
+
+$env:EXPERIMENT_MODE='normal'
+docker compose up -d --build
+npm run traffic:experiment -- normal 3
+
+$env:EXPERIMENT_MODE='high_latency'
+docker compose up -d --no-deps app
+npm run traffic:experiment -- high_latency 3
+
+$env:EXPERIMENT_MODE='high_error_rate'
+docker compose up -d --no-deps app
+npm run traffic:experiment -- high_error_rate 6
+
+$env:EXPERIMENT_MODE='unhealthy'
+docker compose up -d --no-deps app
+npm run traffic:experiment -- unhealthy 3
+
+# Restore normal operation after the experiment:
+$env:EXPERIMENT_MODE='normal'
+docker compose up -d --no-deps app
+```
+
+The helper checks expected responses and prints each request's duration. For `high_error_rate`, six sequential requests should include two HTTP 503s on a fresh app instance. For `high_latency`, each measured request should take at least 700 ms. For `unhealthy`, expect `/health` 200 and `/ready` 503. The helper needs Node.js 22; the checkout UI itself still needs only Docker and a browser.
+
+Useful Prometheus queries after the export/scrape delay:
+
+```promql
+sum(payment_http_errors_total{route="/payments",status_code="503"})
+sum(payment_http_requests_total{route="/payments",status_code="503"})
+sum(payment_http_request_duration_milliseconds_sum{route="/payments"}) / sum(payment_http_request_duration_milliseconds_count{route="/payments"})
+payment_service_ready
+```
+
+Prometheus keeps earlier samples, but instant queries show the current app instance. Use the Graph view and a time range covering the experiment to compare modes across restarts. To stop only the isolated stack while keeping its data, run `docker compose down` with the project and port variables still set. Do not use `down -v` unless you intend to delete this stack's payment records and metric history.
+
+The CI/CD workflow uses `normal` for pushes and production. A manual `workflow_dispatch` run on `main` can select `high_error_rate` **for staging only**. Staging generates payments and waits for run-specific Prometheus samples; the BDI gate then blocks production on excessive HTTP errors or latency. A pull request runs build/test checks only. The existing production stack is left untouched when the gate blocks; this is pre-deployment avoidance, not an automatic rollback.
 
 ## Run quality checks locally
 
@@ -430,12 +497,13 @@ The workflow is `.github/workflows/ci-cd.yml`.
 1. `build`: install dependencies, lint, compile TypeScript, and build the Docker image on a GitHub-hosted Ubuntu runner.
 2. `test`: start PostgreSQL, apply migrations, and run tests in a separate GitHub-hosted job.
 3. `security`: report high and critical production dependency findings with `npm audit`. This is advisory for the demo; findings appear in the job log but do not prevent deployment.
-4. `deploy-staging`: build and deploy the fake provider, collector, and Prometheus on ports `3001`, `9465`, and `9091`, then check `/health`, `/ready`, exported metrics, and Prometheus scrape status.
-5. `deploy-production`: build and deploy the same stack on ports `3000`, `9464`, and `9090`, then run the same checks.
+4. `deploy-staging`: build and deploy the fake provider, collector, and Prometheus on ports `3001`, `9465`, and `9091`; generate payments and wait for run-specific request rate, p95 latency, and readiness samples.
+5. `bdi-gate`: on the self-hosted runner, read this Actions run and staging Prometheus, give the observations to Jason, and succeed only if the agent decides `allow`. `block` or unresolved `unknown` fails the job.
+6. `deploy-production`: runs only after `bdi-gate` succeeds; deploys normal mode on ports `3000`, `9464`, and `9090` and checks the deployed run ID.
 
 The deployment jobs build from the checked-out repository with Docker Compose. This simple pipeline does not require a container registry or a Trivy action. Both the build and test jobs must pass before deployment.
 
-`build`, `test`, and `security` run on GitHub-hosted Ubuntu runners. The deploy jobs use your existing self-hosted runner with Bash, Docker, the Docker Compose plugin, and `curl`. On Windows, install Git for Windows so Bash is available and keep Docker Desktop running for the runner account. On Linux, the runner account must be able to run `docker info` without `sudo`. The workflow does not use PowerShell.
+`build`, `test`, and `security` run on GitHub-hosted Ubuntu runners. Staging, the BDI gate, and production use your self-hosted runner. It needs Bash, Docker Compose, `curl`, network access to GitHub's API and Gradle/Maven downloads, and access to staging at `127.0.0.1:3001` and Prometheus at `127.0.0.1:9091`. The workflow installs Node 22 and Java 21 through official setup actions; the checked-in Gradle wrapper installs the pinned Gradle version. On Windows, install Git for Windows so Bash is available and keep Docker Desktop running for the runner account. On Linux, the runner account must be able to run `docker info` without `sudo`. The workflow does not use PowerShell.
 
 ### Actions
 
@@ -446,7 +514,9 @@ The deployment jobs build from the checked-out repository with Docker Compose. T
 5. Ensure the runner service remains online, has the `self-hosted` label, and has permission to run Docker commands.
 6. Create GitHub Environments named `staging` and `production`.
 7. Add a required reviewer to `production` if production deployment must be approved manually.
-8. Push to `main` and watch the Actions run.
+8. Push to `main` and watch the Actions run. A normal push can proceed all the way to production; use a protected production environment if you need human approval.
+
+For the controlled experiment, use the [BDI experiment guide](docs/BDI_EXPERIMENT.md). It gives the exact normal/high-error dispatch commands, expected job outcomes, Prometheus checks, and limits of local versus live verification.
 
 The included workflow uses fake transactions, so no Stripe secret is needed for the pipeline. If Stripe is later enabled, provide secrets through GitHub Environments and update the deployment job to create the server `.env` from those secrets. Never commit Stripe keys to the repository.
 

@@ -50,7 +50,7 @@ main{background:white;border:1px solid #e3e8f0;border-radius:16px;padding:32px;b
 <h2>API</h2><p><code>POST /payments</code> creates a payment. It requires an <code>Idempotency-Key</code> header.</p>
 <p>Amounts are expressed in the smallest currency unit. For example, <code>2500 AUD</code> means AUD 25.00.</p>
 </main></body></html>`));
-  app.get('/health', async () => ({ status: 'ok' }));
+  app.get('/health', async () => ({ status: 'ok', deploymentRunId: config.CI_RUN_ID, experimentMode: config.EXPERIMENT_MODE }));
   app.get('/ready', async (_request, reply) => {
     if (!experiment.isReady) return reply.code(503).send({ error: 'experiment_unhealthy', message: 'Service is intentionally not ready' });
     try { await pool.query('SELECT 1'); return { status: 'ready' }; }

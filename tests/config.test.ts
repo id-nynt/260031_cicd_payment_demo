@@ -7,6 +7,7 @@ describe('configuration', () => {
     expect(config.PAYMENT_PROVIDER).toBe('fake');
     expect(config.PORT).toBe(3000);
     expect(config.EXPERIMENT_MODE).toBe('normal');
+    expect(config.CI_RUN_ID).toBe('local');
   });
 
   it('requires Stripe credentials when Stripe is enabled', () => {
@@ -15,5 +16,10 @@ describe('configuration', () => {
 
   it('rejects unknown experiment modes', () => {
     expect(() => loadConfig({ DATABASE_URL: 'postgres://localhost/payment', EXPERIMENT_MODE: 'random' })).toThrow();
+  });
+
+  it('accepts safe CI run labels and rejects label injection', () => {
+    expect(loadConfig({ DATABASE_URL: 'postgres://localhost/payment', CI_RUN_ID: '12345-2' }).CI_RUN_ID).toBe('12345-2');
+    expect(() => loadConfig({ DATABASE_URL: 'postgres://localhost/payment', CI_RUN_ID: 'bad"label' })).toThrow();
   });
 });

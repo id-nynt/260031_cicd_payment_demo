@@ -1,0 +1,10 @@
+goal:
+  achieve(A):
+    - staging.status == success
+    - production.status == success
+  avoid(V):
+    - condition: production.status == success
+      when: test.status != success
+    - condition: production.status == success
+      when: staging.status != success
+  duration_unit: milliseconds

@@ -513,17 +513,17 @@ PHASE 2 — REAL CI/CD
 [X] Production usable :3000
 
 PHASE 3 — TELEMETRY
-[ ] Add OpenTelemetry
-[ ] Start collector
-[ ] Generate real traffic
-[ ] See real telemetry
+[X] Add OpenTelemetry
+[X] Start collector
+[X] Generate real traffic
+[X] See real telemetry
 
 PHASE 4 — FRAMEWORK
 [ ] Clean framework folder
 [ ] Separate app/framework
 
 PHASE 5 — RELEASES
-[ ] Tag working v1
+[X] Tag working v1
 [ ] Create v2
 [ ] Add controlled failures
 

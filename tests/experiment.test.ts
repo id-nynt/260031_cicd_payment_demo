@@ -40,6 +40,7 @@ describe('controlled experiment modes', () => {
       const health = await app.inject('/health');
       const ready = await app.inject('/ready');
       expect(health.statusCode).toBe(200);
+      expect(health.json()).toMatchObject({ deploymentRunId: 'local', experimentMode: 'unhealthy' });
       expect(ready.statusCode).toBe(503);
       expect(ready.json()).toMatchObject({ error: 'experiment_unhealthy' });
     } finally {

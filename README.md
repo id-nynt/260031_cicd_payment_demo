@@ -22,7 +22,7 @@ The application provides:
 - Optional v2 fault modes for repeatable CI/CD and telemetry experiments; normal behaviour remains the default.
 - REST endpoints for creating, viewing, and processing payments.
 - Docker Compose packaging for repeatable local and server deployment.
-- CI/CD stages for validation, tests, build, an advisory dependency audit, staging deployment, production deployment, and health checks.
+- CI/CD stages for build, tests, an advisory dependency audit, staging deployment, a Jason/BDI promotion gate, production deployment, and health checks.
 
 The fake provider is the recommended starting point because it is usable without a Stripe account, API key, webhook, or external network dependency.
 
@@ -371,7 +371,7 @@ payment_service_ready
 
 Prometheus keeps earlier samples, but instant queries show the current app instance. Use the Graph view and a time range covering the experiment to compare modes across restarts. To stop only the isolated stack while keeping its data, run `docker compose down` with the project and port variables still set. Do not use `down -v` unless you intend to delete this stack's payment records and metric history.
 
-The CI/CD workflow explicitly sets `EXPERIMENT_MODE=normal` for both staging and production. A push to the `experiment-v2` branch alone does not deploy; opening a pull request runs build/test checks. Merging to `main` deploys the v2 code with normal behaviour. Before testing a fault in staging, define an observation gate: the current staging smoke test checks health, readiness, and scraping, but does **not** reject high payment latency or HTTP error rate. Production must stay `normal` until a deliberate approval/rollback experiment is ready.
+The CI/CD workflow uses `normal` for pushes and production. A manual `workflow_dispatch` run on `main` can select `high_error_rate` **for staging only**. Staging generates payments and waits for run-specific Prometheus samples; the BDI gate then blocks production on excessive HTTP errors or latency. A pull request runs build/test checks only. The existing production stack is left untouched when the gate blocks; this is pre-deployment avoidance, not an automatic rollback.
 
 ## Run quality checks locally
 
@@ -497,12 +497,13 @@ The workflow is `.github/workflows/ci-cd.yml`.
 1. `build`: install dependencies, lint, compile TypeScript, and build the Docker image on a GitHub-hosted Ubuntu runner.
 2. `test`: start PostgreSQL, apply migrations, and run tests in a separate GitHub-hosted job.
 3. `security`: report high and critical production dependency findings with `npm audit`. This is advisory for the demo; findings appear in the job log but do not prevent deployment.
-4. `deploy-staging`: build and deploy the fake provider, collector, and Prometheus on ports `3001`, `9465`, and `9091`, then check `/health`, `/ready`, exported metrics, and Prometheus scrape status.
-5. `deploy-production`: build and deploy the same stack on ports `3000`, `9464`, and `9090`, then run the same checks.
+4. `deploy-staging`: build and deploy the fake provider, collector, and Prometheus on ports `3001`, `9465`, and `9091`; generate payments and wait for run-specific request rate, p95 latency, and readiness samples.
+5. `bdi-gate`: on the self-hosted runner, read this Actions run and staging Prometheus, give the observations to Jason, and succeed only if the agent decides `allow`. `block` or unresolved `unknown` fails the job.
+6. `deploy-production`: runs only after `bdi-gate` succeeds; deploys normal mode on ports `3000`, `9464`, and `9090` and checks the deployed run ID.
 
 The deployment jobs build from the checked-out repository with Docker Compose. This simple pipeline does not require a container registry or a Trivy action. Both the build and test jobs must pass before deployment.
 
-`build`, `test`, and `security` run on GitHub-hosted Ubuntu runners. The deploy jobs use your existing self-hosted runner with Bash, Docker, the Docker Compose plugin, and `curl`. On Windows, install Git for Windows so Bash is available and keep Docker Desktop running for the runner account. On Linux, the runner account must be able to run `docker info` without `sudo`. The workflow does not use PowerShell.
+`build`, `test`, and `security` run on GitHub-hosted Ubuntu runners. Staging, the BDI gate, and production use your self-hosted runner. It needs Bash, Docker Compose, `curl`, network access to GitHub's API and Gradle/Maven downloads, and access to staging at `127.0.0.1:3001` and Prometheus at `127.0.0.1:9091`. The workflow installs Node 22 and Java 21 through official setup actions; the checked-in Gradle wrapper installs the pinned Gradle version. On Windows, install Git for Windows so Bash is available and keep Docker Desktop running for the runner account. On Linux, the runner account must be able to run `docker info` without `sudo`. The workflow does not use PowerShell.
 
 ### Actions
 
@@ -513,7 +514,9 @@ The deployment jobs build from the checked-out repository with Docker Compose. T
 5. Ensure the runner service remains online, has the `self-hosted` label, and has permission to run Docker commands.
 6. Create GitHub Environments named `staging` and `production`.
 7. Add a required reviewer to `production` if production deployment must be approved manually.
-8. Push to `main` and watch the Actions run.
+8. Push to `main` and watch the Actions run. A normal push can proceed all the way to production; use a protected production environment if you need human approval.
+
+For the controlled experiment, use the [BDI experiment guide](docs/BDI_EXPERIMENT.md). It gives the exact normal/high-error dispatch commands, expected job outcomes, Prometheus checks, and limits of local versus live verification.
 
 The included workflow uses fake transactions, so no Stripe secret is needed for the pipeline. If Stripe is later enabled, provide secrets through GitHub Environments and update the deployment job to create the server `.env` from those secrets. Never commit Stripe keys to the repository.
 

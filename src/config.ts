@@ -10,6 +10,7 @@ const schema = z.object({
   MERCHANT_NAME: z.string().min(1).default('Demo Merchant'),
   OTEL_SERVICE_NAME: z.string().min(1).default('payment-service'),
   OTEL_DEPLOYMENT_ENVIRONMENT: z.string().min(1).default('local'),
+  CI_RUN_ID: z.string().regex(/^[A-Za-z0-9_.-]+$/).default('local'),
   OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: z.string().url().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_PUBLISHABLE_KEY: z.string().optional(),

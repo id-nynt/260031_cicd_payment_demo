@@ -325,6 +325,8 @@ The workflow is `.github/workflows/ci-cd.yml`.
 
 The current deployment jobs build from the checked-out repository with Docker Compose. The image publishing stage is included for registry use and future immutable-image deployment.
 
+`validate`, `security`, and `publish` run on GitHub-hosted Ubuntu runners. Only the two deploy jobs run on your self-hosted runner. The deploy jobs use PowerShell (`pwsh`), so the runner machine must have PowerShell and Docker Compose available. On a Windows runner, Docker Desktop must be running for the runner account.
+
 ### Actions
 
 1. Push this repository to GitHub.
@@ -357,6 +359,10 @@ git add .
 git commit -m "Deploy application update"
 git push origin main
 ```
+
+If Actions reports `Unable to resolve action aquasecurity/trivy-action@0.28.0`, the workflow in GitHub is an older copy. The published release tag is `v0.28.0`, and this repository's workflow now uses `aquasecurity/trivy-action@v0.28.0`. Push the corrected workflow to `main` from your Git checkout, then inspect the new Actions run. Rerunning the old commit does not apply the corrected file.
+
+Before deployment on a local runner, check that ports `3000`, `3001`, `5432`, and `5433` are free on that machine. An already running local Compose stack may occupy ports `3000` and `5432` and prevent production from starting.
 
 ## Monitoring and troubleshooting
 

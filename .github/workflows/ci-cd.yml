@@ -87,6 +87,7 @@ jobs:
       NODE_ENV: production
       PAYMENT_PROVIDER: fake
       FAKE_PAYMENT_OUTCOME: succeeded
+      EXPERIMENT_MODE: normal
       MERCHANT_NAME: Staging Merchant
     steps:
       - uses: actions/checkout@v4
@@ -152,6 +153,7 @@ jobs:
       NODE_ENV: production
       PAYMENT_PROVIDER: fake
       FAKE_PAYMENT_OUTCOME: succeeded
+      EXPERIMENT_MODE: normal
       MERCHANT_NAME: Production Merchant
     steps:
       - uses: actions/checkout@v4

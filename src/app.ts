@@ -10,6 +10,7 @@ import { createProviders, StripePaymentProvider } from './providers.js';
 import { checkoutPage, receiptPage } from './ui.js';
 import { paymentPage } from './payment-page.js';
 import { createTelemetry } from './telemetry.js';
+import { createExperiment } from './experiment.js';
 
 const paymentInput = z.object({
   amount: z.number().int().positive(),
@@ -26,6 +27,7 @@ export function buildApp(config: Config) {
   const app = Fastify({ logger: true, bodyLimit: 1024 * 1024 });
   const pool = createPool(config);
   const repository = new PaymentRepository(pool);
+  const experiment = createExperiment(config.EXPERIMENT_MODE);
   const telemetry = createTelemetry(app, pool, config);
   const providers = createProviders(config);
   const allowedProviders = config.PAYMENT_PROVIDER === 'both' ? ['fake', 'stripe'] : [config.PAYMENT_PROVIDER];
@@ -50,6 +52,7 @@ main{background:white;border:1px solid #e3e8f0;border-radius:16px;padding:32px;b
 </main></body></html>`));
   app.get('/health', async () => ({ status: 'ok' }));
   app.get('/ready', async (_request, reply) => {
+    if (!experiment.isReady) return reply.code(503).send({ error: 'experiment_unhealthy', message: 'Service is intentionally not ready' });
     try { await pool.query('SELECT 1'); return { status: 'ready' }; }
     catch { return reply.code(503).send({ error: 'database_unavailable', message: 'Database is not ready' }); }
   });
@@ -67,6 +70,9 @@ main{background:white;border:1px solid #e3e8f0;border-radius:16px;padding:32px;b
       if (parsed.data.provider === 'fake' && (!parsed.data.demoCardNumber || !/^\d{16}$/.test(parsed.data.demoCardNumber.replace(/\s/g, '')))) return reply.code(400).send({ error: 'invalid_demo_card', message: 'Enter a 16-digit demo card number' });
       const selectedProvider = providerFor(parsed.data.provider);
       if (!selectedProvider) return reply.code(400).send({ error: 'provider_not_available', message: 'Selected provider is not configured' });
+      if (parsed.data.provider === 'fake' && await experiment.beforeFakePayment()) {
+        return reply.code(503).send({ error: 'experiment_injected_failure', message: 'Demo payment temporarily unavailable' });
+      }
       const external = await selectedProvider.createPayment({ ...parsed.data, paymentId });
       const card = parsed.data.demoCardNumber?.replace(/\s/g, '');
       const payment = await repository.create({ ...parsed.data, id: paymentId, idempotencyKey: key, provider: selectedProvider.name, providerPaymentId: external.id, receiverName: config.MERCHANT_NAME, maskedPaymentMethod: card ? `•••• ${card.slice(-4)}` : null });

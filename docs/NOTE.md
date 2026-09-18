@@ -51,7 +51,7 @@ Commands:
 - Open PowerShell and start Ubuntu:
   ```
   wsl -d Ubuntu
-  cd ~/actions-runner
+  cd ~/actions-runner-payment
   ```
 - Follow GitHub's provided commands to download and configure the runner.
 - Start it with:

@@ -44,9 +44,13 @@ export function createTelemetry(app: FastifyInstance, pool: Pool, config: Config
     description: 'Recorded payment outcomes by provider and status'
   });
   const readiness = meter.createObservableGauge('payment.service.ready', {
-    description: '1 when PostgreSQL is reachable, otherwise 0'
+    description: '1 when the service is ready and PostgreSQL is reachable, otherwise 0'
   });
   readiness.addCallback(async (result) => {
+    if (config.EXPERIMENT_MODE === 'unhealthy') {
+      result.observe(0);
+      return;
+    }
     try {
       await pool.query('SELECT 1');
       result.observe(1);

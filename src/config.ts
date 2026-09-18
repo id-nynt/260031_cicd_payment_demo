@@ -6,6 +6,7 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   PAYMENT_PROVIDER: z.enum(['fake', 'stripe', 'both']).default('fake'),
   FAKE_PAYMENT_OUTCOME: z.enum(['succeeded', 'failed', 'pending']).default('succeeded'),
+  EXPERIMENT_MODE: z.enum(['normal', 'high_latency', 'high_error_rate', 'unhealthy']).default('normal'),
   MERCHANT_NAME: z.string().min(1).default('Demo Merchant'),
   OTEL_SERVICE_NAME: z.string().min(1).default('payment-service'),
   OTEL_DEPLOYMENT_ENVIRONMENT: z.string().min(1).default('local'),

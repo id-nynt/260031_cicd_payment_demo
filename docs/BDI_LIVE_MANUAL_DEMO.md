@@ -18,7 +18,16 @@ The launcher `bdi-cicd-framework/run_controller.py` validates, generates, and st
 
 ## 0. Branches and versions: do this once
 
-The complete recovery belongs on **fix/bdi-controller-runtime**, based on updated `main`. Merge its reviewed PR before creating release tags. Do not merge the older `release/bdi-demo-v2`: it contains compiled output and was based on stale `main`.
+The complete recovery is on **fix/bdi-controller-runtime**, reconciled with `origin/main` at `dd1b5c8`. The older `release/bdi-demo-v2` was already merged; this repair removes its generated build/cache files from Git tracking while preserving local files. Merge the repair's reviewed PR before creating release tags. Do not continue experiments on the older release branch.
+
+Publish the repair after authenticating, then open its PR into `main`:
+
+```powershell
+gh auth login -h github.com
+git push -u origin fix/bdi-controller-runtime
+```
+
+The repair is committed locally; publication and live deployment have not been verified from this session.
 
 Historical tags `v1.0` and `bdi-demo-v1.0.0` remain unchanged. Neither should be called the complete new console baseline. Use fresh names:
 

@@ -1,5 +1,7 @@
 # Manual execution guide for the BDI-controlled payment CI/CD experiment
 
+For the current GUI and v1-to-v2 deployment procedure, use [Overall Manual Payment Demo](BDI_LIVE_MANUAL_DEMO.md). This older reference describes the earlier headless implementation; its branch/publication status and Java-owned telemetry waiting descriptions are historical. The current generic Jason plans own telemetry wait/reconsideration.
+
 Status date: 19 September 2026. Repository: `id-nynt/260031_cicd_payment_demo`.
 
 This guide explains the current implementation, how the generated model is constructed, how the Java environment connects Jason to GitHub Actions and telemetry, how to version the payment demo safely, and how to run and observe the experiment manually.

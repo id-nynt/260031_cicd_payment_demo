@@ -1,5 +1,31 @@
 # BDI controller experiment results
 
+## MAS Console update ? 20 September 2026
+
+The following sections below this update preserve the earlier experiment record; their uncommitted/branch status and source hashes describe that earlier run.
+
+Current repair branch: `fix/bdi-controller-runtime`, reconciled with `origin/main` (`dd1b5c8`). Existing tags are unchanged. The previously merged build/cache artifacts are removed from Git tracking, with local files retained. Publish this repair through a reviewed PR; follow [the current live manual](BDI_LIVE_MANUAL_DEMO.md) before tagging a new baseline.
+
+Verified in this update:
+
+- Python parser/generator: 13 tests passed.
+- Java: 10 tests passed, including changing/removing injected faults between dispatches.
+- Actual Jason GUI delayed-telemetry campaign: native Swing `isShowing=true`; `build,test,security,staging`; first observation unknown, AgentSpeak wait approximately five seconds, second observation allow; production selected; final `achieved`. The MAS process remained open for inspection.
+- Actual Jason missing-telemetry campaign: 18 unknown samples, bounded AgentSpeak reconsideration, final `unknown`; production execution count zero. Expected and actual sequences matched.
+- GUI evidence: `bdi/build/mas-gui-final/`; unknown evidence: `bdi/build/mas-unknown-final/`. Each has generation manifest, journal and result. These are local scenario runs, with UUID execution identities and `scenario://` URLs, not GitHub run URLs. No live telemetry or deployment success is claimed.
+- Saved GitHub credentials remain invalid (`gh auth status`). Remote publication, runner availability, Environment approvals and live v1-to-v2 execution remain unverified. New baseline/candidate tags have deliberately not been created before review.
+
+The generic AgentSpeak plans now own waiting/reconsideration; Java supplies one telemetry sample per request. The worker produces staging traffic without deciding promotion. Use `--gui` to open MAS Console, then close it after inspecting the final beliefs. Headless runs still stop automatically.
+
+Updated source hashes (SHA-256 of local files at verification):
+
+| File | SHA-256 |
+|---|---|
+| `bdi-cicd-framework/run_controller.py` | `ff377423fb3de9dbcc1be1d2f0433cc20ac217686c500cc9c012a7b498ef90a9` |
+| `bdi-cicd-framework/generator/controller_generic.asl` | `0bf64e744de6f5348593fd4ee01d6985c37f0547a5ec82d7e635ab00b0912191` |
+| `bdi-cicd-framework/bdi/harness/ControllerEnvironment.java` | `75294d8378820c2a2c59b423858980d3e7927fccc5b24e04f2089490ef65637f` |
+| `.github/workflows/entity-execution.yml` | `cbbcd259517ab44f4d46f71a1f05033a595073fc2e0954f96b4fc90deac44358` |
+
 Experiment date: 19 September 2026. Local branch: `experiment-v2`. Starting commit: `f658daf6c2f30d2f1d157c3237ff569f15a2bc77`. The implementation was tested in the working tree; it has not been committed or published, so that starting commit does not contain the controller.
 
 ## Result

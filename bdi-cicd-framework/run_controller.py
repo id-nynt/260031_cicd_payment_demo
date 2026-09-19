@@ -164,7 +164,8 @@ def main() -> int:
         environment["BDI_PAUSE_AFTER_ENTITY"] = args.pause_after
         environment["BDI_PAUSE_MILLISECONDS"] = str(args.pause_ms)
     wrapper = ROOT / "bdi" / ("gradlew.bat" if os.name == "nt" else "gradlew")
-    command = [str(wrapper), "--no-daemon", "runController"]
+    # The repository wrapper may be checked out without an executable bit.
+    command = ([str(wrapper)] if os.name == "nt" else ["bash", str(wrapper)]) + ["--no-daemon", "runController"]
     process = subprocess.run(command, cwd=ROOT / "bdi", env=environment)
     result_path = Path(environment["BDI_RESULT_FILE"])
     if not result_path.exists():

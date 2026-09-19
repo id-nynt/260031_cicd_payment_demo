@@ -51,6 +51,8 @@ Live prerequisite checks, made outside the tool sandbox: GitHub authentication *
 
 Follow [the current manual](BDI_LIVE_MANUAL_DEMO.md) for the exact baseline/candidate commands and live fault timing.
 
+Publication: implementation commit `f73c406` is pushed on `fix/bdi-controller-runtime` with [draft PR #5](https://github.com/id-nynt/260031_cicd_payment_demo/pull/5). PR validation runs on hosted infrastructure and does not deploy the demo stacks. Linux startup invokes the checked-in Gradle wrapper through Bash because its executable bit is not set. Main and release tags have not been changed.
+
 ## MAS Console update ? 20 September 2026
 
 The following sections below this update preserve the earlier experiment record; their uncommitted/branch status and source hashes describe that earlier run.

@@ -1,0 +1,217 @@
+name: BDI Entity Execution
+
+on:
+  workflow_dispatch:
+    inputs:
+      entity:
+        description: Logical entity selected by the BDI agent
+        required: true
+        type: choice
+        options: [build, test, security, staging, production]
+      campaign_id:
+        description: Controller campaign correlation ID
+        required: true
+        type: string
+      execution_id:
+        description: Unique BDI attempt identity
+        required: true
+        type: string
+      attempt:
+        description: BDI attempt number
+        required: true
+        type: string
+      release_sha:
+        description: Immutable application commit to execute
+        required: true
+        type: string
+      failure_mode:
+        description: Controlled experiment failure for this entity
+        required: true
+        default: none
+        type: choice
+        options: [none, force_failure]
+      experiment_mode:
+        description: Payment behavior for a staging experiment
+        required: true
+        default: normal
+        type: choice
+        options: [normal, high_error_rate]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bdi-${{ inputs.campaign_id }}-${{ inputs.entity }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build entity
+    if: inputs.entity == 'build'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: docker build --tag payment-service:${{ inputs.release_sha }} .
+
+  test:
+    name: Test entity
+    if: inputs.entity == 'test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: payment
+          POSTGRES_PASSWORD: payment
+          POSTGRES_DB: payment
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U payment -d payment"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://payment:payment@localhost:5432/payment
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Controlled experiment failure
+        if: inputs.failure_mode == 'force_failure'
+        run: exit 1
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npm test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.3
+      - run: python -m unittest discover -s bdi-cicd-framework/parser -p 'test_*.py' -v
+
+  security:
+    name: Security entity
+    if: inputs.entity == 'security'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Advisory production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+
+  staging:
+    name: Staging entity
+    if: inputs.entity == 'staging'
+    runs-on: [self-hosted, payment-deploy]
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    timeout-minutes: 20
+    environment: staging
+    env:
+      COMPOSE_PROJECT_NAME: payment-staging
+      APP_PORT: 3001
+      POSTGRES_PORT: 5433
+      METRICS_PORT: 9465
+      PROMETHEUS_PORT: 9091
+      DEPLOYMENT_ENVIRONMENT: staging
+      NODE_ENV: production
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+      EXPERIMENT_MODE: ${{ inputs.experiment_mode }}
+      CI_RUN_ID: ${{ inputs.execution_id }}
+      MERCHANT_NAME: Staging Merchant
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+      - name: Check runner tools
+        run: docker info && docker compose version && curl --version
+      - name: Deploy selected revision to staging
+        run: docker compose up -d --build
+      - name: Verify staging identity and readiness
+        run: |
+          for attempt in {1..12}; do
+            if health=$(curl --fail --silent http://127.0.0.1:3001/health) &&
+              grep -Fq "\"deploymentRunId\":\"${CI_RUN_ID}\"" <<< "$health" &&
+              curl --fail --silent http://127.0.0.1:3001/ready; then exit 0; fi
+            sleep 5
+          done
+          docker compose logs --tail=100 app
+          exit 1
+      - name: Generate run-correlated telemetry
+        env:
+          PAYMENT_BASE_URL: http://127.0.0.1:3001
+          PROMETHEUS_URL: http://127.0.0.1:9091
+        run: |
+          for attempt in {1..12}; do
+            node scripts/generate-experiment-traffic.mjs "$EXPERIMENT_MODE" 6
+            if node scripts/check-gate-telemetry.mjs; then exit 0; fi
+            sleep 5
+          done
+          exit 1
+
+  production:
+    name: Production entity
+    if: inputs.entity == 'production'
+    runs-on: [self-hosted, payment-deploy]
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    timeout-minutes: 20
+    environment: production
+    env:
+      COMPOSE_PROJECT_NAME: payment-production
+      APP_PORT: 3000
+      POSTGRES_PORT: 5432
+      METRICS_PORT: 9464
+      PROMETHEUS_PORT: 9090
+      DEPLOYMENT_ENVIRONMENT: production
+      NODE_ENV: production
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+      EXPERIMENT_MODE: normal
+      CI_RUN_ID: ${{ inputs.execution_id }}
+      MERCHANT_NAME: Production Merchant
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+      - name: Check runner tools
+        run: docker info && docker compose version && curl --version
+      - name: Deploy selected revision to production
+        run: docker compose up -d --build
+      - name: Verify production identity, readiness, and telemetry
+        run: |
+          for attempt in {1..12}; do
+            if health=$(curl --fail --silent http://127.0.0.1:3000/health) &&
+              grep -Fq "\"deploymentRunId\":\"${CI_RUN_ID}\"" <<< "$health" &&
+              curl --fail --silent http://127.0.0.1:3000/ready &&
+              curl --fail --silent http://127.0.0.1:9464/metrics | grep -Fq payment_http_requests_total &&
+              curl --fail --silent http://127.0.0.1:9090/-/ready; then exit 0; fi
+            sleep 5
+          done
+          docker compose logs --tail=100 app otel-collector prometheus
+          exit 1

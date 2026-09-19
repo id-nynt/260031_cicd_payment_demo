@@ -1,0 +1,10 @@
+project: reporting-service
+controller:
+  workflow_file: entity-execution.yml
+  jobs:
+    package: Package report
+    verify: Verify report
+    preview: Deploy preview
+  environments: {}
+  observation_attempts: 3
+  observation_interval_seconds: 1

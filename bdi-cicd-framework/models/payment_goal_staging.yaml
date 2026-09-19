@@ -1,0 +1,7 @@
+goal:
+  achieve(A):
+    - staging.status == success
+  avoid(V):
+    - condition: staging.status == success
+      when: test.status != success
+  duration_unit: milliseconds

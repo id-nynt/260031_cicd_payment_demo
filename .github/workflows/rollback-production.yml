@@ -1,0 +1,65 @@
+name: Manual production rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Immutable known-good commit to redeploy
+        required: true
+        type: string
+      rollback_run_id:
+        description: Operator correlation ID for this rollback
+        required: true
+        type: string
+      confirm:
+        description: Type ROLLBACK to confirm
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: payment-deployment-control
+  cancel-in-progress: false
+
+jobs:
+  rollback-production:
+    if: inputs.confirm == 'ROLLBACK'
+    runs-on: [self-hosted, linux, payment-deploy]
+    environment: production
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: payment-production
+      APP_PORT: 3000
+      POSTGRES_PORT: 5432
+      METRICS_PORT: 9464
+      PROMETHEUS_PORT: 9090
+      DEPLOYMENT_ENVIRONMENT: production
+      NODE_ENV: production
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+      EXPERIMENT_MODE: normal
+      CI_RUN_ID: ${{ inputs.rollback_run_id }}
+      MERCHANT_NAME: Production Merchant
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+      - name: Check runner tools
+        run: docker info && docker compose version && curl --version
+      - name: Redeploy known-good release
+        run: docker compose up -d --build
+      - name: Verify rollback identity and readiness
+        run: |
+          for attempt in {1..12}; do
+            if health=$(curl --fail --silent http://127.0.0.1:3000/health) &&
+              grep -Fq "\"deploymentRunId\":\"${CI_RUN_ID}\"" <<< "$health" &&
+              curl --fail --silent http://127.0.0.1:3000/ready; then
+              echo "$health"
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=100 app
+          exit 1

@@ -239,3 +239,18 @@ To repeat the same candidate experiment, keep the same SHA and use a new campaig
 - `controller_result(achieved|stopped|unknown)` remains inspectable in the GUI at the end.
 
 There is no production canary/automatic rollback policy in this project. Do not copy `/pay`, port 8002, `deployment_agent`, or rollback expectations from the reference project's guide. This app uses `/payments`, ports 3000/3001, and `controller_agent`.
+
+The old `ci-cd.yml` needs-chain and `bdi-gate` workflow is disabled and moved
+to documentation. It must not be re-enabled during the experiment. If a
+candidate must be reverted, use the separate `Manual production rollback`
+workflow with the previously recorded immutable v1 commit SHA, a new
+`rollback_run_id`, and the confirmation value `ROLLBACK`. GitHub's production
+Environment approval remains required. This is an operator-selected rollback;
+the BDI controller does not invent a release SHA or roll back automatically.
+
+To exercise rollback, first record the v1 `release_sha` and production
+`deploymentRunId` from the baseline campaign. After a v2 campaign has reached
+production, open GitHub Actions → `Manual production rollback` → Run workflow,
+enter the v1 SHA and a value such as `rollback-<timestamp>`, type `ROLLBACK`,
+approve the production Environment, and verify `/health` reports that new
+rollback identity. Record the workflow URL beside the campaign journal.

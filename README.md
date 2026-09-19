@@ -1,6 +1,8 @@
 # Payment Service
 
-A small payment-service demonstration that can run locally, in Docker, on a VM, or through a GitHub Actions CI/CD pipeline.
+A small payment-service demonstration that can run locally, in Docker, on a VM, or through a GitHub Actions CI/CD pipeline. Its research controller can generate a Jason BDI agent from pipeline, goal, and project configuration; that agent selects each CI/CD entity while GitHub Actions executes the selected work.
+
+See [the BDI controller guide](bdi-cicd-framework/README.md), [manual execution guide](docs/BDI_MANUAL_EXECUTION_GUIDE.md), [architecture audit](docs/BDI_ARCHITECTURE_AUDIT_AND_PLAN.md), and [experiment results](docs/BDI_CONTROLLER_EXPERIMENT_RESULTS.md).
 
 The default deployment mode is `fake`. It simulates approval and rejection, stores payment records in PostgreSQL, and does not move real money. Stripe is an optional integration for test-mode payment instruments.
 
@@ -22,7 +24,7 @@ The application provides:
 - Optional v2 fault modes for repeatable CI/CD and telemetry experiments; normal behaviour remains the default.
 - REST endpoints for creating, viewing, and processing payments.
 - Docker Compose packaging for repeatable local and server deployment.
-- CI/CD stages for build, tests, an advisory dependency audit, staging deployment, a Jason/BDI promotion gate, production deployment, and health checks.
+- CI/CD entity jobs for build, tests, advisory dependency audit, staging, and production, selected by a persistent Jason/BDI controller; the earlier gate chain remains available only as an explicitly enabled legacy workflow.
 
 The fake provider is the recommended starting point because it is usable without a Stripe account, API key, webhook, or external network dependency.
 

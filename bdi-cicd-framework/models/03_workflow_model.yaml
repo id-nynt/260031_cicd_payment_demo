@@ -2,41 +2,41 @@
 workflow:
   name: CI/CD Pipeline
   entities(E):
-  - build
-  - test
-  - security
-  - staging
-  - production
-  - rollback_production
+    - build
+    - test
+    - security
+    - staging
+    - production
+    - rollback_production
   dependencies(D):
-  - from: build
-    to: test
-  - from: test
-    to: security
-  - from: security
-    to: staging
-  - from: staging
-    to: production
+    - from: build
+      to: test
+    - from: test
+      to: security
+    - from: security
+      to: staging
+    - from: staging
+      to: production
   observable_properties(O):
     status:
       values: &id001
-      - success
-      - failure
-      - cancelled
-      - skipped
-      - timeout
+        - success
+        - failure
+        - cancelled
+        - skipped
+        - timeout
     duration:
       value: time
   recovery(R):
-  - from: production
-    to: rollback_production
+    - from: production
+      to: rollback_production
 execution:
   max_retries: 1
   observation_schema:
     status: *id001
     duration_unit: milliseconds
     required_for:
-    - production
+      - production
     attempt_id_required: false
 recovery_policy:
   rollback_production:

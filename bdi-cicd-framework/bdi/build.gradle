@@ -65,3 +65,12 @@ tasks.register('gate', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     workingDir projectDir
 }
+
+tasks.register('runController', JavaExec) {
+    group = 'BDI'
+    description = 'Run the generated goal-directed CI/CD controller (no GUI)'
+    dependsOn classes
+    mainClass = 'harness.ControllerMain'
+    classpath = sourceSets.main.runtimeClasspath
+    workingDir projectDir
+}

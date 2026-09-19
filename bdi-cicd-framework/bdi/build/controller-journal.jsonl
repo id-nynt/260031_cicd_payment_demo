@@ -1,0 +1,7 @@
+{"timestamp":"2026-09-19T13:04:49.625670700Z","event":"controller_started","mode":"scenario","project":"payment-service","scenario":"healthy"}
+{"timestamp":"2026-09-19T13:05:42.069369700Z","event":"controller_started","mode":"scenario","project":"payment-service","scenario":"healthy"}
+{"timestamp":"2026-09-19T13:05:42.222039200Z","event":"bdi_decision","entity":"build","decision":"run","attempt":1,"relevant_beliefs":"dependencies_satisfied_and_goal_required"}
+{"timestamp":"2026-09-19T13:05:42.250440800Z","event":"bdi_decision","entity":"test","decision":"run","attempt":1,"relevant_beliefs":"dependencies_satisfied_and_goal_required"}
+{"timestamp":"2026-09-19T13:05:42.261584100Z","event":"bdi_decision","entity":"security","decision":"run","attempt":1,"relevant_beliefs":"dependencies_satisfied_and_goal_required"}
+{"timestamp":"2026-09-19T13:05:42.271732400Z","event":"bdi_decision","entity":"staging","decision":"run","attempt":1,"relevant_beliefs":"dependencies_satisfied_and_goal_required"}
+{"timestamp":"2026-09-19T13:05:42.279254100Z","event":"controller_finished","project":"payment-service","outcome":"achieved"}

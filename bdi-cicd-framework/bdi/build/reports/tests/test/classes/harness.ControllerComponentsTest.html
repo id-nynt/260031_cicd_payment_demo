@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta http-equiv="x-ua-compatible" content="IE=edge"/>
+<title>Test results - ControllerComponentsTest</title>
+<link href="../css/base-style.css" rel="stylesheet" type="text/css"/>
+<link href="../css/style.css" rel="stylesheet" type="text/css"/>
+<script src="../js/report.js" type="text/javascript"></script>
+</head>
+<body>
+<div id="content">
+<h1>ControllerComponentsTest</h1>
+<div class="breadcrumbs">
+<a href="../index.html">all</a> &gt; 
+<a href="../packages/harness.html">harness</a> &gt; ControllerComponentsTest</div>
+<div id="summary">
+<table>
+<tr>
+<td>
+<div class="summaryGroup">
+<table>
+<tr>
+<td>
+<div class="infoBox" id="tests">
+<div class="counter">5</div>
+<p>tests</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="failures">
+<div class="counter">0</div>
+<p>failures</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="ignored">
+<div class="counter">0</div>
+<p>ignored</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="duration">
+<div class="counter">1.071s</div>
+<p>duration</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</td>
+<td>
+<div class="infoBox success" id="successRate">
+<div class="percent">100%</div>
+<p>successful</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="tab-container">
+<ul class="tabLinks">
+<li>
+<a href="#">Tests</a>
+</li>
+<li>
+<a href="#">Standard error</a>
+</li>
+</ul>
+<div class="tab">
+<h2>Tests</h2>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Duration</th>
+<th>Result</th>
+</tr>
+</thead>
+<tr>
+<td class="success">githubAdapterCorrelatesDispatchWithTheExactSelectedJob()</td>
+<td class="success">0.909s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">githubAdapterRejectsACompletedRunWithoutTheSelectedJob()</td>
+<td class="success">0.074s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">paymentExecutionMappingIsConfigurable()</td>
+<td class="success">0.018s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">scenarioExecutorSupportsRetryAndExhaustionInputs()</td>
+<td class="success">0.056s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">secondProjectHasDifferentEntitiesWithoutRuntimeCodeChanges()</td>
+<td class="success">0.014s</td>
+<td class="success">passed</td>
+</tr>
+</table>
+</div>
+<div class="tab">
+<h2>Standard error</h2>
+<span class="code">
+<pre>Sept 19, 2026 11:18:23 PM harness.StructuredEventLogger event
+INFO: {&quot;timestamp&quot;:&quot;2026-09-19T13:18:23.965362800Z&quot;,&quot;event&quot;:&quot;dispatch_intent&quot;,&quot;campaign_id&quot;:&quot;campaign-test&quot;,&quot;entity&quot;:&quot;build&quot;,&quot;release_sha&quot;:&quot;0123456789abcdef0123456789abcdef01234567&quot;,&quot;attempt&quot;:1,&quot;execution_id&quot;:&quot;c0b98819-10c3-4fca-9acc-99fc3e40c211&quot;}
+Sept 19, 2026 11:18:24 PM harness.StructuredEventLogger event
+INFO: {&quot;timestamp&quot;:&quot;2026-09-19T13:18:24.189513700Z&quot;,&quot;event&quot;:&quot;dispatch_acknowledged&quot;,&quot;run_url&quot;:&quot;https://github.com/example/repository/actions/runs/321&quot;,&quot;execution_id&quot;:&quot;c0b98819-10c3-4fca-9acc-99fc3e40c211&quot;,&quot;attempt&quot;:1,&quot;github_run_id&quot;:321,&quot;campaign_id&quot;:&quot;campaign-test&quot;,&quot;entity&quot;:&quot;build&quot;}
+Sept 19, 2026 11:18:24 PM harness.StructuredEventLogger event
+INFO: {&quot;timestamp&quot;:&quot;2026-09-19T13:18:24.207625700Z&quot;,&quot;event&quot;:&quot;execution_terminal&quot;,&quot;attempt&quot;:1,&quot;run_url&quot;:&quot;https://github.com/example/repository/actions/runs/321&quot;,&quot;github_run_id&quot;:321,&quot;campaign_id&quot;:&quot;campaign-test&quot;,&quot;status&quot;:&quot;success&quot;,&quot;entity&quot;:&quot;build&quot;,&quot;execution_id&quot;:&quot;c0b98819-10c3-4fca-9acc-99fc3e40c211&quot;,&quot;duration_ms&quot;:242}
+Sept 19, 2026 11:18:24 PM harness.StructuredEventLogger event
+INFO: {&quot;timestamp&quot;:&quot;2026-09-19T13:18:24.324396200Z&quot;,&quot;event&quot;:&quot;dispatch_intent&quot;,&quot;campaign_id&quot;:&quot;campaign-test&quot;,&quot;entity&quot;:&quot;build&quot;,&quot;release_sha&quot;:&quot;0123456789abcdef0123456789abcdef01234567&quot;,&quot;attempt&quot;:1,&quot;execution_id&quot;:&quot;cd7a8abc-7e7a-4526-8def-fdc5f0e88ecb&quot;}
+Sept 19, 2026 11:18:24 PM harness.StructuredEventLogger event
+INFO: {&quot;timestamp&quot;:&quot;2026-09-19T13:18:24.342691300Z&quot;,&quot;event&quot;:&quot;dispatch_acknowledged&quot;,&quot;run_url&quot;:&quot;https://github.com/example/repository/actions/runs/654&quot;,&quot;execution_id&quot;:&quot;cd7a8abc-7e7a-4526-8def-fdc5f0e88ecb&quot;,&quot;attempt&quot;:1,&quot;github_run_id&quot;:654,&quot;campaign_id&quot;:&quot;campaign-test&quot;,&quot;entity&quot;:&quot;build&quot;}
+</pre>
+</span>
+</div>
+</div>
+<div id="footer">
+<p>
+<div>
+<label class="hidden" id="label-for-line-wrapping-toggle" for="line-wrapping-toggle">Wrap lines
+<input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
+</label>
+</div>Generated by 
+<a href="https://www.gradle.org">Gradle 8.13</a> at 19 Sept 2026, 11:18:25 pm</p>
+</div>
+</div>
+</body>
+</html>

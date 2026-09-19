@@ -1,0 +1,25 @@
+{
+  "inputs": {
+    "pipeline": {
+      "path": "C:\\NHI\\2026_IT-Project\\260031_payment\\bdi-cicd-framework\\models\\payment_pipeline.yaml",
+      "sha256": "0c98ef10d0f9aa9dc9130abed58e91711692ac6ac6e2a10c81c4bfa38b40663a"
+    },
+    "goal": {
+      "path": "C:\\NHI\\2026_IT-Project\\260031_payment\\bdi-cicd-framework\\models\\payment_goal_staging.yaml",
+      "sha256": "d1846b21199d2ebfcbd78272894400e565e55cab4d11e17e6ea7130df517ae95"
+    },
+    "project": {
+      "path": "C:\\NHI\\2026_IT-Project\\260031_payment\\bdi-cicd-framework\\models\\payment_project.yaml",
+      "sha256": "a78fafab8b94f3a0a8ce2a92876dcef2f1a060d2b6a8d08a6e2ec54624143ad5"
+    }
+  },
+  "required_entities": [
+    "build",
+    "test",
+    "security",
+    "staging"
+  ],
+  "achievements": [
+    "staging"
+  ]
+}

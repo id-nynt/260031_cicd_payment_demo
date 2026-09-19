@@ -1,0 +1,5 @@
+MAS payment_observation {
+  infrastructure: Local
+  environment: harness.ProjectRunEnvironment
+  agents: payment_bdi_agent;
+}

@@ -51,3 +51,11 @@ jobs:
         run: bash ./gradlew --no-daemon test
       - name: Actual Jason reasoning with simulated adapters
         run: python bdi-cicd-framework/verify_controller_experiment.py
+      - name: Retain controller verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: controller-verification-evidence
+          path: |
+            bdi-cicd-framework/bdi/build/recovery-suite-*/
+            bdi-cicd-framework/bdi/build/test-results/test/*.xml

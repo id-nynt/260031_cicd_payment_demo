@@ -68,7 +68,7 @@ class ModelTransformTest(unittest.TestCase):
             parse_model(pipeline, goals)
 
     def test_recovery_target_validation(self):
-        pipeline_text = self.pipeline.replace("needs.production.result == 'failure'", "needs.ghost.result == 'failure'")
+        pipeline_text = self.pipeline.replace("recover_from: production", "recover_from: ghost")
         pipeline, goals = self.write_inputs(self.directory, pipeline_text)
         with self.assertRaises(ModelError):
             parse_model(pipeline, goals)
@@ -99,26 +99,18 @@ class ModelTransformTest(unittest.TestCase):
         self.assertEqual(first_agent.read_bytes(), second_agent.read_bytes())
 
     def test_real_payment_workflow_mapping(self):
-        payment_root = ROOT.parent
-        model = parse_model(payment_root / ".github" / "workflows" / "ci-cd.yml",
-                            ROOT / "models" / "payment_goal.yaml",
-                            ROOT / "models" / "payment_project.yaml")
-        self.assertEqual(model.entities, ("build", "test", "security", "staging", "production"))
+        model = parse_model(ROOT / "models" / "01_pipeline.yaml", ROOT / "models" / "02_goal.yaml")
+        self.assertEqual(model.entities, ("build", "test", "security", "staging", "production", "rollback"))
         self.assertEqual(set(model.dependencies), {
-            ("build", "security"), ("test", "security"),
-            ("build", "staging"), ("test", "staging"), ("security", "staging"),
+            ("build", "test"), ("test", "security"), ("security", "staging"),
             ("staging", "production"),
         })
         self.assertEqual(model.final_entity, "production")
-
-        workflow = yaml.load((payment_root / ".github" / "workflows" / "ci-cd.yml").read_text(encoding="utf-8"),
-                             Loader=yaml.BaseLoader)
-        jobs = workflow["jobs"]
-        self.assertEqual(jobs["bdi-gate"]["needs"], "deploy-staging")
-        self.assertEqual(jobs["deploy-production"]["needs"], "bdi-gate")
-        self.assertEqual(jobs["bdi-gate"]["permissions"]["actions"], "read")
-        self.assertEqual(workflow["on"]["workflow_dispatch"]["inputs"]["experiment_mode"]["options"],
-                         ["normal", "high_error_rate"])
+        self.assertEqual(model.recovery, (("production", "rollback"),))
+        self.assertNotIn("rollback", model.required_entities)
+        generated = project_beliefs(model)
+        self.assertIn("recover_on(production, telemetry_block, rollback).", generated)
+        self.assertIn("require_healthy(production).", generated)
 
     def test_controller_goal_closure_and_observation(self):
         pipeline = ROOT / "models" / "payment_pipeline.yaml"
@@ -143,7 +135,7 @@ class ModelTransformTest(unittest.TestCase):
         workflow = yaml.load((ROOT.parent / ".github" / "workflows" / "entity-execution.yml")
                              .read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
         jobs = workflow["jobs"]
-        self.assertEqual(set(jobs), {"build", "test", "security", "staging", "production"})
+        self.assertEqual(set(jobs), {"build", "test", "security", "staging", "production", "rollback"})
         for entity, job in jobs.items():
             self.assertNotIn("needs", job)
             self.assertEqual(job["if"], f"inputs.entity == '{entity}'")
@@ -151,11 +143,23 @@ class ModelTransformTest(unittest.TestCase):
             self.assertEqual(checkout["with"]["ref"], "${{ inputs.release_sha }}")
         self.assertEqual(jobs["staging"]["concurrency"]["group"], "payment-deployment-control")
         self.assertEqual(jobs["production"]["concurrency"]["group"], "payment-deployment-control")
-        legacy = yaml.load((ROOT.parent / ".github" / "workflows" / "ci-cd.yml")
-                           .read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
-        self.assertEqual(legacy["jobs"]["deploy-staging"]["concurrency"]["group"],
-                         "payment-deployment-control")
-        self.assertEqual(legacy["on"]["workflow_dispatch"]["inputs"]["legacy_deployment"]["default"], "false")
+        self.assertEqual(jobs["rollback"]["environment"], "production")
+        self.assertEqual(jobs["rollback"]["concurrency"]["group"], "payment-deployment-control")
+        self.assertFalse((ROOT.parent / ".github/workflows/ci-cd.yml").exists())
+
+    def test_recovery_cannot_be_a_normal_goal_or_dependency(self):
+        pipeline, goals = self.write_inputs(self.directory, goals=self.goals.replace("production.status == success", "rollback.status == success"))
+        with self.assertRaisesRegex(ModelError, "normal goal"):
+            parse_model(pipeline, goals)
+        pipeline, goals = self.write_inputs(self.directory, pipeline=self.pipeline.replace("needs: staging", "needs: rollback").replace("    observe_before: staging\n", ""))
+        with self.assertRaisesRegex(ModelError, "conditional leaf"):
+            parse_model(pipeline, goals)
+
+    def test_recovery_requires_supported_trigger_and_verification(self):
+        for text in (self.pipeline.replace("telemetry_block", "invented"), self.pipeline.replace("observe_after: true", "observe_after: false")):
+            pipeline, goals = self.write_inputs(self.directory, pipeline=text)
+            with self.assertRaises(ModelError):
+                parse_model(pipeline, goals)
 
 
 if __name__ == "__main__":

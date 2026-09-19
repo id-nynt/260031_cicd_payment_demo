@@ -5,6 +5,7 @@ goal:
 
   maintain(M):
     - production.duration <= 100000
+    - production.health == healthy
 
   duration_unit: milliseconds
 

@@ -1,5 +1,56 @@
 # BDI controller experiment results
 
+## Current BDI-selected recovery experiment — 20 September 2026
+
+This section supersedes the infrastructure status and absent-recovery limitations in earlier records below. Implementation started from `0b8eaff83add40c68704f31f509bfdfc29eae3ba` on `fix/bdi-controller-runtime`. The working source used for each run is identified by its generated-agent/template/input hashes; the GUI run manifest additionally records launcher, parser, worker workflow and Java source hashes. Scenario execution does not deploy that Git commit.
+
+Rollback is now selected by the generated Jason agent from configuration. Production is assessed after deployment; configured failure, duration violation, unhealthy telemetry or exhausted production telemetry can activate one recovery. The worker redeploys the receipt-validated known-good SHA with a fresh execution UUID, and Jason assesses its telemetry before reporting recovery. An uncertain GitHub execution stops without retry or recovery because the remote job might still be active.
+
+Local verification: **18 parser/receipt tests, 12 Java adapter/telemetry tests, and 16 actual-Jason scenarios passed**. The previous tests depending on deleted `ci-cd.yml` were corrected to validate the active dispatch-only model and workflow. Non-deploying PR validation is restored in `validate-controller.yml`.
+
+Payment regression checks also passed: 9 application tests, TypeScript lint and production build.
+
+Expected and actual entity sequences matched in every row (`B,T,S,ST,P,R` mean build, test, security, staging, production, rollback):
+
+| Scenario | Expected = actual sequence | Outcome / recovery |
+|---|---|---|
+| Healthy | B,T,S,ST,P; observe ST and P | achieved / not_needed |
+| Staging-only goal | B,T,S,ST; observe ST; no P or R | achieved / not_needed |
+| Transient test failure | B,T,T,S,ST,P | achieved / not_needed |
+| Retry exhaustion | B,T,T | stopped / not_attempted |
+| High-error staging | B,T,S,ST; block | stopped / not_attempted |
+| Delayed telemetry | B,T,S,ST,P; unknown then allow | achieved / not_needed |
+| Missing staging telemetry | B,T,S,ST; three unknown samples | unknown / not_attempted |
+| Terminal production failure | B,T,S,ST,P,R; restore allow | stopped / restored |
+| Unhealthy production | B,T,S,ST,P,R; P block, R allow | stopped / restored |
+| Missing production telemetry | B,T,S,ST,P,R; P unknown exhausted, R allow | stopped / restored |
+| Recovery job failure | B,T,S,ST,P,R; one failed R | stopped / failed |
+| Recovery telemetry missing | B,T,S,ST,P,R; R unknown exhausted | unknown / unverified |
+| Execution uncertainty | B,T,S,ST,P; no recovery or retry | unknown / unresolved |
+| Baseline without prior recovery target | B,T,S,ST,P; P block, no R | stopped / not_attempted |
+| Pause after security | B,T,S,ST,P; no successor during 750ms pause | achieved / not_needed |
+| Second project | package,verify,preview | achieved / not_needed |
+
+Reproduce with `py -3 bdi-cicd-framework/verify_controller_experiment.py`. Evidence from this run is under `bdi-cicd-framework/bdi/build/recovery-suite-f1316796/`: `summary.json` includes expected/actual sequences, all execution UUIDs, telemetry states, achieved/unmet goals and input manifests. Each scenario also retains console output, journal and result. Tests use a copied three-observation/zero-delay manifest; live settings remain 18 observations/five seconds. Healthy recovery never reports candidate production achieved.
+
+GUI verification used `--gui --scenario production_unhealthy`; evidence is under `bdi/build/recovery-gui-final/`. The native MAS window reported visible, remained open after completion, and the web mind inspector returned `recovery_result` and `restored` in the final agent state. Beliefs were `telemetry(staging,allow)`, `telemetry(production,block)`, `telemetry(rollback,allow)`; the final result was `stopped/restored`. Only the verification process was closed afterwards.
+
+Representative SHA-256 hashes from that GUI manifest:
+
+| Input/source | SHA-256 |
+|---|---|
+| 01_pipeline.yaml | ffe5398d73ea21ac78c1ad4fd937ad3de49c59aae0a62df0e286d6c79c550ac5 |
+| 02_goal.yaml | 4b2efb08a11e78c7d3dc315cd63dc07c1b58655a5b83c41a375842022b306065 |
+| payment_project.yaml | d6c7469e6e340fca9331e652b3bfcddd4ee3688e5a2bb5a1431623b0fff9d15d |
+| controller_generic.asl | 229d86297e8e0b4fc8b039012c1b74dabbc30385165e8813596490c9989e7571 |
+| generated controller_agent.asl | 8b75624a90c02d879f091f8eb5cca70d7ec32950ea8d2a1383bd9de007836213 |
+
+Live prerequisite checks, made outside the tool sandbox: GitHub authentication **works**, and Linux runner `bdi-demo` is online. Its labels are `self-hosted,Linux,X64`; `payment-deploy` is missing. The inspected local Docker context has no containers. Remote main is `dd1b5c8`; the remote workflow listing still includes the old Payment Service CI/CD and entity workflow. Environments `staging` and `production` exist but currently have **no protection rules**. Earlier claims of invalid saved credentials were sandbox-limited checks, not a reliable account diagnosis.
+
+**No live release/rollback was performed in this update.** There are no live deployment run URLs for these scenarios; they deliberately use `scenario://` and run ID 0. Before live verification: publish/review the repair, identify the deployment host and its telemetry routes, add the required runner label, establish the intended Environment approvals, deploy a healthy v1 baseline and retain its live receipt, and select a migration-compatible v2. The receipt cannot be supplied by a fixture. Recovery rebuilds source and preserves database volumes; image-digest restoration, database rollback and continuous production monitoring remain outside this bounded experiment.
+
+Follow [the current manual](BDI_LIVE_MANUAL_DEMO.md) for the exact baseline/candidate commands and live fault timing.
+
 ## MAS Console update ? 20 September 2026
 
 The following sections below this update preserve the earlier experiment record; their uncommitted/branch status and source hashes describe that earlier run.

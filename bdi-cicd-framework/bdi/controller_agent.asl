@@ -5,13 +5,21 @@ entity(test).
 entity(security).
 entity(staging).
 entity(production).
+entity(rollback).
+recovery_entity(rollback).
 
 depends(build, []).
-depends(test, []).
-depends(security, [build, test]).
-depends(staging, [build, test, security]).
+depends(test, [build]).
+depends(security, [test]).
+depends(staging, [security]).
 depends(production, [staging]).
 
+recovery(production, rollback).
+recover_on(production, failure, rollback).
+recover_on(production, telemetry_block, rollback).
+recover_on(production, telemetry_unknown, rollback).
+recover_on(production, maintenance_violation, rollback).
+observe_after(rollback).
 final_phase(production).
 observe_before(production, staging).
 
@@ -22,6 +30,9 @@ required(staging).
 required(production).
 
 achievement(production, success).
+achievement(staging, success).
+max_duration(production, 100000).
+require_healthy(production).
 avoid_missing(production, test).
 avoid_missing(production, staging).
 
@@ -34,176 +45,117 @@ attempt_count(test, 0).
 attempt_count(security, 0).
 attempt_count(staging, 0).
 attempt_count(production, 0).
+attempt_count(rollback, 0).
 
-// Generic goal-directed CI/CD controller. Project facts are generated above.
-
+// Generic goal-directed controller. All entity names and policy facts are generated.
 workflow_active.
-
 holds([]).
 holds([Head | Tail]) :- phase_result(Head, success) & holds(Tail).
-
-achievement_unsatisfied(Entity, Desired) :-
-    achievement(Entity, Desired) & not phase_result(Entity, Desired).
-all_achievements_satisfied :- not achievement_unsatisfied(_, _).
-
-avoidance_violation(Entity) :-
-    avoid_missing(Entity, Required) & not phase_result(Required, success).
-safe_to_execute(Entity) :- not avoidance_violation(Entity).
-
-ready_to_execute(Entity) :- not observe_before(Entity, _).
-ready_to_execute(Entity) :- observe_before(Entity, Source) & telemetry(Source, allow).
-
-nextentity(Entity) :-
-    workflow_active
-    & required(Entity)
-    & entity(Entity)
-    & depends(Entity, Requirements)
-    & holds(Requirements)
-    & safe_to_execute(Entity)
-    & not running(_)
-    & not phase_result(Entity, success)
-    & not terminal(Entity, _).
-
-retry_allowed(Entity) :-
-    max_retries(Max)
-    & attempt_count(Entity, Attempts)
-    & Attempts <= Max.
+achievement_unsatisfied(E, V) :- achievement(E, V) & not phase_result(E, V).
+required_unsatisfied(E) :- required(E) & not phase_result(E, success).
+health_unsatisfied(E) :- required(E) & require_healthy(E) & not telemetry(E, allow).
+health_unsatisfied(E) :- required(E) & observe_after(E) & not telemetry(E, allow).
+all_goals_satisfied :- not achievement_unsatisfied(_, _) & not required_unsatisfied(_) & not health_unsatisfied(_).
+avoidance_violation(E) :- avoid_missing(E, R) & not phase_result(R, success).
+safe_to_execute(E) :- not avoidance_violation(E).
+verify_after(E) :- require_healthy(E).
+verify_after(E) :- observe_after(E).
+ready_to_execute(E) :- not observe_before(E, _).
+ready_to_execute(E) :- observe_before(E, S) & telemetry(S, allow).
+nextentity(E) :- workflow_active & required(E) & entity(E) & depends(E, Requirements)
+    & holds(Requirements) & safe_to_execute(E) & not running(_)
+    & not phase_result(E, success) & not terminal(E, _).
+retry_allowed(E) :- max_retries(Max) & attempt_count(E, Attempts) & Attempts <= Max
+    & not recovery(E, _) & not recovery_entity(E).
 
 !control.
 
-+!control
-    : all_achievements_satisfied & workflow_active
-    <- -workflow_active;
-       +controller_result(achieved);
-       .print("BDI_CONTROLLER_RESULT=achieved");
-       finish(achieved).
+// Post-deployment verification takes priority over achieving the delivery goal.
++!control : workflow_active & required(E) & phase_result(E, success)
+    & verify_after(E) & telemetry(E, block)
+ <- !failed(E, telemetry_block, stopped).
++!control : workflow_active & required(E) & phase_result(E, success)
+    & verify_after(E) & telemetry(E, unknown)
+ <- !failed(E, telemetry_unknown, unknown).
++!control : workflow_active & required(E) & phase_result(E, success)
+    & verify_after(E) & not telemetry(E, _) & not observing(E)
+ <- +observing(E); .print("BDI_DECISION=observe entity=", E); observe_telemetry(E).
++!control : workflow_active & all_goals_satisfied
+ <- !end(achieved, not_needed).
++!control : nextentity(E) & observe_before(E, S) & telemetry(S, block)
+ <- !failed(S, telemetry_block, stopped).
++!control : nextentity(E) & observe_before(E, S) & telemetry(S, unknown)
+ <- !failed(S, telemetry_unknown, unknown).
++!control : nextentity(E) & observe_before(E, S) & not telemetry(S, _) & not observing(S)
+ <- +observing(S); .print("BDI_DECISION=observe entity=", S); observe_telemetry(S).
++!control : nextentity(E) & ready_to_execute(E) & not observing(_)
+ <- !run_entity(E).
++!control : workflow_active & not running(_) & not observing(_) & not nextentity(_)
+ <- .print("BDI_STOP=no_safe_progress"); !end(unknown, not_needed).
 
-+!control
-    : nextentity(Entity)
-      & observe_before(Entity, Source)
-      & telemetry(Source, block)
-    <- -workflow_active;
-       +controller_result(stopped);
-       .print("BDI_CONTROLLER_RESULT=stopped reason=telemetry_block entity=", Source);
-       finish(stopped).
++!run_entity(E) : attempt_count(E, Previous)
+ <- Attempt = Previous + 1; -attempt_count(E, Previous); +attempt_count(E, Attempt);
+    +running(E); +run_attempt(E, Attempt);
+    .print("BDI_DECISION=run entity=", E, " attempt=", Attempt);
+    run_job(E, Attempt).
 
-+!control
-    : nextentity(Entity)
-      & observe_before(Entity, Source)
-      & telemetry(Source, unknown)
-    <- -workflow_active;
-       +controller_result(unknown);
-       .print("BDI_CONTROLLER_RESULT=unknown reason=telemetry_unavailable entity=", Source);
-       finish(unknown).
++status(E, A, success) : running(E) & run_attempt(E, A) & not max_duration(E, _)
+ <- -running(E); -run_attempt(E, A); !accepted(E).
++status(E, A, success) : running(E) & run_attempt(E, A)
+    & max_duration(E, Max) & duration(E, A, Time) & Time <= Max
+ <- -running(E); -run_attempt(E, A); !accepted(E).
++status(E, A, success) : running(E) & run_attempt(E, A)
+    & max_duration(E, Max) & duration(E, A, Time) & Time > Max
+ <- -running(E); -run_attempt(E, A); !failed(E, maintenance_violation, stopped).
 
-+!control
-    : nextentity(Entity)
-      & observe_before(Entity, Source)
-      & not telemetry(Source, allow)
-      & not telemetry(Source, block)
-      & not telemetry(Source, unknown)
-      & not observing(Source)
-    <- +observing(Source);
-       .print("BDI_DECISION=observe entity=", Source);
-       observe_telemetry(Source).
++!accepted(E) : recovery_active(_, E)
+ <- +phase_result(E, success); +observing(E);
+    .print("BDI_DECISION=verify_recovery entity=", E); observe_telemetry(E).
++!accepted(E) : workflow_active
+ <- +phase_result(E, success); .print("BDI_BELIEF=success entity=", E); !control.
 
-+!control
-    : nextentity(Entity) & ready_to_execute(Entity)
-    <- !run_entity(Entity).
+// Unknown execution may still be running remotely. Never retry or recover over it.
++status(E, A, unknown) : running(E) & run_attempt(E, A)
+ <- -running(E); -run_attempt(E, A);
+    .print("BDI_STOP=execution_uncertain entity=", E); !end(unknown, unresolved).
++status(E, A, Result) : running(E) & run_attempt(E, A) & Result \== success & Result \== unknown
+    & retry_allowed(E)
+ <- -running(E); -run_attempt(E, A);
+    .print("BDI_DECISION=retry entity=", E, " after=", Result); !control.
++status(E, A, Result) : running(E) & run_attempt(E, A) & Result \== success & Result \== unknown
+    & not retry_allowed(E)
+ <- -running(E); -run_attempt(E, A); !failed(E, failure, stopped).
 
-+!control
-    : workflow_active & not running(_) & not nextentity(_)
-    <- -workflow_active;
-       +controller_result(unknown);
-       .print("BDI_CONTROLLER_RESULT=unknown reason=no_safe_progress");
-       finish(unknown).
+// Recovery is conditional, single-attempt, and cannot satisfy the candidate goal.
++!failed(E, Reason, Outcome) : recovery_active(_, E)
+ <- .print("BDI_RECOVERY=failed entity=", E, " reason=", Reason); !end(stopped, failed).
++!failed(E, Reason, Outcome) : workflow_active & recover_on(E, Reason, R)
+    & known_good_available & safe_to_execute(R) & not recovery_attempted(E)
+ <- -workflow_active; +terminal(E, Reason); +recovery_attempted(E); +recovery_active(E, R);
+    .print("BDI_DECISION=rollback source=", E, " entity=", R, " reason=", Reason);
+    record_recovery(E, R, Reason); !run_entity(R).
++!failed(E, Reason, Outcome) : workflow_active
+ <- +terminal(E, Reason); .print("BDI_STOP=", Reason, " entity=", E);
+    !end(Outcome, not_attempted).
 
-+!run_entity(Entity)
-    : attempt_count(Entity, Previous)
-    <- Attempt = Previous + 1;
-       -attempt_count(Entity, Previous);
-       +attempt_count(Entity, Attempt);
-       +running(Entity);
-       +run_attempt(Entity, Attempt);
-       .print("BDI_DECISION=run entity=", Entity, " attempt=", Attempt);
-       run_job(Entity, Attempt).
++telemetry_sample(E, Round, unknown) : observing(E) & observation_limit(Max) & Round < Max
+    & observation_interval(Delay)
+ <- .print("BDI_DECISION=wait_reconsider entity=", E, " round=", Round);
+    .wait(Delay); observe_telemetry(E).
++telemetry_sample(E, Round, unknown) : observing(E) & observation_limit(Max) & Round >= Max
+ <- -observing(E); +telemetry(E, unknown); !observed(E, unknown).
++telemetry_sample(E, Round, Decision) : observing(E) & Decision \== unknown
+ <- -observing(E); +telemetry(E, Decision); !observed(E, Decision).
++!observed(E, allow) : recovery_active(_, E)
+ <- .print("BDI_RECOVERY=restored entity=", E); !end(stopped, restored).
++!observed(E, block) : recovery_active(_, E)
+ <- .print("BDI_RECOVERY=unhealthy entity=", E); !end(stopped, failed).
++!observed(E, unknown) : recovery_active(_, E)
+ <- .print("BDI_RECOVERY=unverified entity=", E); !end(unknown, unverified).
++!observed(E, Decision) : workflow_active
+ <- .print("BDI_BELIEF=telemetry entity=", E, " decision=", Decision); !control.
 
-+status(Entity, Attempt, success)
-    : running(Entity)
-      & run_attempt(Entity, Attempt)
-      & not max_duration(Entity, _)
-    <- -running(Entity);
-       -run_attempt(Entity, Attempt);
-       +phase_result(Entity, success);
-       .print("BDI_BELIEF=success entity=", Entity, " attempt=", Attempt);
-       !control.
-
-+status(Entity, Attempt, success)
-    : running(Entity)
-      & run_attempt(Entity, Attempt)
-      & max_duration(Entity, Maximum)
-      & duration(Entity, Attempt, Time)
-      & Time <= Maximum
-    <- -running(Entity);
-       -run_attempt(Entity, Attempt);
-       +phase_result(Entity, success);
-       .print("BDI_BELIEF=success entity=", Entity, " attempt=", Attempt);
-       !control.
-
-+status(Entity, Attempt, success)
-    : running(Entity)
-      & run_attempt(Entity, Attempt)
-      & max_duration(Entity, Maximum)
-      & duration(Entity, Attempt, Time)
-      & Time > Maximum
-    <- -running(Entity);
-       -run_attempt(Entity, Attempt);
-       +terminal(Entity, maintenance_violation);
-       -workflow_active;
-       +controller_result(stopped);
-       .print("BDI_CONTROLLER_RESULT=stopped reason=duration entity=", Entity);
-       finish(stopped).
-
-+status(Entity, Attempt, Result)
-    : running(Entity)
-      & run_attempt(Entity, Attempt)
-      & Result \== success
-      & retry_allowed(Entity)
-    <- -running(Entity);
-       -run_attempt(Entity, Attempt);
-       .print("BDI_DECISION=retry entity=", Entity, " after=", Result);
-       !control.
-
-+status(Entity, Attempt, Result)
-    : running(Entity)
-      & run_attempt(Entity, Attempt)
-      & Result \== success
-      & not retry_allowed(Entity)
-    <- -running(Entity);
-       -run_attempt(Entity, Attempt);
-       +terminal(Entity, Result);
-       -workflow_active;
-       +controller_result(stopped);
-       .print("BDI_CONTROLLER_RESULT=stopped reason=execution_", Result, " entity=", Entity);
-       finish(stopped).
-
-+telemetry_sample(Source, Round, unknown)
-    : observing(Source) & observation_limit(Max) & Round < Max
-      & observation_interval(Delay)
-    <- .print("BDI_DECISION=wait_reconsider entity=", Source, " round=", Round);
-       .wait(Delay);
-       observe_telemetry(Source).
-
-+telemetry_sample(Source, Round, unknown)
-    : observing(Source) & observation_limit(Max) & Round >= Max
-    <- -observing(Source);
-       +telemetry(Source, unknown);
-       .print("BDI_BELIEF=telemetry entity=", Source, " decision=unknown exhausted=true");
-       !control.
-
-+telemetry_sample(Source, Round, Decision)
-    : observing(Source) & Decision \== unknown
-    <- -observing(Source);
-       +telemetry(Source, Decision);
-       .print("BDI_BELIEF=telemetry entity=", Source, " decision=", Decision);
-       !control.
++!end(Outcome, Recovery)
+ <- -workflow_active; +controller_result(Outcome); +recovery_result(Recovery);
+    .print("BDI_CONTROLLER_RESULT=", Outcome, " recovery=", Recovery);
+    finish(Outcome, Recovery).

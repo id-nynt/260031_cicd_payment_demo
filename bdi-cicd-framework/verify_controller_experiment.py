@@ -1,0 +1,88 @@
+"""Run real Jason reasoning with simulated adapters; never contacts GitHub or Docker."""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import uuid
+import yaml
+
+ROOT = Path(__file__).resolve().parent
+NORMAL = ["build", "test", "security", "staging", "production"]
+CASES = [
+    ("healthy", "healthy", NORMAL, "achieved", "not_needed", []),
+    ("staging_only", "healthy", NORMAL[:-1], "achieved", "not_needed", ["--goal", str(ROOT / "models/payment_goal_staging.yaml")]),
+    ("retry", "transient_test_failure", ["build", "test", "test", "security", "staging", "production"], "achieved", "not_needed", []),
+    ("exhaustion", "exhausted_test_failure", ["build", "test", "test"], "stopped", "not_attempted", []),
+    ("staging_block", "telemetry_block", NORMAL[:-1], "stopped", "not_attempted", []),
+    ("delayed", "telemetry_delayed", NORMAL, "achieved", "not_needed", []),
+    ("staging_unknown", "telemetry_unknown", NORMAL[:-1], "unknown", "not_attempted", []),
+    ("production_failure", "production_failure", NORMAL + ["rollback"], "stopped", "restored", []),
+    ("production_unhealthy", "production_unhealthy", NORMAL + ["rollback"], "stopped", "restored", []),
+    ("production_unknown", "production_unknown", NORMAL + ["rollback"], "stopped", "restored", []),
+    ("rollback_failure", "rollback_failure", NORMAL + ["rollback"], "stopped", "failed", []),
+    ("rollback_unknown", "rollback_unknown", NORMAL + ["rollback"], "unknown", "unverified", []),
+    ("execution_uncertain", "execution_uncertain", NORMAL, "unknown", "unresolved", []),
+    ("baseline_no_recovery", "production_unhealthy", NORMAL, "stopped", "not_attempted", ["--baseline"]),
+    ("pause", "healthy", NORMAL, "achieved", "not_needed", ["--pause-after", "security", "--pause-ms", "750"]),
+    ("second_project", "healthy", ["package", "verify", "preview"], "achieved", "not_needed",
+     ["--pipeline", str(ROOT / "examples/reporting_pipeline.yaml"), "--goal", str(ROOT / "examples/reporting_goal.yaml")]),
+]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=ROOT / "bdi/build" / ("recovery-suite-" + uuid.uuid4().hex[:8]))
+    args = parser.parse_args()
+    output = args.output.resolve()
+    output.mkdir(parents=True, exist_ok=False)
+    # Shortened waits only for this local matrix. The normal live manifest stays unchanged.
+    project = yaml.safe_load((ROOT / "models/payment_project.yaml").read_text(encoding="utf-8"))
+    project["controller"]["observation_attempts"] = 3
+    project["controller"]["observation_interval_seconds"] = 0
+    quick = output / "quick-project.yaml"
+    quick.write_text(yaml.safe_dump(project, sort_keys=False), encoding="utf-8")
+    env = os.environ.copy()
+    for key in list(env):
+        if key.startswith("BDI_") or key in ("GITHUB_TOKEN", "GH_TOKEN"):
+            env.pop(key)
+    rows = []
+    for name, scenario, expected, outcome, recovery, extra in CASES:
+        directory = output / name
+        directory.mkdir()
+        command = [sys.executable, str(ROOT / "run_controller.py"), "--scenario", scenario,
+                   "--artifacts-dir", str(directory), *extra]
+        if name != "second_project":
+            command += ["--project", str(quick)]
+        with (directory / "console.log").open("w", encoding="utf-8") as log:
+            completed = subprocess.run(command, cwd=ROOT.parent, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=180)
+        result = json.loads((directory / "controller-result.json").read_text(encoding="utf-8"))
+        events = [json.loads(line) for line in (directory / "controller-journal.jsonl").read_text(encoding="utf-8").splitlines()]
+        actual = [event["entity"] for event in events if event["event"] == "entity_execution_started"]
+        assert actual == expected, (name, expected, actual)
+        assert (result["outcome"], result["recovery_outcome"]) == (outcome, recovery), (name, result)
+        assert completed.returncode == {"achieved": 0, "stopped": 1, "unknown": 2}[outcome], (name, completed.returncode)
+        if recovery in ("restored", "failed", "unverified"):
+            assert "production" in result["unmet_goals"]
+            assert actual.count("rollback") == 1
+            assert any(e["event"] == "bdi_recovery_decision" for e in events)
+        if name == "pause":
+            from datetime import datetime
+            paused = next(e for e in events if e["event"] == "controller_pause")
+            successor = next(e for e in events if e["event"] == "entity_execution_started" and e["entity"] == "staging")
+            assert (datetime.fromisoformat(successor["timestamp"]) - datetime.fromisoformat(paused["timestamp"])).total_seconds() >= 0.70
+        ids = [e["execution_id"] for e in events if e["event"] == "entity_execution_finished"]
+        assert len(ids) == len(set(ids))
+        rows.append({"case": name, "expected": expected, "actual": actual, "outcome": outcome,
+                     "recovery": recovery, "telemetry": result["telemetry"], "execution_ids": ids,
+                     "achieved_goals": result["achieved_goals"], "unmet_goals": result["unmet_goals"],
+                     "manifest": json.loads((directory / "generation-manifest.json").read_text(encoding="utf-8"))})
+        (output / "summary.json").write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
+        print(f"PASS {name}: {','.join(actual)} -> {outcome}/{recovery}", flush=True)
+    subprocess.run([sys.executable, str(ROOT / "run_controller.py"), "--generate-only"], cwd=ROOT.parent, env=env, check=True)
+    print(f"Local scenario evidence: {output}")
+
+
+if __name__ == "__main__":
+    main()

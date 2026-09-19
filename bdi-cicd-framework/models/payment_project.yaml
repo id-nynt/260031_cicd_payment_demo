@@ -8,9 +8,13 @@ controller:
     security: Security entity
     staging: Staging entity
     production: Production entity
+    rollback: Rollback entity
+  release_sources:
+    rollback: known_good
   environments:
     staging: staging
     production: production
+    rollback: production
   observation_attempts: 18
   observation_interval_seconds: 5
 jobs:
@@ -19,8 +23,7 @@ jobs:
   security: security
   staging: deploy-staging
   production: deploy-production
-infrastructure_jobs:
-  - bdi-gate
+infrastructure_jobs: []
 github_job_names:
   build: Build
   test: Test

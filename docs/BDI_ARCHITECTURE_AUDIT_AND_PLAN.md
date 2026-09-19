@@ -1,5 +1,7 @@
 # BDI CI/CD architecture audit and implementation plan
 
+Current update (20 September 2026): the active launcher uses `01_pipeline.yaml` / `02_goal.yaml`, generates the controller model/agent, and implements conditional BDI-selected recovery plus production/recovery telemetry verification. The numbered files are logical policy inputs; commands stay in the dispatch workflow. See [the current manual](BDI_LIVE_MANUAL_DEMO.md) and [results](BDI_CONTROLLER_EXPERIMENT_RESULTS.md). Statements below about a gate-only architecture or absent automatic recovery describe the original audit baseline.
+
 Audit date: 19 September 2026. Repository: `260031_payment`, branch `experiment-v2`, commit `f658daf`.
 
 **Finding:** The repository implements a payment application with OpenTelemetry **metrics** and a GitHub Actions deployment pipeline. Its active BDI integration is a promotion gate. GitHub Actions owns progression; Jason can prevent production deployment but cannot select or launch the pipeline's jobs. The generated agent and an older dispatch adapter provide useful parts of a controller, but they are not connected to the active execution path.

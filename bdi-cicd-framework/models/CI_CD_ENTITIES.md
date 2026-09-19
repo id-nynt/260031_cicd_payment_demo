@@ -1,61 +1,20 @@
-# GitHub Actions entity contract
+# Current entity contract
 
-The workflows expose one atomic pipeline entity per job. The BDI layer is not implemented here and no individual GitHub Actions step is an entity.
+`01_pipeline.yaml` defines logical jobs. The agent owns their dependencies and conditional recovery; GitHub's dispatch workflow executes one explicitly selected entity. Each dispatch has a campaign ID, execution UUID, attempt and immutable source SHA.
 
-## `build`
+| Entity | Worker commands / result | Agent policy |
+|---|---|---|
+| build | npm install/lint/build, Docker build | First normal entity |
+| test | PostgreSQL fixture, migrations, application and parser tests | After build; bounded retry |
+| security | Advisory production dependency audit | After test; advisory scan limitations remain |
+| staging | Fake-payment Compose deployment, identity/readiness, sample traffic | After security; observe before production |
+| production | Candidate source deployment, identity/readiness, sample traffic | Only after staging is healthy; evaluate production health goal |
+| rollback | Known-good source deployment in normal mode, fresh identity/traffic | Conditional recovery only; one attempt; verify restored telemetry |
 
-- Trigger: push to `main`, or manual `workflow_dispatch`.
-- Dependencies: none.
-- Inputs: repository source, optional `service_version` workflow input.
-- Outputs: Docker image artifact named `payment-image` containing `payment-service-image.tar`.
-- Terminal results: success, failure, timeout, cancelled.
-- Relevant telemetry: image build duration, image metadata, workflow/job status.
+`02_goal.yaml` requires production/staging success, production health and a stated duration budget. `payment_goal_staging.yaml` requires only staging success/health. Rollback is never in normal required work and cannot satisfy the candidate delivery goal.
 
-## `test`
+Statuses and durations come from the selected GitHub run/job. Health comes from `/ready` and run-correlated Prometheus queries configured in `payment_project.yaml`; error rate, latency and availability thresholds determine healthy/unhealthy/unknown. The adapter transports evidence; generic AgentSpeak chooses retry/wait/recovery/progression.
 
-- Trigger: automatically after successful `build`.
-- Dependencies: `build`.
-- Inputs: `payment-image` artifact.
-- Outputs: automated test result and workflow/job status.
-- Terminal results: success, failure, timeout, cancelled, skipped.
-- Relevant telemetry: test duration, test output, workflow/job status.
+`recover_from`, `recover_on`, and `observe_after` generate R relationships and recovery plans' configuration. `controller.release_sources.rollback: known_good` selects the receipt-validated baseline SHA. Commands remain in `.github/workflows/entity-execution.yml`; no generated shell steps are executed from pipeline YAML.
 
-## `security`
-
-- Trigger: automatically after successful `test`.
-- Dependencies: `test`.
-- Inputs: `payment-image` artifact and source files.
-- Outputs: dependency consistency result, non-root image result, secret-scan result.
-- Terminal results: success, failure, timeout, cancelled, skipped.
-- Relevant telemetry: check duration, check results, workflow/job status.
-
-## `staging`
-
-- Trigger: automatically after successful `security`.
-- Dependencies: `security`.
-- Inputs: `payment-image` artifact, service version, staging environment configuration.
-- Outputs: staging container, health-check result, request/metrics smoke-check result, staging logs.
-- Terminal results: success, failure, timeout, cancelled, skipped.
-- Relevant telemetry: `/health` status, request count, error count, error rate, latency metrics, container logs.
-
-## `production`
-
-- Trigger: automatically after successful `staging`.
-- Dependencies: `staging`.
-- Inputs: `payment-image` artifact, service version, production environment configuration.
-- Outputs: production container, health-check result, request/metrics smoke-check result, production logs.
-- Terminal results: success, failure, timeout, cancelled, skipped.
-- Relevant telemetry: `/health` status, request count, error count, error rate, latency metrics, container logs.
-
-## `rollback_production`
-
-- Trigger: manual `workflow_dispatch` only.
-- Dependencies: none in the normal workflow; it is not a successor of `production`.
-- Inputs: `source_run_id` identifying a CI/CD run whose `payment-image` artifact should be restored.
-- Outputs: rollback production container, rollback health-check result, rollback logs.
-- Terminal results: success, failure, timeout, cancelled.
-- Relevant telemetry: rollback duration, `/health` status, request metrics, container logs, source run ID.
-
-## Execution limits
-
-Every job has a ten-minute GitHub Actions timeout. Health checks allow up to thirty one-second attempts before failing. The workflow jobs are intentionally coarse-grained: ordinary Docker, test, deployment, and verification commands remain implementation steps within an entity.
+Recovery success reports `stopped/restored`; failed recovery reports `stopped/failed`; missing recovery telemetry reports `unknown/unverified`. Ambiguous remote execution never starts rollback until a human has settled that run. See [the manual](../../docs/BDI_LIVE_MANUAL_DEMO.md).

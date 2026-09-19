@@ -5,6 +5,7 @@ bdi/.settings/
 bdi/.classpath
 bdi/.project
 parser/__pycache__/
+__pycache__/
 parser/testdata/*
 !parser/testdata/.gitkeep
 *.class

@@ -12,3 +12,7 @@ jobs:
   production:
     needs: staging
     observe_before: staging
+  rollback:
+    recover_from: production
+    recover_on: [failure, telemetry_block, telemetry_unknown, maintenance_violation]
+    observe_after: true

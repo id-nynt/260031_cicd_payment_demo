@@ -1,46 +1,65 @@
 # Generated from 01_pipeline.yaml and 02_goal.yaml
 workflow:
-  name: CI/CD Pipeline
+  name: Payment service release with BDI recovery
   entities(E):
-    - build
-    - test
-    - security
-    - staging
-    - production
-    - rollback_production
+  - build
+  - test
+  - security
+  - staging
+  - production
+  - rollback
   dependencies(D):
-    - from: build
-      to: test
-    - from: test
-      to: security
-    - from: security
-      to: staging
-    - from: staging
-      to: production
+  - from: build
+    to: test
+  - from: test
+    to: security
+  - from: security
+    to: staging
+  - from: staging
+    to: production
   observable_properties(O):
     status:
       values: &id001
-        - success
-        - failure
-        - cancelled
-        - skipped
-        - timeout
+      - success
+      - failure
+      - cancelled
+      - skipped
+      - timeout
     duration:
       value: time
+    health:
+      values:
+      - healthy
+      - unhealthy
+      - unknown
+      source: project manifest readiness and run-correlated Prometheus queries
   recovery(R):
-    - from: production
-      to: rollback_production
+  - from: production
+    to: rollback
+  observe_before:
+  - entity: production
+    source: staging
+  observe_after:
+  - rollback
 execution:
   max_retries: 1
   observation_schema:
     status: *id001
     duration_unit: milliseconds
     required_for:
-      - production
-    attempt_id_required: false
+    - build
+    - test
+    - security
+    - staging
+    - production
+    attempt_id_required: true
 recovery_policy:
-  rollback_production:
-    run_after: production_failure
+  rollback:
+    triggers:
+    - failure
+    - telemetry_block
+    - telemetry_unknown
+    - maintenance_violation
     retryable: false
-    terminal_on_success: recovered
+    terminal_on_success: stopped_with_service_restored
     terminal_on_failure: failed

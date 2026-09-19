@@ -17,6 +17,9 @@ public final class ScenarioEntityExecution implements EntityExecution {
         String status = "success";
         if (entity.equals("test") && scenario.equals("transient_test_failure") && count == 1) status = "failure";
         if (entity.equals("test") && scenario.equals("exhausted_test_failure")) status = "failure";
+        if (entity.equals("production") && scenario.equals("production_failure")) status = "failure";
+        if (entity.equals("rollback") && scenario.equals("rollback_failure")) status = "failure";
+        if (entity.equals("production") && scenario.equals("execution_uncertain")) status = "unknown";
         return new Result(status, 42, "scenario-" + UUID.randomUUID(), 0,
             "scenario://" + scenario + "/" + entity + "/" + attempt);
     }

@@ -11,6 +11,7 @@ import jason.environment.Environment;
 
 /** Jason environment transporting generated decisions to one-entity execution and telemetry adapters. */
 public final class ControllerEnvironment extends Environment {
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
     private ControllerProjectConfig controller;
     private ProjectConfig telemetryProject;
     private EntityExecution executor;
@@ -19,6 +20,7 @@ public final class ControllerEnvironment extends Environment {
     private Path resultFile;
     private String scenario;
     private final Map<String, Integer> observationRounds = new LinkedHashMap<>();
+    private final Map<String, String> telemetry = new LinkedHashMap<>();
 
     @Override
     public void init(String[] args) {
@@ -29,6 +31,7 @@ public final class ControllerEnvironment extends Environment {
             resultFile = Path.of(value("BDI_RESULT_FILE", "build/controller-result.json"));
             journal = new StructuredEventLogger(Path.of(value("BDI_JOURNAL_FILE", "build/controller-journal.jsonl")));
             scenario = System.getenv("BDI_SCENARIO");
+            if (!value("BDI_KNOWN_GOOD_SHA", "").isBlank()) addPercept(Literal.parseLiteral("known_good_available"));
             addPercept(Literal.parseLiteral("observation_limit(" + controller.observationAttempts() + ")"));
             addPercept(Literal.parseLiteral("observation_interval(" + controller.observationIntervalSeconds() * 1000L + ")"));
             if (scenario == null || scenario.isBlank()) {
@@ -57,13 +60,19 @@ public final class ControllerEnvironment extends Environment {
                 case "run_job" -> runJob(action);
                 case "observe_telemetry" -> observeTelemetry(action);
                 case "finish" -> finish(action);
+                case "record_recovery" -> {
+                    journal.event("bdi_recovery_decision", null, Map.of("source", atom(action, 0),
+                        "entity", atom(action, 1), "reason", atom(action, 2),
+                        "known_good_sha", value("BDI_KNOWN_GOOD_SHA", "")));
+                    yield true;
+                }
                 default -> false;
             };
         } catch (Exception error) {
             journal.event("controller_action_error", null, Map.of("action", action.toString(),
                 "error", String.valueOf(error.getMessage())));
             if (action.getFunctor().equals("run_job") && action.getArity() >= 2) {
-                addPercept(Literal.parseLiteral("status(" + atom(action, 0) + "," + integer(action, 1) + ",failure)"));
+                addPercept(Literal.parseLiteral("status(" + atom(action, 0) + "," + integer(action, 1) + ",unknown)"));
                 informAgsEnvironmentChanged();
                 return true;
             }
@@ -77,7 +86,8 @@ public final class ControllerEnvironment extends Environment {
         int attempt = integer(action, 1);
         if (!controller.jobNames().containsKey(entity)) throw new IllegalArgumentException("Unmapped entity " + entity);
         journal.event("bdi_decision", null, Map.of("decision", "run", "entity", entity,
-            "attempt", attempt, "relevant_beliefs", "dependencies_satisfied_and_goal_required"));
+            "attempt", attempt, "relevant_beliefs", controller.releaseSources().containsKey(entity)
+                ? "recovery_trigger_known_good_and_single_attempt" : "dependencies_satisfied_and_goal_required"));
         journal.event("entity_execution_started", null, Map.of("entity", entity, "attempt", attempt));
         EntityExecution.Result result = executor.execute(entity, attempt);
         latest.put(entity, result);
@@ -104,7 +114,15 @@ public final class ControllerEnvironment extends Environment {
         String reason;
         int round = observationRounds.merge(entity, 1, Integer::sum);
         if (scenario != null && !scenario.isBlank()) {
-            if (scenario.equals("telemetry_block")) { decision = "block"; reason = "scenario_block"; }
+            boolean recovery = controller.releaseSources().containsKey(entity);
+            boolean protectedEntity = !recovery && controller.releaseSources().keySet().stream()
+                .anyMatch(r -> controller.environments().get(r).equals(controller.environments().get(entity)));
+            if (scenario.equals("rollback_unknown") && recovery) { decision = "unknown"; reason = "scenario_recovery_unavailable"; }
+            else if (scenario.equals("production_unknown") && protectedEntity) { decision = "unknown"; reason = "scenario_production_unavailable"; }
+            else if (protectedEntity && java.util.Set.of("production_unhealthy", "rollback_failure", "rollback_unknown").contains(scenario)) {
+                decision = "block"; reason = "scenario_production_unhealthy";
+            }
+            else if (scenario.equals("telemetry_block")) { decision = "block"; reason = "scenario_block"; }
             else if (scenario.equals("telemetry_unknown") || (scenario.equals("telemetry_delayed") && round == 1)) {
                 decision = "unknown"; reason = "scenario_wait";
             }
@@ -119,24 +137,63 @@ public final class ControllerEnvironment extends Environment {
                     execution.executionId()).assess();
                 journal.event("telemetry_observation", null, Map.of("entity", entity, "round", round,
                     "execution_id", execution.executionId(), "decision", assessment.decision(),
-                    "reason", assessment.reason()));
+                    "reason", assessment.reason(), "readiness", assessment.readiness(),
+                    "error_rate", String.valueOf(assessment.errorRate()), "latency_p95_ms", String.valueOf(assessment.latencyP95Ms())));
             decision = assessment == null ? "unknown" : assessment.decision();
             reason = assessment == null ? "no_observation" : assessment.reason();
         }
-        journal.event("telemetry_terminal", null, Map.of("entity", entity, "decision", decision, "reason", reason));
+        telemetry.put(entity, decision);
+        journal.event("telemetry_sample", null, Map.of("entity", entity, "round", round, "decision", decision, "reason", reason));
         addPercept(Literal.parseLiteral("telemetry_sample(" + entity + "," + round + "," + decision + ")"));
         informAgsEnvironmentChanged();
         return true;
     }
 
     private boolean finish(Structure action) throws Exception {
-        if (action.getArity() != 1) return false;
+        if (action.getArity() != 2) return false;
         String outcome = atom(action, 0);
+        String recoveryOutcome = atom(action, 1);
         Files.createDirectories(resultFile.toAbsolutePath().getParent());
-        String json = "{\"timestamp\":\"" + Instant.now() + "\",\"outcome\":\"" + outcome
-            + "\",\"project\":\"" + controller.project() + "\"}\n";
-        Files.writeString(resultFile, json);
-        journal.event("controller_finished", null, Map.of("outcome", outcome, "project", controller.project()));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("timestamp", Instant.now().toString());
+        result.put("outcome", outcome);
+        result.put("recovery_outcome", recoveryOutcome);
+        result.put("project", controller.project());
+        result.put("mode", scenario == null || scenario.isBlank() ? "github" : "scenario");
+        result.put("repository", value("GITHUB_REPOSITORY", ""));
+        result.put("release_sha", value("BDI_RELEASE_SHA", ""));
+        result.put("known_good_sha", value("BDI_KNOWN_GOOD_SHA", ""));
+        result.put("telemetry", telemetry);
+        result.put("executions", latest);
+        var requested = JSON.readTree(value("BDI_GOALS", "[]"));
+        var healthGoals = JSON.readTree(value("BDI_HEALTH_GOALS", "[]"));
+        java.util.List<String> achieved = new java.util.ArrayList<>();
+        java.util.List<String> unmet = new java.util.ArrayList<>();
+        for (var goal : requested) {
+            String entity = goal.asText();
+            boolean healthyRequired = false;
+            for (var health : healthGoals) if (health.asText().equals(entity)) healthyRequired = true;
+            boolean satisfied = latest.containsKey(entity) && latest.get(entity).status().equals("success")
+                && (!healthyRequired || "allow".equals(telemetry.get(entity)));
+            // Restoring another revision never satisfies delivery of this candidate.
+            if (!recoveryOutcome.equals("not_needed") && controller.environments().containsKey(entity)
+                && controller.releaseSources().keySet().stream().anyMatch(r -> latest.containsKey(r)
+                    && controller.environments().get(r).equals(controller.environments().get(entity)))) satisfied = false;
+            (satisfied ? achieved : unmet).add(entity);
+        }
+        result.put("achieved_goals", achieved);
+        result.put("unmet_goals", unmet);
+        Map<String, Object> verified = new LinkedHashMap<>();
+        if (outcome.equals("achieved")) for (var entry : latest.entrySet()) {
+            if (entry.getValue().status().equals("success") && "allow".equals(telemetry.get(entry.getKey()))) {
+                verified.put(entry.getKey(), Map.of("release_sha", value("BDI_RELEASE_SHA", ""),
+                    "github_run_id", entry.getValue().githubRunId(), "execution_id", entry.getValue().executionId(),
+                    "environment", controller.environments().get(entry.getKey())));
+            }
+        }
+        result.put("verified_releases", verified);
+        Files.writeString(resultFile, JSON.writerWithDefaultPrettyPrinter().writeValueAsString(result) + "\n");
+        journal.event("controller_finished", null, Map.of("outcome", outcome, "recovery_outcome", recoveryOutcome, "project", controller.project()));
         if (Boolean.parseBoolean(value("BDI_GUI", "false"))) {
             java.util.logging.Logger.getLogger(getClass().getName()).info(
                 "Campaign finished. Inspect controller_agent beliefs; close MAS Console to exit. No further jobs will run.");

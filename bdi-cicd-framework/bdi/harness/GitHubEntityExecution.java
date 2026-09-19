@@ -20,6 +20,7 @@ public final class GitHubEntityExecution implements EntityExecution {
     private final String token;
     private final String ref;
     private final String releaseSha;
+    private String knownGoodSha = "";
     private final String campaignId;
     private final URI apiBase;
     private final HttpClient client;
@@ -34,6 +35,7 @@ public final class GitHubEntityExecution implements EntityExecution {
             required("BDI_RELEASE_SHA"), required("BDI_CAMPAIGN_ID"),
             Duration.ofSeconds(number("BDI_POLL_SECONDS", 5)),
             Duration.ofMinutes(number("BDI_ENTITY_TIMEOUT_MINUTES", 20)));
+        knownGoodSha = value("BDI_KNOWN_GOOD_SHA", "");
     }
 
     GitHubEntityExecution(ControllerProjectConfig project, StructuredEventLogger journal, URI apiBase,
@@ -60,6 +62,7 @@ public final class GitHubEntityExecution implements EntityExecution {
 
     @Override
     public Result execute(String entity, int attempt) throws Exception {
+        String selectedSha = sourceFor(entity, releaseSha, knownGoodSha, project);
         String expectedJob = project.jobNames().get(entity);
         if (expectedJob == null) throw new IllegalArgumentException("Unmapped entity: " + entity);
         String executionId = UUID.randomUUID().toString();
@@ -67,8 +70,8 @@ public final class GitHubEntityExecution implements EntityExecution {
         String experimentMode = !"0".equals(injection.forceErrorRate()) ? "high_error_rate" : "normal";
         Instant started = Instant.now();
         journal.event("dispatch_intent", null, Map.of("campaign_id", campaignId, "entity", entity,
-            "attempt", attempt, "execution_id", executionId, "release_sha", releaseSha));
-        long runId = dispatch(entity, attempt, executionId, injection.failureMode(), experimentMode);
+            "attempt", attempt, "execution_id", executionId, "release_sha", selectedSha));
+        long runId = dispatch(entity, attempt, executionId, injection.failureMode(), experimentMode, selectedSha);
         String runUrl = "https://github.com/" + repository + "/actions/runs/" + runId;
         journal.event("dispatch_acknowledged", null, Map.of("campaign_id", campaignId, "entity", entity,
             "attempt", attempt, "execution_id", executionId, "github_run_id", runId, "run_url", runUrl));
@@ -81,11 +84,11 @@ public final class GitHubEntityExecution implements EntityExecution {
     }
 
     private long dispatch(String entity, int attempt, String executionId, String failureMode,
-                          String experimentMode) throws Exception {
+                          String experimentMode, String selectedSha) throws Exception {
         URI uri = endpoint("/repos/" + repository + "/actions/workflows/" + project.workflowFile() + "/dispatches");
         var inputs = JSON.createObjectNode();
         inputs.put("entity", entity).put("campaign_id", campaignId).put("execution_id", executionId)
-            .put("attempt", String.valueOf(attempt)).put("release_sha", releaseSha)
+            .put("attempt", String.valueOf(attempt)).put("release_sha", selectedSha)
             .put("failure_mode", failureMode).put("experiment_mode", experimentMode);
         var body = JSON.createObjectNode().put("ref", ref).put("return_run_details", true).set("inputs", inputs);
         HttpResponse<String> response = client.send(request(uri)
@@ -114,7 +117,16 @@ public final class GitHubEntityExecution implements EntityExecution {
             }
             Thread.sleep(pollInterval.toMillis());
         }
-        return "timeout";
+        // The remote job could still be deploying. Do not permit retry/rollback over it.
+        return "unknown";
+    }
+
+    static String sourceFor(String entity, String candidate, String knownGood, ControllerProjectConfig project) {
+        String selected = "known_good".equals(project.releaseSources().get(entity)) ? knownGood : candidate;
+        if (selected == null || !selected.matches("(?i)[0-9a-f]{40}")) {
+            throw new IllegalArgumentException("Entity requires a validated immutable source: " + entity);
+        }
+        return selected;
     }
 
     private JsonNode get(String path) throws Exception {

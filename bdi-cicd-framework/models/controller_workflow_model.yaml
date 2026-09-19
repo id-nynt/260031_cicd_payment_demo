@@ -1,21 +1,18 @@
 # Generated from 01_pipeline.yaml and 02_goal.yaml
 workflow:
-  name: Payment Service BDI-controlled CI/CD
+  name: Payment service release with BDI recovery
   entities(E):
   - build
   - test
   - security
   - staging
   - production
+  - rollback
   dependencies(D):
   - from: build
-    to: security
+    to: test
   - from: test
     to: security
-  - from: build
-    to: staging
-  - from: test
-    to: staging
   - from: security
     to: staging
   - from: staging
@@ -30,7 +27,20 @@ workflow:
       - timeout
     duration:
       value: time
-  recovery(R): []
+    health:
+      values:
+      - healthy
+      - unhealthy
+      - unknown
+      source: project manifest readiness and run-correlated Prometheus queries
+  recovery(R):
+  - from: production
+    to: rollback
+  observe_before:
+  - entity: production
+    source: staging
+  observe_after:
+  - rollback
 execution:
   max_retries: 1
   observation_schema:
@@ -43,4 +53,13 @@ execution:
     - staging
     - production
     attempt_id_required: true
-recovery_policy: {}
+recovery_policy:
+  rollback:
+    triggers:
+    - failure
+    - telemetry_block
+    - telemetry_unknown
+    - maintenance_violation
+    retryable: false
+    terminal_on_success: stopped_with_service_restored
+    terminal_on_failure: failed

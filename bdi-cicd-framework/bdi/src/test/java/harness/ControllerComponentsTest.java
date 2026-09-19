@@ -14,6 +14,36 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ControllerComponentsTest {
     @Test
+    void onlyRecoveryUsesPinnedKnownGoodSource() throws Exception {
+        var config = ControllerProjectConfig.load(Path.of("../models/payment_project.yaml"));
+        String candidate = "a".repeat(40);
+        String baseline = "b".repeat(40);
+        assertEquals(candidate, GitHubEntityExecution.sourceFor("production", candidate, baseline, config));
+        assertEquals(baseline, GitHubEntityExecution.sourceFor("rollback", candidate, baseline, config));
+        assertThrows(IllegalArgumentException.class, () -> GitHubEntityExecution.sourceFor("rollback", candidate, "", config));
+        assertThrows(IllegalArgumentException.class, () -> GitHubEntityExecution.sourceFor("rollback", candidate, "main", config));
+    }
+
+    @Test
+    void stillRunningRemoteJobReturnsUnknownInsteadOfTriggeringRecovery() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/repos/example/repository/actions/workflows/entity-execution.yml/dispatches", exchange ->
+            respond(exchange, 200, "{\"workflow_run_id\":321}"));
+        server.createContext("/repos/example/repository/actions/runs/321", exchange ->
+            respond(exchange, 200, "{\"status\":\"in_progress\"}"));
+        server.start();
+        try {
+            var config = ControllerProjectConfig.load(Path.of("../models/payment_project.yaml"));
+            var adapter = new GitHubEntityExecution(config, new StructuredEventLogger(null),
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "example/repository", "test-token",
+                "main", "a".repeat(40), "timeout-test", Duration.ofMillis(1), Duration.ofMillis(100));
+            assertEquals("unknown", adapter.execute("production", 1).status());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void operatorCanChangeFaultsBetweenDispatches() throws Exception {
         Path file = Files.createTempFile("controller-injection", ".properties");
         try {

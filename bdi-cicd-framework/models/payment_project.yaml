@@ -1,5 +1,18 @@
 # Job roles are stable BDI names; values are actual GitHub Actions job IDs.
 project: payment-service
+controller:
+  workflow_file: entity-execution.yml
+  jobs:
+    build: Build entity
+    test: Test entity
+    security: Security entity
+    staging: Staging entity
+    production: Production entity
+  environments:
+    staging: staging
+    production: production
+  observation_attempts: 18
+  observation_interval_seconds: 5
 jobs:
   build: build
   test: test

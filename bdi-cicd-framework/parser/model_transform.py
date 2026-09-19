@@ -7,6 +7,8 @@ emitting the workflow model and the project-specific AgentSpeak beliefs.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,6 +62,7 @@ class Model:
     duration_unit: str
     max_retries: int
     promotion_gate: tuple[str, str] | None = None
+    observations: tuple[tuple[str, str], ...] = ()
 
     @property
     def final_entity(self) -> str:
@@ -72,6 +75,24 @@ class Model:
         if targets and sinks[0] not in targets and len(normal) > 1:
             raise ModelError(f"final entity {sinks[0]} is disconnected from dependencies")
         return sinks[0]
+
+    @property
+    def required_entities(self) -> tuple[str, ...]:
+        """Entities needed to satisfy the declared achievements and safety prerequisites."""
+        required = {item.entity for item in self.achievements}
+        required.update(item.entity for item in self.maintenance)
+        changed = True
+        while changed:
+            changed = False
+            for source, target in self.dependencies:
+                if target in required and source not in required:
+                    required.add(source)
+                    changed = True
+            for item in self.avoidance:
+                if item.entity in required and item.required not in required:
+                    required.add(item.required)
+                    changed = True
+        return tuple(entity for entity in self.entities if entity in required)
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -110,9 +131,9 @@ def _comparison(value: Any, context: str) -> tuple[str, str, str, str]:
     return entity, prop, operator, rhs
 
 
-def parse_pipeline(path: Path) -> tuple[str, tuple[str, ...], tuple[tuple[str, str], ...], tuple[tuple[str, str], ...], int]:
+def parse_pipeline(path: Path) -> tuple[str, tuple[str, ...], tuple[tuple[str, str], ...], tuple[tuple[str, str], ...], int, tuple[tuple[str, str], ...]]:
     data = _load(path)
-    allowed_root = {"name", "jobs", "execution", "on", True}
+    allowed_root = {"name", "project_file", "jobs", "execution", "on", True}
     unsupported_root = set(data) - allowed_root
     if unsupported_root:
         raise ModelError(f"{path}: unsupported top-level keys {sorted(map(str, unsupported_root))}")
@@ -123,11 +144,12 @@ def parse_pipeline(path: Path) -> tuple[str, tuple[str, ...], tuple[tuple[str, s
     entity_set = set(entities)
     dependencies: list[tuple[str, str]] = []
     recovery: list[tuple[str, str]] = []
+    observations: list[tuple[str, str]] = []
     recovery_jobs: set[str] = set()
     for entity, config in jobs.items():
         if not isinstance(config, dict):
             raise ModelError(f"job {entity}: expected mapping")
-        unsupported_job = set(config) - {"needs", "if", "runs-on", "steps", "timeout-minutes"}
+        unsupported_job = set(config) - {"needs", "if", "runs-on", "steps", "timeout-minutes", "observe_before"}
         if unsupported_job:
             raise ModelError(f"job {entity}: unsupported keys {sorted(map(str, unsupported_job))}")
         needs = [_atom(item, f"job {entity}.needs") for item in _list(config.get("needs"), f"job {entity}.needs")]
@@ -147,6 +169,14 @@ def parse_pipeline(path: Path) -> tuple[str, tuple[str, ...], tuple[tuple[str, s
             raise ModelError(f"job {entity}.if: unsupported or ambiguous recovery condition")
         else:
             dependencies.extend((need, entity) for need in needs)
+        observed = config.get("observe_before")
+        if observed is not None:
+            source = _atom(observed, f"job {entity}.observe_before")
+            if source not in entity_set or source == entity:
+                raise ModelError(f"job {entity}.observe_before: expected another known entity")
+            if source not in needs:
+                raise ModelError(f"job {entity}.observe_before must be one of its direct dependencies")
+            observations.append((entity, source))
     if len(set(recovery)) != len(recovery):
         raise ModelError("duplicate recovery relationship")
     _check_acyclic(entities, dependencies)
@@ -156,7 +186,8 @@ def parse_pipeline(path: Path) -> tuple[str, tuple[str, ...], tuple[tuple[str, s
     retries = execution.get("max_retries")
     if not isinstance(retries, int) or isinstance(retries, bool) or retries < 0:
         raise ModelError("pipeline.execution.max_retries: expected non-negative integer")
-    return str(data.get("name", "CI/CD Pipeline")), entities, tuple(dependencies), tuple(recovery), retries
+    return (str(data.get("name", "CI/CD Pipeline")), entities, tuple(dependencies),
+            tuple(recovery), retries, tuple(observations))
 
 
 def parse_project_pipeline(path: Path, project_path: Path) -> tuple[str, tuple[str, ...], tuple[tuple[str, str], ...], tuple[tuple[str, str], ...], int]:
@@ -292,9 +323,10 @@ def _validate_ref(entity: str, prop: str, value: str, entities: set[str], contex
 def parse_model(pipeline_path: Path, goal_path: Path, project_path: Path | None = None) -> Model:
     gate = None
     if project_path is None:
-        name, entities, dependencies, recovery, retries = parse_pipeline(pipeline_path)
+        name, entities, dependencies, recovery, retries, observations = parse_pipeline(pipeline_path)
     else:
         name, entities, dependencies, recovery, retries = parse_project_pipeline(pipeline_path, project_path)
+        observations = ()
         configured = _load(project_path).get("promotion_gate")
         if configured is not None:
             if not isinstance(configured, dict) or set(configured) != {"before", "observe"}:
@@ -307,7 +339,8 @@ def parse_model(pipeline_path: Path, goal_path: Path, project_path: Path | None 
     achievements, maintenance, (avoidance, duration_unit) = parse_goals(goal_path, entities, recovery)
     if not achievements:
         raise ModelError("goal.achieve(A): at least one achievement is required")
-    return Model(name, entities, dependencies, recovery, achievements, maintenance, avoidance, duration_unit, retries, gate)
+    return Model(name, entities, dependencies, recovery, achievements, maintenance, avoidance,
+                 duration_unit, retries, gate, observations)
 
 
 def workflow_yaml(model: Model) -> str:
@@ -328,8 +361,8 @@ def workflow_yaml(model: Model) -> str:
             "observation_schema": {
                 "status": SUPPORTED_STATUS,
                 "duration_unit": model.duration_unit,
-                "required_for": sorted({item.entity for item in model.maintenance}),
-                "attempt_id_required": False,
+                "required_for": list(model.required_entities),
+                "attempt_id_required": True,
             },
         },
         "recovery_policy": {
@@ -361,6 +394,9 @@ def project_beliefs(model: Model) -> str:
     if model.promotion_gate:
         lines.append(f"gate_before({model.promotion_gate[0]}, {model.promotion_gate[1]}).")
     lines.append(f"final_phase({model.final_entity}).")
+    lines += [f"observe_before({target}, {source})." for target, source in model.observations]
+    lines += [""]
+    lines += [f"required({entity})." for entity in model.required_entities]
     lines += [""]
     lines += [f"achievement({item.entity}, {item.value})." for item in model.achievements]
     lines += [f"max_duration({item.entity}, {item.value})." for item in model.maintenance]
@@ -386,6 +422,17 @@ def transform(pipeline: Path, goals: Path, workflow: Path, beliefs: Path,
     return model
 
 
+def generation_manifest(pipeline: Path, goals: Path, project: Path | None, model: Model) -> str:
+    def digest(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    inputs = {"pipeline": {"path": str(pipeline), "sha256": digest(pipeline)},
+              "goal": {"path": str(goals), "sha256": digest(goals)}}
+    if project is not None:
+        inputs["project"] = {"path": str(project), "sha256": digest(project)}
+    return json.dumps({"inputs": inputs, "required_entities": list(model.required_entities),
+                       "achievements": [item.entity for item in model.achievements]}, indent=2) + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pipeline", type=Path, default=Path("01_pipeline.yaml"))
@@ -395,10 +442,15 @@ def main() -> int:
     parser.add_argument("--agent", type=Path, default=Path("bdi_agent.asl"))
     parser.add_argument("--generic", type=Path, default=Path("bdi_generic.asl"))
     parser.add_argument("--project", type=Path, help="project job-role mapping for a real GitHub Actions workflow")
+    parser.add_argument("--manifest-output", type=Path, help="write input hashes and active goal closure as JSON")
     args = parser.parse_args()
     try:
         model = transform(args.pipeline, args.goals, args.workflow, args.beliefs,
                            args.agent, args.generic, args.project)
+        if args.manifest_output is not None:
+            args.manifest_output.write_text(
+                generation_manifest(args.pipeline, args.goals, args.project, model),
+                encoding="utf-8", newline="\n")
     except ModelError as exc:
         parser.error(str(exc))
     print(f"generated {args.workflow} and {args.beliefs} ({len(model.entities)} entities)")

@@ -28,11 +28,14 @@ public final class ProjectTelemetryProvider implements ObservationProvider {
     }
 
     public ProjectTelemetryProvider(ProjectConfig project, String environment, String entity) {
+        this(project, environment, entity, System.getenv().getOrDefault("BDI_TELEMETRY_RUN_ID", "local"));
+    }
+
+    public ProjectTelemetryProvider(ProjectConfig project, String environment, String entity, String runId) {
         this.project = project;
         this.environment = environment;
         this.entity = entity;
         this.endpoints = project.environment(environment);
-        String runId = System.getenv().getOrDefault("BDI_TELEMETRY_RUN_ID", "local");
         if (!runId.matches("[A-Za-z0-9_.-]+")) {
             throw new IllegalArgumentException("Invalid BDI_TELEMETRY_RUN_ID");
         }

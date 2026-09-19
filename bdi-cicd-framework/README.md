@@ -1,119 +1,151 @@
-# BDI CI/CD framework — payment-service baseline
+# BDI-controlled CI/CD experiment
 
-This copy of the framework is wired to the payment app in the parent directory. It has a **read-only Jason promotion gate** connected between staging and production in `.github/workflows/ci-cd.yml`. The generator maps real workflow job IDs to stable BDI roles; Java reads the current GitHub Actions run and Prometheus; Jason revises its beliefs as observations change and decides `allow`, `block`, or `unknown`. GitHub runs production only after `allow`. The framework does not itself deploy or roll back the app.
+This framework generates and runs a Jason controller from three engineer-owned inputs:
 
-The project-specific contract is `models/payment_project.yaml`. It contains workflow job IDs and display names, health/Prometheus endpoints, PromQL queries, thresholds, and the staging-to-production promotion gate. For a second application, supply another contract and goal file, then regenerate; no metric names or ports need to be put in the active observer code.
+- `pipeline.yaml`: logical entities, dependencies, retry bound, and telemetry observation points.
+- `goal.yaml`: achievements, duration requirements, and avoidance requirements.
+- The referenced project manifest: GitHub workflow/job names, environments, endpoints, metric queries, thresholds, and observation timing.
 
-## Requirements and layout
+The generated agent owns progression. It selects one entity, waits for its correlated terminal result, updates its beliefs, optionally retries or observes telemetry, and then reasons again. GitHub Actions executes only the entity selected in that dispatch. The dispatch workflow contains no application-stage `needs` chain.
 
-- Python 3 with PyYAML and JDK 21+ for the framework; the checked-in Gradle wrapper supplies Gradle 8.13.
-- Node.js 22+ and Docker Compose for the parent payment app.
-- `parser/`: workflow-to-BDI generator and tests.
-- `models/`: application contracts, goals, and generated workflow model.
-- `generator/`: reusable AgentSpeak template and generated beliefs.
-- `bdi/`: Jason MAS, Java runtime, fixture, and tests.
-- `monitoring/`: telemetry observation code.
-- `actions/`: older action interfaces; the baseline does not invoke deployment actions.
+The older replay and promotion-gate programs remain available for comparison, but the controller launcher does not start them.
 
-Run commands below from the **payment repository root** unless the command changes directory. On Windows PowerShell, use `.\gradlew.bat`; on Linux/macOS use `bash ./gradlew`.
+## Supported configuration subset
 
-## 1. Regenerate the payment agent
+The experiment deliberately supports a small language rather than arbitrary GitHub workflow YAML.
 
-```powershell
-py -m pip install PyYAML
-py .\bdi-cicd-framework\parser\model_transform.py `
-  --pipeline .\.github\workflows\ci-cd.yml `
-  --goals .\bdi-cicd-framework\models\payment_goal.yaml `
-  --project .\bdi-cicd-framework\models\payment_project.yaml `
-  --workflow .\bdi-cicd-framework\models\payment_workflow_model.yaml `
-  --beliefs .\bdi-cicd-framework\generator\payment_bdi_project.asl `
-  --agent .\bdi-cicd-framework\bdi\payment_bdi_agent.asl `
-  --generic .\bdi-cicd-framework\generator\bdi_generic.asl
-py -m unittest discover -s .\bdi-cicd-framework\parser -p 'test_*.py' -v
+```yaml
+name: Example
+project_file: project.yaml
+execution:
+  max_retries: 1
+jobs:
+  build: {}
+  test: {}
+  staging:
+    needs: [build, test]
+  production:
+    needs: staging
+    observe_before: staging
 ```
 
-The generator validates mapped jobs, dependencies, cycles, and the gate. Regenerate after changing the workflow or model. The MAS points to `bdi/payment_bdi_agent.asl`—generating an agent only under `generator/` will not update the running MAS.
+Goals support one or more `entity.status == success` achievements, optional `entity.duration <= integer` maintenance requirements in milliseconds, and avoidance rules of the form “do not succeed entity A when prerequisite B did not succeed.” Entity names are lowercase AgentSpeak atoms. Dependencies must be acyclic. `observe_before` must identify a direct dependency.
 
-## 2. Start the payment app and create measurable traffic
+The parser computes the transitive work needed by every requested achievement and safety rule. It rejects unknown entities, unsupported syntax, cycles, incomplete project mappings, and malformed goals. The generated files are:
 
-If the default ports are free, start the stack:
+- `models/controller_workflow_model.yaml`: normalized supported model and active goal closure.
+- `generator/controller_project.asl`: project beliefs.
+- `bdi/controller_agent.asl`: beliefs plus the generic controller plans.
+- `<campaign artifacts>/generation-manifest.json`: SHA-256 hashes of all three inputs.
+
+`examples/reporting_*` is a second topology with `package`, `verify`, and `preview`. It uses the same parser, Java runtime, and `controller_generic.asl`.
+
+## Prerequisites
+
+For local reasoning scenarios, open a terminal and have Python 3 with PyYAML, JDK 21 or newer, and network access for the first Gradle dependency download. Jason is started headlessly by the launcher; do not start a Jason GUI.
+
+For a live GitHub campaign, also prepare:
+
+1. Merge the tested controller files and `.github/workflows/entity-execution.yml` to the repository's default branch; GitHub requires a manually dispatched workflow to exist there. Use that approved branch as the workflow ref.
+2. Keep the controller on a workstation, VM, or hosted process outside the self-hosted runner's disposable checkout and outside its only execution slot.
+3. Register an online self-hosted runner with the `payment-deploy` label. Its account needs Docker Engine/Compose and access to the designated staging and production ports.
+4. Start Docker Desktop or Docker Engine on that runner. The entity workflow creates the designated Compose stacks; do not manually start the payment stack first.
+5. Configure the GitHub `staging` and `production` Environments and retain their reviewer/protection rules.
+6. Export `GITHUB_REPOSITORY=owner/repository` and a `GITHUB_TOKEN` able to dispatch/read Actions. Do not store the token in YAML or a journal.
+7. Choose a workflow ref containing the dispatch workflow and an immutable release SHA available in the repository.
+
+The legacy deployment chain is disabled by default. It runs only through a manual `workflow_dispatch` with `legacy_deployment=true`, which prevents a push-triggered legacy deployment from racing a controller campaign.
+
+## One-command launcher
+
+Run from the repository root. The default goal is production:
 
 ```powershell
-docker compose up -d --build
-$env:PAYMENT_BASE_URL='http://127.0.0.1:3000'
-npm run traffic:experiment -- normal 6
+py -3 .\bdi-cicd-framework\run_controller.py
 ```
 
-You should see six `POST /payments: HTTP 201` lines. The checkout UI is at `http://127.0.0.1:3000/checkout`; Prometheus is at `http://127.0.0.1:9090`. The sample manifest uses an **isolated local stack** at app port 3301 and Prometheus port 19091, so for the default stack override its URLs in the current shell:
+For a live run, set the execution identity explicitly:
 
 ```powershell
-$env:BDI_READY_URL='http://127.0.0.1:3000/ready'
-$env:BDI_PROMETHEUS_URL='http://127.0.0.1:9090'
+$env:GITHUB_REPOSITORY='owner/repository'
+$env:GITHUB_TOKEN='<Actions dispatch/read token>'
+$env:BDI_WORKFLOW_REF='main'
+$env:BDI_RELEASE_SHA='<full commit SHA>'
+$env:BDI_CAMPAIGN_ID='payment-demo-001'
+py -3 .\bdi-cicd-framework\run_controller.py `
+  --pipeline .\bdi-cicd-framework\models\payment_pipeline.yaml `
+  --goal .\bdi-cicd-framework\models\payment_goal_production.yaml `
+  --artifacts-dir .\artifacts\payment-demo-001
 ```
 
-For the isolated stack instead, use `PAYMENT_BASE_URL=http://127.0.0.1:3301` and leave the manifest URLs unchanged. Wait 10–20 seconds after traffic; rate and histogram queries need at least two Prometheus samples. Keep generating traffic while evaluating: with no recent requests, latency is absent and the gate becomes `unknown`, not healthy.
+The launcher validates the inputs and exact job mapping, generates the model and agent, takes an exclusive repository-wide controller lock, and starts Jason. A campaign journal records decisions, attempts, execution IDs, GitHub run IDs/URLs, telemetry observations, and the final outcome. Exit status is 0 for `achieved`, 1 for `stopped`, and 2 for `unknown` or a startup failure.
 
-## 3. Probe workflow and telemetry without Jason
+Each dispatch pins `actions/checkout` to `BDI_RELEASE_SHA`. The adapter accepts only the returned GitHub run ID and exact configured selected-job name. Results from other runs or jobs cannot update beliefs; the synchronous single-in-flight controller consumes one terminal result once. Missing/skipped selected jobs are failures. A UUID execution ID labels the deployment and telemetry, and telemetry is queried with that exact ID.
 
-The included JSON is a **saved, illustrative successful run**, not evidence of your current GitHub workflow. It exercises the workflow adapter while the telemetry side reads the live payment stack:
+To inject live experiment faults without changing Java or AgentSpeak, point `BDI_EXECUTION_PLAN` to a Java properties file:
+
+```properties
+test.1.failure_mode=force_failure
+test.2.failure_mode=none
+staging.force_error_rate=1
+```
+
+Use separate campaigns for retry and high-error demonstrations. Supported dispatch inputs are `failure_mode=none|force_failure` and normal/high-error staging traffic. Retry count comes from `pipeline.yaml`; thresholds, queries, endpoints, and telemetry wait bounds come from the project manifest.
+
+## Local actual-Jason scenarios
+
+These commands use deterministic entity/telemetry adapters but start the generated Jason interpreter and generic plans. Their `scenario://` URLs and run ID 0 identify local evidence; they are not live GitHub evidence.
 
 ```powershell
+# Healthy production goal
+py -3 .\bdi-cicd-framework\run_controller.py --scenario healthy
+
+# Staging goal: production must be absent
+py -3 .\bdi-cicd-framework\run_controller.py `
+  --goal .\bdi-cicd-framework\models\payment_goal_staging.yaml --scenario healthy
+
+# Retry succeeds, then retry exhaustion stops
+py -3 .\bdi-cicd-framework\run_controller.py --scenario transient_test_failure
+py -3 .\bdi-cicd-framework\run_controller.py --scenario exhausted_test_failure
+
+# Telemetry outcomes
+py -3 .\bdi-cicd-framework\run_controller.py --scenario telemetry_block
+py -3 .\bdi-cicd-framework\run_controller.py --scenario telemetry_unknown
+py -3 .\bdi-cicd-framework\run_controller.py --scenario telemetry_delayed
+
+# Visible proof that no successor starts while the controller is paused
+py -3 .\bdi-cicd-framework\run_controller.py --scenario healthy `
+  --pause-after security --pause-ms 5000
+
+# Same framework, different topology
+py -3 .\bdi-cicd-framework\run_controller.py `
+  --pipeline .\bdi-cicd-framework\examples\reporting_pipeline.yaml `
+  --goal .\bdi-cicd-framework\examples\reporting_goal.yaml --scenario healthy
+```
+
+## Verification
+
+```powershell
+py -3 -m unittest discover -s .\bdi-cicd-framework\parser -p 'test_*.py' -v
 Set-Location .\bdi-cicd-framework\bdi
-.\gradlew.bat test
-.\gradlew.bat probeBaseline '-PprobeArgs=--project ../models/payment_project.yaml --environment local --jobs-json fixtures/payment-jobs-success.json'
+.\gradlew.bat --no-daemon test
+Set-Location ..\..
+npm test
+npm run lint
+npm run build
+git diff --check
 ```
 
-Expect five role/status records (`build`, `test`, `security`, `staging`, `production`), then `gate=allow`, `readiness=ready`, `error_rate`, `latency`, and `assessment=allow reason=healthy`. With no recent samples expect `assessment=unknown reason=metrics_unavailable`; with high error rate expect `assessment=block reason=high_http_error_rate`. An HTTP 503 from `/ready` also blocks.
+Parser tests cover validation, deterministic generation, goal closure, the second project, and the independent dispatch workflow. Java tests cover project mapping, scenario retry behavior, telemetry components inherited from the baseline, and the GitHub adapter against a local HTTP server including the exact run/job correlation path.
 
-To repeat the high-error check on a **local disposable** Compose stack, set `EXPERIMENT_MODE=high_error_rate`, recreate only its app service with `docker compose up -d --no-deps --force-recreate app`, run `npm run traffic:experiment -- high_error_rate 12` with `PAYMENT_BASE_URL` pointing at that stack, wait for two scrapes, then rerun the probe. Afterwards set `EXPERIMENT_MODE=normal` and recreate only the app again. Recent 503s remain in the two-minute PromQL window briefly if the same `CI_RUN_ID` is reused; GitHub assigns a distinct run/attempt label to each run. Do not use this experiment command against a shared staging or production deployment.
+## Runtime behavior and limits
 
-To read a real Actions run instead of the fixture, set `GITHUB_REPOSITORY=owner/repo`, `GITHUB_TOKEN` to an Actions-read token, and use:
+Before every entity, AgentSpeak checks the active goal closure, successful dependencies, avoidance requirements, terminal state, and the single-in-flight belief. Failures are retried only within `max_retries`. Before configured promotion work, it waits for run-correlated readiness and Prometheus observations. A confirmed threshold violation produces `stopped`; exhausted observations or missing data produce `unknown`; all requested achievements and maintenance conditions produce `achieved`.
 
-```powershell
-.\gradlew.bat probeBaseline '-PprobeArgs=--project ../models/payment_project.yaml --environment local --repository owner/repo --run-id 123456789'
-```
+GitHub Environment approval can leave an entity workflow waiting. The controller treats it as the selected entity still in flight and dispatches no successor. Timeouts stop the campaign. Autonomous production rollback is outside this bounded experiment because the repository has no promoted immutable artifact, known-good release selection, or validated recovery policy.
 
-The job display names in `payment_project.yaml` must match the GitHub Jobs API. The current observer reads the first 100 latest jobs of one run; pagination and matrix jobs are not yet supported. This live API path has not been verified with credentials in this workspace.
+The current GitHub adapter reads up to 100 latest jobs in one run and assumes a non-matrix selected job. The controller journal is local JSON Lines rather than a durable multi-host database. The source commit is immutable per campaign, while each deployment still rebuilds that source rather than promoting one binary image. Live credentials, runner labels, Environment rules, and network reachability remain external prerequisites.
 
-## 4. Run the Jason decision replay
+See [the architecture audit and plan](../docs/BDI_ARCHITECTURE_AUDIT_AND_PLAN.md) and [the experiment results](../docs/BDI_CONTROLLER_EXPERIMENT_RESULTS.md).
 
-From `bdi/`, using the saved job fixture and the local telemetry endpoint:
-
-```powershell
-$env:BDI_GITHUB_JOBS_FIXTURE='fixtures/payment-jobs-success.json'
-$env:BDI_TARGET_ENV='local'
-.\gradlew.bat runBaseline
-```
-
-The agent observes job completions and staging telemetry. With `gate(staging,allow)`, it proceeds to observe `production`; with `gate(staging,unknown)` or `gate(staging,block)`, it prints `BDI promotion blocked`. Inspect `build/runtime.jsonl` for `bdi_action_requested` and `percept_published` events. Press Ctrl+C after the decision; this MAS is a long-running observer. The fixture already includes a completed production job, so this is a replay of a run, **not** a pre-production approval.
-
-For live GitHub observation, unset `BDI_GITHUB_JOBS_FIXTURE`, set `BDI_GITHUB_RUN_ID`, `GITHUB_REPOSITORY`, and `GITHUB_TOKEN`, and select `BDI_TARGET_ENV=staging` once staging endpoints are reachable. `BDI_READY_URL` and `BDI_PROMETHEUS_URL` can override those endpoints. Do not put tokens in the manifest or logs.
-
-## 5. Run the one-shot Jason promotion gate
-
-From `bdi/`, after fresh payment traffic and at least two Prometheus scrapes:
-
-```powershell
-$env:BDI_GITHUB_JOBS_FIXTURE='fixtures/payment-jobs-pre-promotion.json'
-$env:BDI_TARGET_ENV='local'
-.\gradlew.bat gate
-$LASTEXITCODE
-```
-
-`gate.mas2j` starts `gate_agent.asl`, not the long-running replay agent. The Java environment periodically publishes separate workflow and telemetry beliefs. AgentSpeak waits on `unknown`, reconsiders new evidence every five seconds, blocks on a confirmed failure, and allows only when all mapped prerequisite jobs except the promotion target succeeded and telemetry is healthy. Look for exactly one `BDI_GATE_RESULT=...` line:
-
-| Result | Meaning | Direct JVM exit | Gradle task |
-|---|---|---:|---|
-| `allow` | All required jobs succeeded and telemetry is healthy | 0 | Succeeds |
-| `block` | A required job failed or telemetry is unhealthy | 1 | Fails |
-| `unknown` | A job, telemetry, configuration, or the Jason decision is unavailable | 2 | Fails |
-
-Gradle itself normally returns exit 1 for either nonzero JVM exit; use the printed result to distinguish `block` from `unknown`. The gate has a 90-second fail-closed watchdog (`BDI_GATE_TIMEOUT_SECONDS` can adjust it). No traffic for the selected `BDI_TELEMETRY_RUN_ID` in the recent Prometheus window is `unknown`, not `allow`.
-
-The fixture is for local tests **only**. For a real run, remove `BDI_GITHUB_JOBS_FIXTURE` and provide `BDI_GITHUB_RUN_ID`, `GITHUB_REPOSITORY`, and an Actions-read `GITHUB_TOKEN`; the gate also needs access to the staging `/ready` and Prometheus endpoints. Its live GitHub API path still needs validation with your credentials. This command does not itself deploy anything.
-
-## What is working, and what is next
-
-The payment baseline generates a Jason agent from the real workflow, reads saved/live-format job state, reads actual `/ready` and run-specific Prometheus values, and fails closed when metrics remain absent. The gate has been exercised locally against changing healthy and high-error payment telemetry and against unreachable telemetry. Parser and Java tests cover mapping, fixture reading, prerequisite jobs, and missing/nonfinite samples. The earlier `CicdEnvironment` and dispatch-oriented executor remain for older experiments; neither is selected by `project.mas2j` or `gate.mas2j`.
-
-The workflow integration is in place locally, but a **live GitHub Actions run is still unverified**. Commit/push the copied framework and workflow through your normal review process, then follow [the experiment guide](../docs/BDI_EXPERIMENT.md) to observe normal and high-error runs. This baseline chooses promotion or avoidance; it does not perform post-production rollback or claim to control arbitrary workflows.
+For repository-specific versioning, ports, prerequisites, live startup, observation, retry, and rollback procedures, use the [manual execution guide](../docs/BDI_MANUAL_EXECUTION_GUIDE.md).

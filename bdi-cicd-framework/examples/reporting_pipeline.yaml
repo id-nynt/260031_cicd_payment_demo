@@ -1,0 +1,10 @@
+name: Reporting Service Example
+project_file: reporting_project.yaml
+execution:
+  max_retries: 1
+jobs:
+  package: {}
+  verify:
+    needs: package
+  preview:
+    needs: verify

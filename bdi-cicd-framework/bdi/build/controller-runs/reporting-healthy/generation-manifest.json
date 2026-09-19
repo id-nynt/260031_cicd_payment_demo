@@ -1,0 +1,24 @@
+{
+  "inputs": {
+    "pipeline": {
+      "path": "C:\\NHI\\2026_IT-Project\\260031_payment\\bdi-cicd-framework\\examples\\reporting_pipeline.yaml",
+      "sha256": "215a66e400ed959fe05d706cb8a4cb2667cf46258ee3cbaae8f078366fe74751"
+    },
+    "goal": {
+      "path": "C:\\NHI\\2026_IT-Project\\260031_payment\\bdi-cicd-framework\\examples\\reporting_goal.yaml",
+      "sha256": "0a3fcca8f58f6417f68be43df476e7612aaee309e85da41148615e4e933095ff"
+    },
+    "project": {
+      "path": "C:\\NHI\\2026_IT-Project\\260031_payment\\bdi-cicd-framework\\examples\\reporting_project.yaml",
+      "sha256": "d13b6218b69cc525b92c0d0bc6bc9c725f0706768c2c4e04e2476b3f0ad428d3"
+    }
+  },
+  "required_entities": [
+    "package",
+    "verify",
+    "preview"
+  ],
+  "achievements": [
+    "preview"
+  ]
+}

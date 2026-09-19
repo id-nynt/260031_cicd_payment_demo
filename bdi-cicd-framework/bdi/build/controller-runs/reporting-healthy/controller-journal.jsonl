@@ -1,0 +1,11 @@
+{"timestamp":"2026-09-19T13:12:00.283306700Z","event":"controller_started","scenario":"healthy","project":"reporting-service","mode":"scenario"}
+{"timestamp":"2026-09-19T13:12:00.481869500Z","event":"bdi_decision","attempt":1,"decision":"run","entity":"package","relevant_beliefs":"dependencies_satisfied_and_goal_required"}
+{"timestamp":"2026-09-19T13:12:00.484469800Z","event":"entity_execution_started","attempt":1,"entity":"package"}
+{"timestamp":"2026-09-19T13:12:00.497380700Z","event":"entity_execution_finished","status":"success","attempt":1,"duration_ms":42,"run_url":"scenario://healthy/package/1","github_run_id":0,"execution_id":"scenario-b5aeb900-8223-49d0-bd18-2f4064bb77e3","entity":"package"}
+{"timestamp":"2026-09-19T13:12:00.527699Z","event":"bdi_decision","attempt":1,"decision":"run","entity":"verify","relevant_beliefs":"dependencies_satisfied_and_goal_required"}
+{"timestamp":"2026-09-19T13:12:00.529391900Z","event":"entity_execution_started","attempt":1,"entity":"verify"}
+{"timestamp":"2026-09-19T13:12:00.531014100Z","event":"entity_execution_finished","status":"success","attempt":1,"duration_ms":42,"run_url":"scenario://healthy/verify/1","github_run_id":0,"execution_id":"scenario-3946d454-b331-40c5-966e-8f7fe60701b3","entity":"verify"}
+{"timestamp":"2026-09-19T13:12:00.543219600Z","event":"bdi_decision","attempt":1,"decision":"run","entity":"preview","relevant_beliefs":"dependencies_satisfied_and_goal_required"}
+{"timestamp":"2026-09-19T13:12:00.544339900Z","event":"entity_execution_started","attempt":1,"entity":"preview"}
+{"timestamp":"2026-09-19T13:12:00.546507900Z","event":"entity_execution_finished","status":"success","attempt":1,"duration_ms":42,"run_url":"scenario://healthy/preview/1","github_run_id":0,"execution_id":"scenario-3e4a7e24-2720-4b0a-8f4a-c0e97c83c7ed","entity":"preview"}
+{"timestamp":"2026-09-19T13:12:00.555492600Z","event":"controller_finished","outcome":"achieved","project":"reporting-service"}

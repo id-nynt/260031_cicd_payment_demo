@@ -1,0 +1,16 @@
+{"timestamp":"2026-09-19T13:16:40.402676600Z","event":"controller_started","mode":"scenario","scenario":"telemetry_unknown","project":"payment-service"}
+{"timestamp":"2026-09-19T13:16:40.602715400Z","event":"bdi_decision","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1,"decision":"run","entity":"build"}
+{"timestamp":"2026-09-19T13:16:40.605720700Z","event":"entity_execution_started","entity":"build","attempt":1}
+{"timestamp":"2026-09-19T13:16:40.614760400Z","event":"entity_execution_finished","duration_ms":42,"run_url":"scenario://telemetry_unknown/build/1","github_run_id":0,"execution_id":"scenario-eea1559c-5a90-4da0-a54d-84f0c2173ba3","entity":"build","status":"success","attempt":1}
+{"timestamp":"2026-09-19T13:16:40.657925300Z","event":"bdi_decision","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1,"decision":"run","entity":"test"}
+{"timestamp":"2026-09-19T13:16:40.661734Z","event":"entity_execution_started","entity":"test","attempt":1}
+{"timestamp":"2026-09-19T13:16:40.664734300Z","event":"entity_execution_finished","duration_ms":42,"run_url":"scenario://telemetry_unknown/test/1","github_run_id":0,"execution_id":"scenario-e3f2c81d-39b8-4f36-84c7-8fe2463e929e","entity":"test","status":"success","attempt":1}
+{"timestamp":"2026-09-19T13:16:40.685760400Z","event":"bdi_decision","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1,"decision":"run","entity":"security"}
+{"timestamp":"2026-09-19T13:16:40.688313300Z","event":"entity_execution_started","entity":"security","attempt":1}
+{"timestamp":"2026-09-19T13:16:40.694312Z","event":"entity_execution_finished","duration_ms":42,"run_url":"scenario://telemetry_unknown/security/1","github_run_id":0,"execution_id":"scenario-f68aa487-eaf3-4659-b9b0-3a43a42b005f","entity":"security","status":"success","attempt":1}
+{"timestamp":"2026-09-19T13:16:40.709404100Z","event":"bdi_decision","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1,"decision":"run","entity":"staging"}
+{"timestamp":"2026-09-19T13:16:40.712405200Z","event":"entity_execution_started","entity":"staging","attempt":1}
+{"timestamp":"2026-09-19T13:16:40.715404600Z","event":"entity_execution_finished","duration_ms":42,"run_url":"scenario://telemetry_unknown/staging/1","github_run_id":0,"execution_id":"scenario-bd817d8d-f6ce-42ec-8324-9e262957d146","entity":"staging","status":"success","attempt":1}
+{"timestamp":"2026-09-19T13:16:40.728456400Z","event":"bdi_decision","decision":"observe","entity":"staging"}
+{"timestamp":"2026-09-19T13:16:40.730453100Z","event":"telemetry_terminal","entity":"staging","decision":"unknown","reason":"scenario_unknown"}
+{"timestamp":"2026-09-19T13:16:40.742976700Z","event":"controller_finished","outcome":"unknown","project":"payment-service"}

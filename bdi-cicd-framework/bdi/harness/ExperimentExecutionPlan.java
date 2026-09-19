@@ -17,19 +17,33 @@ public final class ExperimentExecutionPlan {
 
     private final Properties properties = new Properties();
     private final Map<String, Integer> attempts = new HashMap<>();
+    private final Path planFile;
 
     public ExperimentExecutionPlan() {
-        String path = System.getenv("BDI_EXECUTION_PLAN");
-        if (path != null && !path.isBlank()) {
-            try (InputStream input = Files.newInputStream(Path.of(path))) {
-                properties.load(input);
+        this(System.getenv("BDI_EXECUTION_PLAN"));
+    }
+
+    ExperimentExecutionPlan(String path) {
+        planFile = path == null || path.isBlank() ? null : Path.of(path);
+        reload();
+    }
+
+    private void reload() {
+        if (planFile != null) {
+            Properties updated = new Properties();
+            try (InputStream input = Files.newInputStream(planFile)) {
+                updated.load(input);
             } catch (IOException error) {
-                throw new IllegalStateException("Unable to read BDI_EXECUTION_PLAN: " + path, error);
+                throw new IllegalStateException("Cannot reload experiment plan", error);
             }
+            properties.clear();
+            properties.putAll(updated);
         }
     }
 
     public synchronized Injection next(String entity) {
+        // Reload immediately before dispatch so an operator can inject during a BDI pause.
+        reload();
         int attempt = attempts.merge(entity, 1, Integer::sum);
         String prefix = entity + "." + attempt + ".";
         return new Injection(

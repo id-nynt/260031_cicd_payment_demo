@@ -1,4 +1,5 @@
 name: BDI Entity Execution
+run-name: BDI ${{ inputs.campaign_id }} / ${{ inputs.entity }} / attempt ${{ inputs.attempt }}
 
 on:
   workflow_dispatch:
@@ -124,7 +125,7 @@ jobs:
   staging:
     name: Staging entity
     if: inputs.entity == 'staging'
-    runs-on: [self-hosted, payment-deploy]
+    runs-on: [self-hosted, linux, payment-deploy]
     concurrency:
       group: payment-deployment-control
       cancel-in-progress: false
@@ -166,17 +167,15 @@ jobs:
           PAYMENT_BASE_URL: http://127.0.0.1:3001
           PROMETHEUS_URL: http://127.0.0.1:9091
         run: |
-          for attempt in {1..12}; do
-            node scripts/generate-experiment-traffic.mjs "$EXPERIMENT_MODE" 6
-            if node scripts/check-gate-telemetry.mjs; then exit 0; fi
+          for attempt in {1..3}; do
+            docker compose exec -T -e PAYMENT_BASE_URL=http://127.0.0.1:3000 app node --input-type=module - "$EXPERIMENT_MODE" 6 < scripts/generate-experiment-traffic.mjs
             sleep 5
           done
-          exit 1
 
   production:
     name: Production entity
     if: inputs.entity == 'production'
-    runs-on: [self-hosted, payment-deploy]
+    runs-on: [self-hosted, linux, payment-deploy]
     concurrency:
       group: payment-deployment-control
       cancel-in-progress: false

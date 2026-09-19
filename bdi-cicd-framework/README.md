@@ -42,7 +42,9 @@ The parser computes the transitive work needed by every requested achievement an
 
 ## Prerequisites
 
-For local reasoning scenarios, open a terminal and have Python 3 with PyYAML, JDK 21 or newer, and network access for the first Gradle dependency download. Jason is started headlessly by the launcher; do not start a Jason GUI.
+For local reasoning scenarios, use Python 3 with PyYAML and JDK 21 or newer. Add `--gui` to open the real Jason MAS Console, with the generated `controller_agent` and a web mind inspector. The window stays open after completion; close it before the next campaign. Omit `--gui` for unattended execution.
+
+Follow [the visible v1-to-v2 manual demo](../docs/BDI_LIVE_MANUAL_DEMO.md) for the ordered release procedure and mid-campaign fault injection. Java now returns each telemetry sample to Jason; AgentSpeak owns the bounded wait/reconsideration loop.
 
 For a live GitHub campaign, also prepare:
 

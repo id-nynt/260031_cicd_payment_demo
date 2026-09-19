@@ -20,6 +20,8 @@ sourceSets {
         java {
             srcDirs = ['.', '../monitoring', '../actions']
             exclude 'build/**'
+            exclude 'bin/**'
+            exclude '.gradle/**'
             exclude 'src/test/**'
         }
     }
@@ -68,7 +70,7 @@ tasks.register('gate', JavaExec) {
 
 tasks.register('runController', JavaExec) {
     group = 'BDI'
-    description = 'Run the generated goal-directed CI/CD controller (no GUI)'
+    description = 'Run the generated controller; BDI_GUI=true enables the Jason MAS Console'
     dependsOn classes
     mainClass = 'harness.ControllerMain'
     classpath = sourceSets.main.runtimeClasspath

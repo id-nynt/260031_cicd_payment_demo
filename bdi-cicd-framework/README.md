@@ -144,7 +144,7 @@ Parser tests cover validation, deterministic generation, goal closure, the secon
 
 Before every entity, AgentSpeak checks the active goal closure, successful dependencies, avoidance requirements, terminal state, and the single-in-flight belief. Failures are retried only within `max_retries`. Before configured promotion work, it waits for run-correlated readiness and Prometheus observations. A confirmed threshold violation produces `stopped`; exhausted observations or missing data produce `unknown`; all requested achievements and maintenance conditions produce `achieved`.
 
-GitHub Environment approval can leave an entity workflow waiting. The controller treats it as the selected entity still in flight and dispatches no successor. Timeouts stop the campaign. Autonomous production rollback is outside this bounded experiment because the repository has no promoted immutable artifact, known-good release selection, or validated recovery policy.
+GitHub Environment approval can leave an entity workflow waiting. The controller treats it as the selected entity still in flight and dispatches no successor. Timeouts stop the campaign. A separate `Manual production rollback` workflow redeploys an operator-selected immutable known-good SHA after production approval; the controller does not invent rollback policy or a release SHA.
 
 The current GitHub adapter reads up to 100 latest jobs in one run and assumes a non-matrix selected job. The controller journal is local JSON Lines rather than a durable multi-host database. The source commit is immutable per campaign, while each deployment still rebuilds that source rather than promoting one binary image. Live credentials, runner labels, Environment rules, and network reachability remain external prerequisites.
 

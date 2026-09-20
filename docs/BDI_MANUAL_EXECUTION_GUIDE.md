@@ -568,18 +568,45 @@ Actions:
 
 - Stop traffic with Ctrl+C and close the old MAS Console.
 - Reconcile any unresolved execution before another campaign.
-- Clear faults and deploy the saved v1 SHA using the current controller and worker.
+- Copy the complete block below into Controller PowerShell. It restores the required settings even in a fresh window.
+
+The receipt and worker tag below are the verified selections for your current experiment. Keep using them for these comparisons. If you later establish a different baseline, replace the receipt path with that successful B1 receipt.
 
 ```powershell
-Remove-Item Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
+Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
+
+# Clear old fault/pause settings and reload the stored GitHub login.
+Remove-Item Env:BDI_EXECUTION_PLAN,Env:BDI_PAUSE_AFTER_ENTITY,Env:BDI_PAUSE_MILLISECONDS -ErrorAction SilentlyContinue
+Remove-Item Env:GH_TOKEN,Env:GITHUB_TOKEN,Env:GITHUB_API_URL -ErrorAction SilentlyContinue
+$env:GITHUB_REPOSITORY = 'id-nynt/260031_cicd_payment_demo'
+$env:GITHUB_TOKEN = gh auth token --hostname github.com
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+    throw 'Stored GitHub login unavailable; complete browser sign-in, then repeat B8'
+}
+$env:BDI_WORKFLOW_REF = 'bdi-worker-20260921-052412'
+
+# Restore the saved v1 receipt and source; do not depend on earlier variables.
+$knownGood = 'C:\NHI\2026_IT-Project\260031_payment-repair\bdi-cicd-framework\runs\20260921-055346-143-v1\controller-result.json'
+$baseline = Get-Content -LiteralPath $knownGood -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+if ($baseline.mode -ne 'github' -or $baseline.outcome -ne 'achieved' -or
+    $baseline.repository -ne $env:GITHUB_REPOSITORY -or
+    $baseline.verified_releases.production.release_sha -ne $baseline.release_sha -or
+    -not $baseline.verified_releases.production.github_run_id) {
+    throw 'Select a verified live v1 deployment receipt from B1'
+}
+$v1Sha = $baseline.release_sha
 $env:BDI_RELEASE_SHA = $v1Sha
+
+# Use new evidence for every reset.
 $resetDir = 'bdi-cicd-framework/runs/' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '-restore-v1'
-py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good $knownGood --confirm-compatible-rollback --artifacts-dir $resetDir
+py -3 -B bdi-cicd-framework/run_controller.py --validate-only
+if ($LASTEXITCODE -ne 0) { throw 'Resolve artifact validation before starting the reset' }
+py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --confirm-compatible-rollback --artifacts-dir "$resetDir"
 ```
 
-**Expected result:** both staging and production return to verified v1; reset reports achieved. Check fresh receipts on ports 3001 and 3000. Database records remain: this restores application source, not database history.
+**Expected result:** both staging and production return to verified v1; reset reports achieved. Check fresh receipts on ports 3001 and 3000. Database records remain: this restores application source, not database history. Close MAS Console after the final result; keep the app and runner running.
 
-Keep the app running. Set `$env:BDI_RELEASE_SHA = $v2Sha`, choose B4 or a B6 scenario, and use a fresh directory. Do not reset Git, move tags, delete evidence or regenerate unchanged artifacts.
+For another experiment, use B4 to restore the existing v2 selection or B6 for the desired fault scenario. Repeat B3 only if you change the application and publish a new candidate. Do not reset Git, move tags, delete evidence or regenerate unchanged artifacts.
 
 <a id="optional-experiment-require-staging-to-fail"></a>
 

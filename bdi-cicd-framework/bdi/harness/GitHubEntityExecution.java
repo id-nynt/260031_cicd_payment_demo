@@ -55,6 +55,8 @@ public final class GitHubEntityExecution implements EntityExecution {
         if (!repository.matches("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")) {
             throw new IllegalArgumentException("GITHUB_REPOSITORY must be owner/name");
         }
+        if (token == null || token.isEmpty() || token.chars().anyMatch(c -> c < 33 || c > 126))
+            throw new IllegalArgumentException("GITHUB_TOKEN is missing or contains whitespace/control characters; re-enter it without printing its value");
         this.project = project;
         this.repository = repository;
         this.token = token;
@@ -174,7 +176,7 @@ public final class GitHubEntityExecution implements EntityExecution {
         return result("unknown");
     }
 
-    /** Explicit migration for old journals that recorded a rejected POST as uncertain. No network requests. */
+    /** Explicit migration for old journals proving an HTTP rejection or local invalid header. No network requests. */
     Result reconcileRejectedDispatch(Path evidenceDirectory, Path archiveDirectory) throws Exception {
         if (pending == null || pending.path("run_id").asLong() != 0)
             throw new IllegalStateException("Requires a pending dispatch with no acknowledged run");
@@ -190,7 +192,10 @@ public final class GitHubEntityExecution implements EntityExecution {
         int intents = 0, rejections = 0;
         for (String line : new String(evidence, java.nio.charset.StandardCharsets.UTF_8).split("\\R")) {
             if (line.isBlank()) continue;
-            var event = JSON.readTree(line);
+            // The historical logger failed to escape control characters. Keep original bytes
+            // for the archive; permit them only while reading this explicit migration evidence.
+            var event = JSON.reader().with(com.fasterxml.jackson.core.json.JsonReadFeature
+                .ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature()).readTree(line);
             if (!pending.path("execution_id").asText().equals(event.path("execution_id").asText())) continue;
             switch (event.path("event").asText()) {
                 case "dispatch_intent" -> {
@@ -202,7 +207,7 @@ public final class GitHubEntityExecution implements EntityExecution {
                 case "execution_uncertain" -> {
                     String reason = event.path("reason").asText();
                     var match = java.util.regex.Pattern.compile("^GitHub dispatch returned HTTP (401|403|404|422): ").matcher(reason);
-                    if (intents != 1 || !match.find())
+                    if (intents != 1 || !(match.find() || invalidAuthorizationHeader(reason)))
                         throw new IllegalStateException("Evidence does not prove an explicit dispatch rejection");
                     rejections++;
                 }
@@ -219,6 +224,14 @@ public final class GitHubEntityExecution implements EntityExecution {
         journal.event("dispatch_rejection_recovered", null, Map.of("execution_id", pending.path("execution_id").asText(),
             "evidence_directory", evidenceDirectory.toAbsolutePath().toString()));
         return settle("dispatch_rejected");
+    }
+
+    // HttpRequest rejects this header locally, before client.send can transmit a POST.
+    private static boolean invalidAuthorizationHeader(String reason) {
+        String prefix = "invalid header value: \"Bearer ";
+        if (!reason.startsWith(prefix) || !reason.endsWith("\"")) return false;
+        String value = reason.substring(prefix.length(), reason.length() - 1);
+        return value.chars().anyMatch(c -> (c < 32 && c != 9) || c == 127);
     }
 
     private Result result(String status) {

@@ -197,6 +197,8 @@ Remove-Variable headers
 Remove-Item Env:BDI_EXECUTION_PLAN,Env:BDI_READY_URL,Env:BDI_PROMETHEUS_URL,Env:BDI_PAUSE_AFTER_ENTITY,Env:BDI_PAUSE_MILLISECONDS -ErrorAction SilentlyContinue
 ```
 
+At the hidden-token prompt, use the terminal paste action (right-click or its Paste menu). In some Windows consoles Ctrl+V can enter a control character instead of pasting. A successful metadata request shown above confirms that the entered value was usable; do not launch if it fails.
+
 **Expected result:** metadata shows `BDI Entity Execution`, `active`, and its path. This checks read access only; confirm Actions write in token settings. `Remove-Item` is silent when a variable does not exist; that is normal.
 
 ### A7. Rehearse the agent without deploying
@@ -556,6 +558,7 @@ Repeat A6 to load credentials and the worker ref. Validate artifacts, reconcile 
 | What you see | Meaning / action |
 |---|---|
 | Git push 403 | Git credential lacks needed repository/workflow write access. Fix it and retry the same branch/tag. |
+| Missing repository / malformed token at startup | Repeat A6 in the same Controller PowerShell. Credential validation happens before campaign creation; token values are not printed. |
 | Controller dispatch 403 | Check controller token's Actions write permission, repository selection and approval. Separate from Git credentials. |
 | Invalid worker input / missing rollback | Check `BDI_WORKFLOW_REF`; an older worker may be selected. |
 | GitHub Waiting for runner | Check runner status, labels and environment approval. |

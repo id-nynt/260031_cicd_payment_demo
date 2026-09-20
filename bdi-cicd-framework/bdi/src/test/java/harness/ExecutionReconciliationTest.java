@@ -220,4 +220,43 @@ class ExecutionReconciliationTest {
             assertEquals("transient_failure",adapter.execute("build",2).status());
         } finally {server.stop(0);}
     }
+    @Test void invalidTokenIsRejectedBeforeAnyNetworkRequest() throws Exception {
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);var calls=new AtomicInteger();
+        server.createContext("/",e->{calls.incrementAndGet();respond(e,200,"{}");});server.start();
+        try {
+            String secret="secret" + (char)22;
+            var error=assertThrows(IllegalArgumentException.class,()->new GitHubEntityExecution(
+                ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml")), new StructuredEventLogger(null),
+                URI.create("http://127.0.0.1:"+server.getAddress().getPort()), "example/repository", secret,
+                "main", "a".repeat(40), "campaign-test", Duration.ofMillis(1), Duration.ofMillis(100)));
+            assertFalse(error.getMessage().contains(secret));assertEquals(0,calls.get());
+        } finally {server.stop(0);}
+    }
+
+    @Test void legacyInvalidHeaderRecoveryRequiresLocalFailureProof() throws Exception {
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);var calls=new AtomicInteger();
+        server.createContext("/",e->{calls.incrementAndGet();respond(e,503,"unknown");});server.start();
+        try {
+            Path state=directory.resolve("header.json");var adapter=adapter(server);adapter.useStateFile(state);
+            adapter.execute("build",1);
+            Path evidence=legacyEvidence(state,"invalid header value: \"Bearer " + (char)22 + "\"",false);
+            Path journal=evidence.resolve("controller-journal.jsonl");String valid=Files.readString(journal).replace("\\u0016", String.valueOf((char)22));
+            Files.writeString(journal,valid.replace("Bearer", "Other"));
+            assertThrows(IllegalStateException.class,()->adapter.reconcileRejectedDispatch(evidence,directory.resolve("bad")));
+            assertTrue(Files.exists(state));
+            Files.writeString(journal,valid);
+            assertEquals("dispatch_rejected",adapter.reconcileRejectedDispatch(evidence,directory.resolve("archive-header")).status());
+            assertFalse(Files.exists(state));assertEquals(1,calls.get());
+        } finally {server.stop(0);}
+    }
+
+    @Test void structuredJournalEscapesAllControlCharacters() throws Exception {
+        Path log=directory.resolve("control.jsonl");
+        String text="prefix" + (char)22 + "\t\n\r";
+        new StructuredEventLogger(log).event("test",null,java.util.Map.of("reason",text));
+        var lines=Files.readAllLines(log);
+        assertEquals(1,lines.size());
+        assertEquals(text,JSON.readTree(lines.get(0)).path("reason").asText());
+    }
+
 }

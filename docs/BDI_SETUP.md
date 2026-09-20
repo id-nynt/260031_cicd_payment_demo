@@ -41,7 +41,7 @@ Expected: checkout at port 3002 works; Prometheus at 9092 shows `payment_service
 
 ## Runner and endpoints
 
-GitHub repository â†’ Settings â†’ Actions â†’ Runners: use the existing Linux runner with labels `self-hosted`, `linux`, `payment-deploy`. No new repository or runner registration is needed because of a second Git worktree. If registration is absent, follow GitHub's New self-hosted runner instructions.
+GitHub repository Ã¢â€ â€™ Settings Ã¢â€ â€™ Actions Ã¢â€ â€™ Runners: use the existing Linux runner with labels `self-hosted`, `linux`, `payment-deploy`. No new repository or runner registration is needed because of a second Git worktree. If registration is absent, follow GitHub's New self-hosted runner instructions.
 
 Linux runner terminal, in its actual installation directory:
 
@@ -58,7 +58,7 @@ The controller must reach runner services: staging readiness/Prometheus 3001/909
 
 ## Credentials and publish the updated worker
 
-Use a fine-grained GitHub token for `id-nynt/260031_cicd_payment_demo` with **Actions: Read and write**. In GitHub: profile Settings â†’ Developer settings â†’ Personal access tokens â†’ Fine-grained tokens. Select the owner/repository and complete any required approval. [Dispatch permissions](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
+Use a fine-grained GitHub token for `id-nynt/260031_cicd_payment_demo` with **Actions: Read and write**. In GitHub: profile Settings Ã¢â€ â€™ Developer settings Ã¢â€ â€™ Personal access tokens Ã¢â€ â€™ Fine-grained tokens. Select the owner/repository and complete any required approval. [Dispatch permissions](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
 
 ```powershell
 $dispatchToken = Read-Host 'Controller token (hidden)' -AsSecureString
@@ -134,3 +134,11 @@ py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only --rejected-dispat
 ```
 
 This validates matching journal/receipt/pending identities, archives proof, and settles `dispatch_rejected` without a network dispatch. It is a one-time repair, not a routine command. The specific old record above was already repaired in this worktree; do not rerun it unless that record is actually pending. Historical recovery results may use the older status `failure`.
+
+## Locally rejected Authorization header (September 2026 repair)
+
+The campaign `manual-20260921-003920-v1` failed locally while constructing the HTTP Authorization header: its token input contained a control character. No POST was sent. Older code nevertheless left an unresolved dispatch record, blocking later campaigns. The launcher and Java adapter now reject missing/malformed credentials before creating a dispatch intent and never echo the token.
+
+The evidence-recovery command also recognizes this exact local header-construction error, validates campaign/execution identities, archives the original journal and pending record, then settles `dispatch_rejected`. This does not reinterpret network timeouts or an absent run as proof of rejection. Use `--reconcile-only --rejected-dispatch-evidence` only with the original campaign's proof, not a later blocked campaign. This specific pending record was repaired during the fix; do not rerun the repair unless that record is actually pending.
+
+A hidden token prompt can capture Ctrl+V as a control character in some consoles. Use the terminal's Paste action, then confirm the metadata request in manual A6 succeeds before launching. Credentials set in one PowerShell session are not automatically available in another session or to GitHub CLI.

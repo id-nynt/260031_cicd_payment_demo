@@ -50,6 +50,16 @@ def git_sha(repository_root: Path) -> str:
     return result.stdout.strip()
 
 
+def validate_live_environment(environment):
+    import re
+    repository = environment.get('GITHUB_REPOSITORY', '')
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
+        raise ModelError('Set GITHUB_REPOSITORY=owner/repository in this PowerShell window before launching')
+    token = environment.get('GITHUB_TOKEN', '')
+    if not token or any(ord(c) < 33 or ord(c) > 126 for c in token):
+        raise ModelError('GITHUB_TOKEN is missing or contains whitespace/control characters. Re-enter the token in this window; its value is never printed')
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-dir", type=Path, default=ROOT, help="persistent generated project directory")
@@ -67,7 +77,7 @@ def main() -> int:
     parser.add_argument("--pause-ms", type=int, default=0)
     parser.add_argument("--reconcile-only", action="store_true", help="read remote status of durable pending execution; never dispatch or resume a campaign")
     parser.add_argument("--rejected-dispatch-evidence", type=Path,
-                        help="with --reconcile-only: original campaign directory proving an old HTTP dispatch rejection")
+                        help="with --reconcile-only: original campaign directory proving an old HTTP rejection or invalid Authorization header")
     parser.add_argument("--gui", action="store_true", help="open Jason MAS Console and keep the final agent mind available until closed")
     args = parser.parse_args()
 
@@ -81,6 +91,9 @@ def main() -> int:
     if args.validate_only:
         print(f"Project artifacts are consistent: {args.project_dir.resolve()}")
         return 0
+
+    if not args.scenario:
+        validate_live_environment(os.environ)
 
     baseline_sha = ""
     recovery_required = any(source in model.required_entities for source, _ in model.recovery)

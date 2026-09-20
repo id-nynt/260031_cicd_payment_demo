@@ -69,7 +69,12 @@ public final class StructuredEventLogger {
     }
 
     private static String escape(String value) {
-        return value.replace("\\", "\\\\").replace("\"", "\\\"")
-            .replace("\n", "\\n").replace("\r", "\\r");
+        StringBuilder escaped = new StringBuilder();
+        for (char c : value.toCharArray()) {
+            if (c == '\\' || c == '"') escaped.append('\\').append(c);
+            else if (c < 32) escaped.append(String.format("\\u%04x", (int)c));
+            else escaped.append(c);
+        }
+        return escaped.toString();
     }
 }

@@ -190,34 +190,53 @@ Checkpoint: `mode=scenario`. This receipt cannot serve as a live known-good rele
 
 ## 8. Store v1 as an immutable source version
 
-Actions:
+Use the simple tag name `v1`. Run each command separately and read its output before continuing. A tag labels committed source; it does not deploy the app or include uncommitted changes.
 
-- Use a clean approved revision containing the intended framework, worker and generated configuration.
-- A commit identifies source; an annotated tag gives it a memorable name. A tag does not prove a successful deployment.
-- Use new names; never overwrite earlier experiment tags.
+### 8.1. Check the source and existing tag
 
 ```powershell
 git status --short
-$sessionName = 'manual-' + (Get-Date -Format yyyyMMdd-HHmmss)
-$v1Tag = "$sessionName-v1"
-$v1Tag
-git tag -a $v1Tag -m 'Payment experiment baseline candidate'
-if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed; inspect the error before pushing' }
-git show-ref --verify "refs/tags/$v1Tag"
-if ($LASTEXITCODE -ne 0) { throw 'The local v1 tag does not exist; do not push yet' }
-git push origin "refs/tags/$v1Tag"
-if ($LASTEXITCODE -ne 0) { throw 'Push failed; keep this tag name and resolve the reported error' }
-$v1Sha = git rev-list -n 1 $v1Tag
-$v1Sha
+git log -1 --oneline
+git tag --list v1
 ```
 
-This step initializes its own live-session name, so it also works if you skipped step 7 or opened a new PowerShell window. `$v1Tag` should print something like `manual-20260920-233000-v1`, never just `-v1`. PowerShell variables are local to that terminal session; they are not stored by Git or shared between terminal windows.
+If the last command prints `v1`, the tag already exists: **skip tag creation**. In this repair repository, `v1` has already been created at `caa26dada2a15b807c325e2d931ee123a206ece8`.
 
-If you see `src refspec refs/tags/-v1 does not match any`, `$sessionName` was empty when the tag name was constructed and there is no local tag at that ref. Run this corrected block to create a properly named tag. This is not caused by using a separate Git worktree. Check the selected source with `git branch --show-current` and `git log -1 --oneline` before tagging.
+If it prints nothing, and the current commit is your intended baseline, create the tag:
 
-If a correctly named tag was already created and only its push failed, keep that tag and retry its push after resolving the error; do not rerun tag creation, force-update it or create replacement versions unnecessarily. In a new terminal, restore the exact existing name with `$v1Tag = 'YOUR-EXISTING-TAG'` and verify it with `git show-ref --verify "refs/tags/$v1Tag"`.
+```powershell
+git tag v1
+```
 
-Checkpoint: the tag is available remotely and resolves to a full commit SHA. Tag creation/push does not start a live campaign under these workflows. Record the actual tag name and SHA in your experiment notes and keep these PowerShell variables for later steps. In a new terminal, restore `$sessionName`, `$v1Tag` and `$v1Sha` explicitly from those notes before continuing.
+Check the source it identifies:
+
+```powershell
+git rev-list -n 1 v1
+```
+
+Checkpoint: `v1` exists locally and identifies the intended baseline commit. Do not overwrite an existing tag to select different source; choose a new name for a genuinely different baseline.
+
+### 8.2. Publish the tag to GitHub
+
+```powershell
+git push origin v1
+```
+
+Checkpoint: Git reports that the tag was pushed, or that it is already up to date. Only continue to the live experiment after publication succeeds.
+
+If Git reports `403` or `Permission denied`, the local tag still exists, but GitHub has refused the push. This is a GitHub write-access/credential issue, not a tag-name or worktree issue. Resolve that access problem, then retry **only** `git push origin v1`. Do not recreate the tag. The custom `throw 'Push failed...'` command from the earlier guide is no longer needed; read Git's original error directly.
+
+### 8.3. Set the variables used by later steps
+
+```powershell
+$v1Tag = 'v1'
+$v1Sha = git rev-list -n 1 v1
+$sessionName = 'manual-' + (Get-Date -Format yyyyMMdd-HHmmss)
+```
+
+`$sessionName` names new campaign evidence directories; it is no longer used to construct the v1 tag. Keep this PowerShell window open for subsequent steps. Record the tag and SHA in your notes; variables do not carry over into a new terminal.
+
+Tag creation and pushing do not start a live BDI campaign. Step 10 starts it explicitly.
 
 ## 9. Authenticate and select the live versions
 

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="harness.ExecutionReconciliationTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-20T12:44:49.327Z" hostname="DESKTOP-E9V69Q9" time="0.203">
+  <properties/>
+  <testcase name="pollingFailureRetainsAcknowledgedRunForReconciliation()" classname="harness.ExecutionReconciliationTest" time="0.054"/>
+  <testcase name="lostAcknowledgementIsFoundByExecutionIdentityWithoutAnotherPost()" classname="harness.ExecutionReconciliationTest" time="0.078"/>
+  <testcase name="absentDiscoveryNeverAuthorizesRedispatch()" classname="harness.ExecutionReconciliationTest" time="0.03"/>
+  <testcase name="ambiguousExecutionIdentityRemainsUnresolved()" classname="harness.ExecutionReconciliationTest" time="0.037"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.356078300Z","event":"dispatch_intent","execution_id":"19fd980a-bb21-496f-bdfd-371e0c4fb8aa","attempt":1,"release_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","entity":"build","campaign_id":"campaign-test"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.367079600Z","event":"dispatch_acknowledged","execution_id":"19fd980a-bb21-496f-bdfd-371e0c4fb8aa","github_run_id":12}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.371075500Z","event":"execution_uncertain","reason":"GitHub API returned HTTP 503","execution_id":"19fd980a-bb21-496f-bdfd-371e0c4fb8aa"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.372074100Z","event":"execution_reconciled","execution_id":"19fd980a-bb21-496f-bdfd-371e0c4fb8aa","github_run_id":12}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.379069800Z","event":"execution_terminal","execution_id":"19fd980a-bb21-496f-bdfd-371e0c4fb8aa","status":"failure","github_run_id":12}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.401088700Z","event":"dispatch_intent","execution_id":"1c624736-2f03-4365-92ac-280b3f6f6f08","attempt":1,"release_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","entity":"build","campaign_id":"campaign-test"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.415605600Z","event":"execution_uncertain","reason":"GitHub dispatch returned HTTP 503: lost acknowledgement","execution_id":"1c624736-2f03-4365-92ac-280b3f6f6f08"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.438610200Z","event":"dispatch_blocked_unresolved","pending":"{\"campaign_id\":\"campaign-test\",\"entity\":\"build\",\"attempt\":1,\"execution_id\":\"1c624736-2f03-4365-92ac-280b3f6f6f08\",\"release_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"repository\":\"example/repository\",\"workflow_file\":\"entity-execution.yml\",\"api_base\":\"http://127.0.0.1:65106\",\"expected_job\":\"Build entity\",\"started\":\"2026-09-20T12:44:49.397084Z\",\"run_id\":0}","entity":"build"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.450608100Z","event":"execution_reconciled","execution_id":"1c624736-2f03-4365-92ac-280b3f6f6f08","github_run_id":321}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.457607900Z","event":"execution_terminal","execution_id":"1c624736-2f03-4365-92ac-280b3f6f6f08","status":"success","github_run_id":321}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.477604800Z","event":"dispatch_intent","execution_id":"1d90f5ab-b507-4c6b-bcbd-3b2a1cbf617c","attempt":1,"release_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","entity":"build","campaign_id":"campaign-test"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.484608400Z","event":"execution_uncertain","reason":"GitHub dispatch returned HTTP 503: unknown","execution_id":"1d90f5ab-b507-4c6b-bcbd-3b2a1cbf617c"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.488611300Z","event":"dispatch_blocked_unresolved","pending":"{\"campaign_id\":\"campaign-test\",\"entity\":\"build\",\"attempt\":1,\"execution_id\":\"1d90f5ab-b507-4c6b-bcbd-3b2a1cbf617c\",\"release_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"repository\":\"example/repository\",\"workflow_file\":\"entity-execution.yml\",\"api_base\":\"http://127.0.0.1:65109\",\"expected_job\":\"Build entity\",\"started\":\"2026-09-20T12:44:49.473611200Z\",\"run_id\":0}","entity":"build"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.514142700Z","event":"dispatch_intent","execution_id":"df05cb1f-2433-4002-b8b7-caf3bacadb39","attempt":1,"release_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","entity":"build","campaign_id":"campaign-test"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.522149800Z","event":"execution_uncertain","reason":"GitHub dispatch returned HTTP 503: lost acknowledgement","execution_id":"df05cb1f-2433-4002-b8b7-caf3bacadb39"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.526141Z","event":"dispatch_blocked_unresolved","pending":"{\"campaign_id\":\"campaign-test\",\"entity\":\"build\",\"attempt\":1,\"execution_id\":\"df05cb1f-2433-4002-b8b7-caf3bacadb39\",\"release_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"repository\":\"example/repository\",\"workflow_file\":\"entity-execution.yml\",\"api_base\":\"http://127.0.0.1:65111\",\"expected_job\":\"Build entity\",\"started\":\"2026-09-20T12:44:49.509143800Z\",\"run_id\":0}","entity":"build"}
+]]></system-err>
+</testsuite>

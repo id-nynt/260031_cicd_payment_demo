@@ -3,9 +3,11 @@
 > The material below describes the older standalone adapter/demo. The active
 > payment baseline is documented in [the framework README](../README.md).
 > It queries Prometheus `/api/v1/query` and the app's `/ready` endpoint;
-> its queries and thresholds come from `models/payment_project.yaml`.
-> `ProjectTelemetryProvider` converts these readings into Jason beliefs, and
-> missing Prometheus samples produce `gate=unknown`, not a healthy zero.
+> its queries and thresholds come from the persistent `models/03_workflow_model.yaml`,
+> generated from `01_pipeline.yaml` and `02_goal.yaml`.
+> `ProjectTelemetryProvider` returns raw measurements; `ControllerEnvironment` publishes
+> correlated beliefs and Jason decides whether to accept, reobserve, stop or recover.
+> Missing Prometheus samples remain unknown, never a healthy zero.
 
 This layer is independent of the Jason agent and does not create or update BDI beliefs. It converts application telemetry into a stable observation stream that a future Java BDI environment can consume.
 

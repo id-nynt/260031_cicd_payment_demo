@@ -297,7 +297,7 @@ With those overrides, open `http://localhost:19090` for Prometheus. Set the same
 
 ### On the GitHub Actions runner
 
-Staging uses app port `3001`, collector port `9465`, and Prometheus port `9091`; production uses app port `3000`, collector port `9464`, and Prometheus port `9090`. The deployment workflow verifies `/health`, `/ready`, collector request metrics, and that Prometheus reports its scrape target as UP. After deployment, use the payment UI repeatedly or run the traffic helper from your development computer with `PAYMENT_BASE_URL` set to the runner's reachable app URL.
+Staging uses app port `3001`, collector port `9465`, and Prometheus port `9091`; production uses app port `3000`, collector port `9464`, and Prometheus port `9090`. The selected deployment worker verifies identity/readiness and produces telemetry; Java reads correlated Prometheus samples and Jason decides whether to accept the deployment. After deployment, use the payment UI repeatedly or run the traffic helper from your development computer with `PAYMENT_BASE_URL` set to the runner's reachable app URL.
 
 Run these commands on the runner itself to inspect its local collector:
 
@@ -375,7 +375,7 @@ payment_service_ready
 
 Prometheus keeps earlier samples, but instant queries show the current app instance. Use the Graph view and a time range covering the experiment to compare modes across restarts. To stop only the isolated stack while keeping its data, run `docker compose down` with the project and port variables still set. Do not use `down -v` unless you intend to delete this stack's payment records and metric history.
 
-The CI/CD workflow uses `normal` for pushes and production. A manual `workflow_dispatch` run on `main` can select `high_error_rate` **for staging only**. Staging generates payments and waits for run-specific Prometheus samples; the BDI gate then blocks production on excessive HTTP errors or latency. A pull request runs build/test checks only. The existing production stack is left untouched when the gate blocks; this is pre-deployment avoidance, not an automatic rollback.
+The current controller supports both pre-production avoidance and verified post-production recovery. Generate its persistent project artifacts once per configuration revision, then start campaigns using those artifacts. See the [manual experiment walkthrough](docs/BDI_MANUAL_EXECUTION_GUIDE.md). A push runs validation; it does not deploy.
 
 ## Run quality checks locally
 
@@ -494,71 +494,19 @@ Before using a VM for important data, add encrypted PostgreSQL backups, log rete
 
 ## Deploy with the local GitHub Actions runner
 
-The workflow is `.github/workflows/ci-cd.yml`.
+The controller dispatches `.github/workflows/entity-execution.yml` for one selected entity at a time. `.github/workflows/validate-controller.yml` runs non-deploying checks on PRs and main pushes. There is no GitHub job dependency chain controlling deployment.
 
-### Pipeline stages
+Follow the [manual experiment walkthrough](docs/BDI_MANUAL_EXECUTION_GUIDE.md) for runner prerequisites, explicit project generation, local rehearsal, a live baseline, candidate delivery, verified rollback and uncertain-execution reconciliation. The controller runs outside the deployment runner checkout and execution slot. Deployment requires an online Linux runner with `payment-deploy`, Docker/Compose and access to the configured staging/production services.
 
-1. `build`: install dependencies, lint, compile TypeScript, and build the Docker image on a GitHub-hosted Ubuntu runner.
-2. `test`: start PostgreSQL, apply migrations, and run tests in a separate GitHub-hosted job.
-3. `security`: report high and critical production dependency findings with `npm audit`. This is advisory for the demo; findings appear in the job log but do not prevent deployment.
-4. `deploy-staging`: build and deploy the fake provider, collector, and Prometheus on ports `3001`, `9465`, and `9091`; generate payments and wait for run-specific request rate, p95 latency, and readiness samples.
-5. `bdi-gate`: on the self-hosted runner, read this Actions run and staging Prometheus, give the observations to Jason, and succeed only if the agent decides `allow`. `block` or unresolved `unknown` fails the job.
-6. `deploy-production`: runs only after `bdi-gate` succeeds; deploys normal mode on ports `3000`, `9464`, and `9090` and checks the deployed run ID.
-
-The deployment jobs build from the checked-out repository with Docker Compose. This simple pipeline does not require a container registry or a Trivy action. Both the build and test jobs must pass before deployment.
-
-`build`, `test`, and `security` run on GitHub-hosted Ubuntu runners. Staging, the BDI gate, and production use your self-hosted runner. It needs Bash, Docker Compose, `curl`, network access to GitHub's API and Gradle/Maven downloads, and access to staging at `127.0.0.1:3001` and Prometheus at `127.0.0.1:9091`. The workflow installs Node 22 and Java 21 through official setup actions; the checked-in Gradle wrapper installs the pinned Gradle version. On Windows, install Git for Windows so Bash is available and keep Docker Desktop running for the runner account. On Linux, the runner account must be able to run `docker info` without `sudo`. The workflow does not use PowerShell.
-
-### Actions
-
-1. Push this repository to GitHub.
-2. On the target machine, install Docker, the Docker Compose plugin, Git, Bash, and curl. Verify `docker info` works as the account running the runner service.
-3. In GitHub, open `Settings > Actions > Runners > New self-hosted runner`.
-4. Follow GitHub's displayed commands to download, configure, and start the runner.
-5. Ensure the runner service remains online, has the `self-hosted` label, and has permission to run Docker commands.
-6. Create GitHub Environments named `staging` and `production`.
-7. Add a required reviewer to `production` if production deployment must be approved manually.
-8. Push to `main` and watch the Actions run. A normal push can proceed all the way to production; use a protected production environment if you need human approval.
-
-For the controlled experiment, use the [BDI experiment guide](docs/BDI_EXPERIMENT.md). It gives the exact normal/high-error dispatch commands, expected job outcomes, Prometheus checks, and limits of local versus live verification.
-
-The included workflow uses fake transactions, so no Stripe secret is needed for the pipeline. If Stripe is later enabled, provide secrets through GitHub Environments and update the deployment job to create the server `.env` from those secrets. Never commit Stripe keys to the repository.
-
-### Commands to push the project
-
-Run these only if the repository has not already been connected to GitHub:
+Generate and validate without deployment:
 
 ```powershell
-git add .
-git commit -m "Prepare payment service deployment"
-git branch -M main
-git remote add origin https://github.com/<owner>/<repository>.git
-git push -u origin main
+py -3 -B bdi-cicd-framework/generate_project.py
+py -3 -B bdi-cicd-framework/run_controller.py --validate-only
+py -3 -B bdi-cicd-framework/run_controller.py --scenario healthy
 ```
 
-After the runner and GitHub Environments are configured, normal deployment is:
-
-```powershell
-git add .
-git commit -m "Deploy application update"
-git push origin main
-```
-
-If Actions reports that it cannot resolve `aquasecurity/trivy-action` or `aquasecurity/setup-trivy`, GitHub is running an older workflow. This simplified workflow does not use those actions. Push the updated workflow to `main` and inspect the new run; rerunning an old commit uses the old workflow.
-
-Before deployment on a local runner, check that ports `3000`, `3001`, `5432`, `5433`, `9464`, `9465`, `9090`, and `9091` are free on that machine. An already running local Compose stack may occupy production ports and prevent it from starting. The collector and Prometheus ports listen only on loopback.
-
-On the runner, check the required tools and Docker access before triggering Actions:
-
-```bash
-docker info
-docker compose version
-curl --version
-```
-
-The staging checkout is at `http://RUNNER_IP:3001/checkout` and production is at `http://RUNNER_IP:3000/checkout` if those ports are reachable through the host firewall. `localhost` in the Actions smoke test means the runner machine itself, so it is not a public URL. Use a domain and HTTPS reverse proxy when making the app available online.
-
-If Actions reports `pwsh: command not found`, GitHub is running an older workflow. Push the current workflow, which uses Bash for both deployment jobs, and inspect the new run.
+Staging uses ports 3001/9465/9091; production uses 3000/9464/9090. Collector and Prometheus listen on loopback. The worker uses fake payments. Preserve the baseline receipt and verify source/database compatibility before a live recovery experiment.
 
 ## Monitoring and troubleshooting
 

@@ -22,7 +22,7 @@ workflow changes; historical reports were not treated as validation of new code.
 
 ## Implemented control boundaries
 
-- `run_controller.main` compiles the two canonical inputs, serializes the complete workflow, calls `workflow_model.generate_agent` (which reloads through `load_workflow`), and starts the copied MAS in an exclusive campaign directory.
+- `generate_project.main` explicitly generates the persistent workflow and agent for a configuration revision. `run_controller.main` validates their consistency and archives their exact bytes before starting an isolated MAS. It never regenerates project artifacts.
 - `controller_generic.asl` owns `nextentity`, `retry_allowed`, `+reconciled`, numerical telemetry classification, bounded reobservation, `!failed` recovery selection and `!end`. Java transports those selected actions.
 - `GitHubEntityExecution.execute` persists intent before POST; `reconcilePending` searches an exact execution identity, polls only its selected job and keeps uncertain state. A subsequent campaign cannot dispatch while this state exists.
 - `ProjectTelemetryProvider.measure` returns raw data; `PrometheusTelemetryObserver` rejects nonfinite, missing, ambiguous and stale samples. PromQL includes execution identity. `ControllerEnvironment.publishMeasurement` correlates entity, attempt and observation round in an isolated MAS and journals the execution UUID.
@@ -39,6 +39,14 @@ Old YAMLs used by regression tests were moved into `parser/fixtures/legacy`. Jav
 
 The reporting topology has been verified locally through the real Jason runtime with a simulated executor; it is not a deployed second service. No live GitHub dispatch, runner, Docker or database rollback was performed. Deployment still rebuilds a verified source commit rather than restoring an attested immutable image. Receipts are trusted operator files. The lock coordinates worktrees sharing one Git repository, not independent clones or external deployment tools. Existing security auditing remains advisory; npm installation reported five existing dependency vulnerabilities (three moderate, one high, one critical). The payment application's code and dependencies were not changed by this repair.
 
-## Validation
+## Validation of commit 4b01b86
 
-Passed: 29 Python tests, 20 Java tests, 20 actual Jason scenarios using simulated adapters, and all 9 payment tests plus lint/build. Full retained evidence and scope are in [the validation record](experiments/canonical-repair-2026-09-20/README.md). All scenario source hashes match the final runtime implementation.
+At that revision, passed: 29 Python tests, 20 Java tests, 20 actual Jason scenarios using simulated adapters, and all 9 payment tests plus lint/build. Full retained evidence and scope are in [the validation record](experiments/canonical-repair-2026-09-20/README.md). Those scenario source hashes identify that historical implementation.
+
+## Persistent artifact lifecycle correction
+
+Commit `4b01b86` and all earlier history are preserved. The follow-up separates project generation from campaign execution, adds a validated capability dictionary and deterministic whole-agent agreement checks, and rejects missing/stale/changed artifacts with explicit regeneration guidance. The scenario suite generates four configuration revisions once (payment with shortened waits, staging goals, duration constraint, reporting), then reuses them across twenty campaigns. Historical evidence remains unchanged and describes its original implementation.
+
+The current walkthrough is [BDI_MANUAL_EXECUTION_GUIDE.md](BDI_MANUAL_EXECUTION_GUIDE.md). Payment source inspection confirms selected worker entity names, environment/port mappings, OTLP-to-Prometheus metrics, and execution identity. No live deployment is claimed by this correction.
+
+Lifecycle correction validation: 36 Python tests, 20 Java tests and 20 simulated Jason scenarios, plus a healthy campaign using the persistent payment agent. See the [lifecycle validation record](experiments/persistent-project-2026-09-20/README.md) for commands, retained evidence and live-experiment limits.

@@ -1,0 +1,64 @@
+{
+  "campaign_id" : "campaign-1184c12c57994f379b44b1f6a1932593",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\bdi\\build\\lifecycle-final\\production_unhealthy\\generation-manifest.json",
+  "timestamp" : "2026-09-20T12:48:56.298162800Z",
+  "outcome" : "stopped",
+  "recovery_outcome" : "restored",
+  "project" : "payment-service",
+  "mode" : "scenario",
+  "repository" : "",
+  "release_sha" : "4db514f9692f0e9ad833c9c16be5c2fa3da730a3",
+  "known_good_sha" : "1111111111111111111111111111111111111111",
+  "telemetry" : {
+    "staging" : "allow",
+    "production" : "block",
+    "rollback" : "allow"
+  },
+  "executions" : {
+    "build" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-6e6db7db-403e-4437-82dd-c3aa2b9c8d1d",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_unhealthy/build/1"
+    },
+    "test" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-97be4eca-7a1d-45f5-a08c-ed56afe6a0b1",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_unhealthy/test/1"
+    },
+    "security" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-f0e561f7-b685-4836-9667-8216a6889784",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_unhealthy/security/1"
+    },
+    "staging" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-4265266e-ecc3-4691-9bbf-a907fa136499",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_unhealthy/staging/1"
+    },
+    "production" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-0c139a7a-961f-42d2-8a7d-56f16ae0dff1",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_unhealthy/production/1"
+    },
+    "rollback" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-0aaa14c5-9b4f-4172-a643-5921250ffa88",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_unhealthy/rollback/1"
+    }
+  },
+  "achieved_goals" : [ "staging" ],
+  "unmet_goals" : [ "production" ],
+  "verified_releases" : { }
+}

@@ -1,0 +1,39 @@
+{
+  "campaign_id" : "campaign-0d85dd271ebc4a3dbe04bcda90fd4f13",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\bdi\\build\\lifecycle-final\\second_project\\generation-manifest.json",
+  "timestamp" : "2026-09-20T12:51:16.872086200Z",
+  "outcome" : "achieved",
+  "recovery_outcome" : "not_needed",
+  "project" : "reporting-service",
+  "mode" : "scenario",
+  "repository" : "",
+  "release_sha" : "4db514f9692f0e9ad833c9c16be5c2fa3da730a3",
+  "known_good_sha" : "1111111111111111111111111111111111111111",
+  "telemetry" : { },
+  "executions" : {
+    "package" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-411128fc-6a48-4bc0-b757-59ae20679228",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/package/1"
+    },
+    "verify" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-04e55cb8-9ab2-4516-aef4-e4250fc02ff1",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/verify/1"
+    },
+    "preview" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-aeeafa37-8263-4039-a8a5-2cbd6564ca0c",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/preview/1"
+    }
+  },
+  "achieved_goals" : [ "preview" ],
+  "unmet_goals" : [ ],
+  "verified_releases" : { }
+}

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="harness.PaymentBaselineTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-20T12:44:49.533Z" hostname="DESKTOP-E9V69Q9" time="0.036">
+  <properties/>
+  <testcase name="configMapsRealWorkflowJobsAndMetricQueries()" classname="harness.PaymentBaselineTest" time="0.01"/>
+  <testcase name="gateEvidenceRequiresEveryPrerequisiteJobToSucceed()" classname="harness.PaymentBaselineTest" time="0.013"/>
+  <testcase name="missingOrNonfinitePrometheusDataFailsClosed()" classname="harness.PaymentBaselineTest" time="0.002"/>
+  <testcase name="fixtureMapsGitHubDisplayNamesToStableRoles()" classname="harness.PaymentBaselineTest" time="0.009"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

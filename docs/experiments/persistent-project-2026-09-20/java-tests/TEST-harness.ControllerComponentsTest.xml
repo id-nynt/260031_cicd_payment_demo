@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="harness.ControllerComponentsTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-09-20T12:44:48.360Z" hostname="DESKTOP-E9V69Q9" time="0.962">
+  <properties/>
+  <testcase name="scenarioExecutorSupportsRetryAndExhaustionInputs()" classname="harness.ControllerComponentsTest" time="0.02"/>
+  <testcase name="operatorCanChangeFaultsBetweenDispatches()" classname="harness.ControllerComponentsTest" time="0.026"/>
+  <testcase name="onlyRecoveryUsesPinnedKnownGoodSource()" classname="harness.ControllerComponentsTest" time="0.105"/>
+  <testcase name="githubAdapterCorrelatesDispatchWithTheExactSelectedJob()" classname="harness.ControllerComponentsTest" time="0.617"/>
+  <testcase name="secondProjectHasDifferentEntitiesWithoutRuntimeCodeChanges()" classname="harness.ControllerComponentsTest" time="0.01"/>
+  <testcase name="stillRunningRemoteJobReturnsUnknownInsteadOfTriggeringRecovery()" classname="harness.ControllerComponentsTest" time="0.129"/>
+  <testcase name="paymentExecutionMappingIsConfigurable()" classname="harness.ControllerComponentsTest" time="0.008"/>
+  <testcase name="githubAdapterRejectsACompletedRunWithoutTheSelectedJob()" classname="harness.ControllerComponentsTest" time="0.04"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[Sept 20, 2026 10:44:48 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:48.921210800Z","event":"dispatch_intent","execution_id":"b2356e99-acf9-44ad-82b5-2229fded4f32","attempt":1,"release_sha":"0123456789abcdef0123456789abcdef01234567","entity":"build","campaign_id":"campaign-test"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.101500600Z","event":"dispatch_acknowledged","execution_id":"b2356e99-acf9-44ad-82b5-2229fded4f32","github_run_id":321}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.119032600Z","event":"execution_terminal","execution_id":"b2356e99-acf9-44ad-82b5-2229fded4f32","status":"success","github_run_id":321}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.161031Z","event":"dispatch_intent","execution_id":"c05d17e5-f742-4d5f-8e55-dde85b537631","attempt":1,"release_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","entity":"production","campaign_id":"timeout-test"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.169032800Z","event":"dispatch_acknowledged","execution_id":"c05d17e5-f742-4d5f-8e55-dde85b537631","github_run_id":321}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.298547600Z","event":"dispatch_intent","execution_id":"e4f7ae40-83a8-4746-ade8-788eeb93a286","attempt":1,"release_sha":"0123456789abcdef0123456789abcdef01234567","entity":"build","campaign_id":"campaign-test"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.305547Z","event":"dispatch_acknowledged","execution_id":"e4f7ae40-83a8-4746-ade8-788eeb93a286","github_run_id":654}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.313077300Z","event":"execution_uncertain","reason":"Selected job was absent or skipped: Build entity","execution_id":"e4f7ae40-83a8-4746-ade8-788eeb93a286"}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.314075900Z","event":"execution_reconciled","execution_id":"e4f7ae40-83a8-4746-ade8-788eeb93a286","github_run_id":654}
+Sept 20, 2026 10:44:49 PM harness.StructuredEventLogger event
+INFO: {"timestamp":"2026-09-20T12:44:49.322077200Z","event":"reconciliation_unavailable","reason":"Selected job was absent or skipped: Build entity"}
+]]></system-err>
+</testsuite>

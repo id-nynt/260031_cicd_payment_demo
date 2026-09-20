@@ -1,0 +1,55 @@
+{
+  "campaign_id" : "campaign-3edafee6063842d3b4d7fcb89c29a81b",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\bdi\\build\\lifecycle-final\\execution_uncertain\\generation-manifest.json",
+  "timestamp" : "2026-09-20T12:50:40.209493600Z",
+  "outcome" : "unknown",
+  "recovery_outcome" : "unresolved",
+  "project" : "payment-service",
+  "mode" : "scenario",
+  "repository" : "",
+  "release_sha" : "4db514f9692f0e9ad833c9c16be5c2fa3da730a3",
+  "known_good_sha" : "1111111111111111111111111111111111111111",
+  "telemetry" : {
+    "staging" : "allow"
+  },
+  "executions" : {
+    "build" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-84bbc025-d89d-4c1e-a744-6e7252e7caec",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://execution_uncertain/build/1"
+    },
+    "test" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-10d2bc60-33b5-49dc-9e4c-c3e916e63d90",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://execution_uncertain/test/1"
+    },
+    "security" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-949c01cf-11ab-4d27-92c7-dbb3325100e6",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://execution_uncertain/security/1"
+    },
+    "staging" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-1cd671d9-eaca-4a12-a9fa-112a98f23cff",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://execution_uncertain/staging/1"
+    },
+    "production" : {
+      "status" : "unknown",
+      "durationMs" : 43,
+      "executionId" : "scenario-ea5c593b-2ebb-4e9c-b188-29d60dc34da5",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://execution_uncertain/production/1"
+    }
+  },
+  "achieved_goals" : [ "staging" ],
+  "unmet_goals" : [ "production" ],
+  "verified_releases" : { }
+}

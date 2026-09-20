@@ -1,3 +1,5 @@
+> Historical pre-canonical gate experiment. For current commands and verified recovery, use the [manual experiment walkthrough](BDI_MANUAL_EXECUTION_GUIDE.md). The description below records the earlier architecture.
+
 # Payment-service BDI promotion experiment
 
 This is the executable companion to `00_PLAN.md`. The current experiment demonstrates **pre-production adaptation**: the goal is to promote a healthy release, while preserving the existing production deployment if staging is unhealthy. It does not perform a post-production rollback or move real money.

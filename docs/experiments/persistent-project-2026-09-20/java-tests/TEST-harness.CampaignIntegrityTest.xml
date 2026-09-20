@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="harness.CampaignIntegrityTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-20T12:44:48.010Z" hostname="DESKTOP-E9V69Q9" time="0.342">
+  <properties/>
+  <testcase name="startupRejectsModifiedGeneratedArtifacts()" classname="harness.CampaignIntegrityTest" time="0.342"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

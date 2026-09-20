@@ -1,0 +1,69 @@
+{
+  "campaign_id" : "campaign-69c17ef4ab2b4079a165ace838999f23",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\bdi\\build\\lifecycle-persistent-payment\\generation-manifest.json",
+  "timestamp" : "2026-09-20T12:45:53.654479400Z",
+  "outcome" : "achieved",
+  "recovery_outcome" : "not_needed",
+  "project" : "payment-service",
+  "mode" : "scenario",
+  "repository" : "",
+  "release_sha" : "4b01b867f00c0b39f8bb9fcb8280bd51c5d6fe84",
+  "known_good_sha" : "1111111111111111111111111111111111111111",
+  "telemetry" : {
+    "staging" : "allow",
+    "production" : "allow"
+  },
+  "executions" : {
+    "build" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-6c68b6a5-adde-4333-86c8-886e10fea471",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/build/1"
+    },
+    "test" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-5a075464-1a1f-43b4-8921-0cc656d456fa",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/test/1"
+    },
+    "security" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-6c189fea-4a79-4fa0-8fe0-46e056c5f49b",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/security/1"
+    },
+    "staging" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-082bfcd9-2fc1-4a39-8c37-64b348653158",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/staging/1"
+    },
+    "production" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-184b7861-1e96-4922-af55-8b7e2383ddf4",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/production/1"
+    }
+  },
+  "achieved_goals" : [ "production", "staging" ],
+  "unmet_goals" : [ ],
+  "verified_releases" : {
+    "staging" : {
+      "execution_id" : "scenario-082bfcd9-2fc1-4a39-8c37-64b348653158",
+      "github_run_id" : 0,
+      "release_sha" : "4b01b867f00c0b39f8bb9fcb8280bd51c5d6fe84",
+      "environment" : "staging"
+    },
+    "production" : {
+      "execution_id" : "scenario-184b7861-1e96-4922-af55-8b7e2383ddf4",
+      "github_run_id" : 0,
+      "release_sha" : "4b01b867f00c0b39f8bb9fcb8280bd51c5d6fe84",
+      "environment" : "production"
+    }
+  }
+}

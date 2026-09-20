@@ -2,21 +2,30 @@
 
 Engineer inputs are **models/01_pipeline.yaml** and **models/02_goal.yaml**. The payment example supplies job bindings, endpoints and PromQL in the pipeline input; recovery actions have their own mapping. Goals supply achievements, safety constraints and telemetry thresholds. No separate project manifest is read by the controller.
 
-## Active path
+## Project generation and campaign execution
 
 ```text
-01_pipeline.yaml + 02_goal.yaml
-  -> parser/workflow_model.py: compile_inputs
-  -> runs/<campaign>/03_workflow_model.yaml
-  -> reload and validate -> generate_agent + generator/controller_generic.asl
-  -> runs/<campaign>/controller_agent.asl + controller.mas2j
+Explicit project generation (once per configuration revision):
+models/01_pipeline.yaml + models/02_goal.yaml
+  -> generate_project.py -> validate and save models/03_workflow_model.yaml
+  -> reload saved contract -> generate_agent + generator/controller_generic.asl
+  -> bdi/controller_agent.asl + models/generation-manifest.json
+
+Each campaign (no generation):
+run_controller.py -> validate persistent inputs/contract/agent/generator hashes
+  -> archive exact artifacts and provenance in runs/<campaign>/
   -> harness.ControllerMain -> harness.ControllerEnvironment -> Jason
-  -> run_job(entity, attempt) -> GitHubEntityExecution
-  -> entity-execution.yml -> selected job only -> correlated terminal observation
-  -> Jason chooses next job / retry / observation / recovery / stop
+  -> Java executes selected action -> entity-execution.yml runs selected entity only
+  -> correlated observation -> Jason selects next action / retry / recovery / stop
 ```
 
-`run_controller.py` is the entry point. `bdi/controller.mas2j` is a framework template copied into each campaign and loads `controller_agent` with `harness.ControllerEnvironment`. The Gradle `runController` task runs in that campaign directory. Only the saved intermediate model and generic policy are inputs to AgentSpeak generation. Java reads runtime bindings from the same intermediate model.
+`generate_project.py` is the only supported project generation entry point. Run it explicitly after changing either engineer input, the compiler, generation code or generic policy. Commit the generated contract, agent and generation manifest together with that revision. Generation reads the saved, validated workflow model as its sole project-specific input; it does not read the engineer inputs again when emitting AgentSpeak.
+
+`run_controller.py` validates existing artifacts without writing them. Missing, stale or inconsistent artifacts fail before Java starts, with a regeneration command. `--validate-only` performs the same check without creating a campaign. `--project-dir` selects a different generated project. Input options belong to generation, not campaign startup; the old `--generate-only` launch option is removed.
+
+The workflow contract includes a capability dictionary for entities, executable action domains, correlated observation fields, recovery mappings and goal rules. Validation reconstructs the contract from engineer inputs, checks the dictionary against the normalized workflow, then compares the complete agent with its deterministic contract projection and generic executable policy. Thus extra/missing entities, changed action calls, dropped observations/recovery, changed goal constraints and altered goal rules are rejected, even if someone updates the agent hash. This is consistency validation, not a signature or proof that arbitrary replacement generator code is correct.
+
+`bdi/controller.mas2j` is a framework launch template. Each campaign loads an exact archival copy of the persistent agent in an isolated MAS directory; copying does not regenerate it. Java checks the snapshot hashes immediately before launch. The Gradle `runController` task is an internal launcher used with the campaign environment, not a replacement for Python's project validation.
 
 Normal work is `build -> test -> security -> staging -> production`. Recovery is conditional and never a successful-path dependency. Jason limits retries, reobservation and reconciliation. A protected deployment goes to its configured recovery action after confirmed failure; recovery is attempted once. The worker contains no `needs` pipeline and cannot choose a successor. Build/test/security use hosted workers; deployment uses the existing self-hosted Linux `payment-deploy` runner and local Docker Compose.
 
@@ -25,7 +34,8 @@ Normal work is `build -> test -> security -> staging -> production`. Recovery is
 Requires Python 3.12 with PyYAML, JDK 21+, and the supplied Gradle wrapper. From the repository root (use `py -3 -B` instead of `python` on Windows if necessary):
 
 ```sh
-python bdi-cicd-framework/run_controller.py --generate-only
+python bdi-cicd-framework/generate_project.py
+python bdi-cicd-framework/run_controller.py --validate-only
 python bdi-cicd-framework/run_controller.py --scenario healthy
 python bdi-cicd-framework/verify_controller_experiment.py
 python -m unittest discover -s bdi-cicd-framework/parser -p 'test_*.py'
@@ -54,10 +64,12 @@ After a stopped process, `python bdi-cicd-framework/run_controller.py --reconcil
 | Location | Responsibility |
 |---|---|
 | `models/01_pipeline.yaml`, `02_goal.yaml` | Canonical engineer inputs |
+| `models/03_workflow_model.yaml`, `bdi/controller_agent.asl` | Persistent generated project contract and agent |
+| `models/generation-manifest.json` | Input, generator and artifact hashes; paths relative to project directory |
 | `parser/workflow_model.py`, `model_transform.py` | Canonical compiler plus reused syntax/model machinery |
 | `generator/controller_generic.asl` | Generic Jason control policy |
 | `bdi/controller.mas2j`, `harness/Controller*`, `GitHubEntityExecution`, telemetry adapters | Runtime source and bindings |
-| `runs/<campaign>/` | Isolated input snapshots, validated workflow, agent, MAS, hashes, journal and result |
+| `runs/<campaign>/` | Execution journal/result, MAS, provenance and exact archival snapshots of existing artifacts |
 | `bdi/fixtures/*workflow.yaml` | Generated Java test fixtures, checked against the compiler |
 | `parser/fixtures/legacy/` | Compatibility fixtures, never live inputs |
 | `examples/` | Second-application and staging-goal examples; legacy project manifests are in parser fixtures |
@@ -65,7 +77,7 @@ After a stopped process, `python bdi-cicd-framework/run_controller.py --reconcil
 | `../docs/experiments/` | Deliberately retained historical and repair validation evidence |
 | `bdi/build`, `.gradle`, `bin`, `__pycache__` | Disposable output, not evidence |
 
-Every campaign directory must be new. Provenance includes input snapshots/hashes, workflow/agent/MAS/template hashes, source file hashes and source commit; scenario receipts are explicitly labeled and rejected for live rollback. Preserve a campaign as evidence deliberately; Gradle's verification output is disposable. The old `config/` Gradle scripts are archived. Non-controller Java classes remain compatibility material, not supported launch paths. Do not invoke the old `model_transform.py` CLI for canonical input generation.
+Follow the [manual experiment walkthrough](../docs/BDI_MANUAL_EXECUTION_GUIDE.md) for actions, commands and checkpoints. Every campaign directory must be new. Provenance identifies persistent artifact paths and the generation-manifest hash, and includes input snapshots/hashes, workflow/agent/MAS/template hashes, source file hashes and source commit; scenario receipts are explicitly labeled and rejected for live rollback. Preserve a campaign as evidence deliberately; Gradle's verification output is disposable. The old `config/` Gradle scripts are archived. Non-controller Java classes remain compatibility material, not supported launch paths. Do not invoke the old `model_transform.py` CLI for canonical input generation.
 
 ## Limits
 

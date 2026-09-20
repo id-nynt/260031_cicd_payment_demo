@@ -226,6 +226,24 @@ Checkpoint: Git reports that the tag was pushed, or that it is already up to dat
 
 If Git reports `403` or `Permission denied`, the local tag still exists, but GitHub has refused the push. This is a GitHub write-access/credential issue, not a tag-name or worktree issue. Resolve that access problem, then retry **only** `git push origin v1`. Do not recreate the tag. The custom `throw 'Push failed...'` command from the earlier guide is no longer needed; read Git's original error directly.
 
+For this HTTPS authentication problem, keep the existing repository and runner. Clear token overrides in this PowerShell window, then sign in through the browser as the repository owner/collaborator with write access:
+
+```powershell
+Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
+gh auth login --hostname github.com --git-protocol https --web --scopes workflow
+```
+
+Complete the browser authorization before continuing. The GitHub CLI browser flow requests its usual repository scopes; the additional workflow scope covers publishing workflow-file changes. Then make Git use this sign-in and check access without publishing:
+
+```powershell
+gh auth setup-git --hostname github.com
+gh auth status --hostname github.com
+git push --dry-run origin v1
+```
+
+If the dry run succeeds, run `git push origin v1` to actually publish. If it still reports 403, stop and inspect the authenticated account/token authorization and repository access policy; creating another repository or reinstalling the runner does not repair this credential. Repository API metadata reporting `push: true` describes account permissions and does not prove that a restricted token permits Git writes. Step 9 sets the controller token again after authentication is repaired. See [GitHub CLI login](https://cli.github.com/manual/gh_auth_login) and [Git credential setup](https://cli.github.com/manual/gh_auth_setup-git).
+
 ### 8.3. Set the variables used by later steps
 
 ```powershell

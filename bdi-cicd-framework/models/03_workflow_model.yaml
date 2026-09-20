@@ -1,75 +1,95 @@
-schema_version: 1
+# Generated from 01_pipeline.yaml and 02_goal.yaml; do not edit.
+schema_version: 2
 workflow:
   name: Payment service release with BDI recovery
-  execution:
-    max_retries: 1
-    observation_attempts: 36
-    observation_interval_seconds: 5
-    reconciliation_attempts: 3
-    reconciliation_interval_seconds: 5
-    retry_interval_seconds: 5
-    observation_timeout_seconds: 180
-    healthy_observations: 2
-  jobs:
-    build:
-      retry_safe: true
-      job_name: Build entity
-      needs: []
-    test:
-      retry_safe: true
-      needs:
-      - build
-      job_name: Test entity
-    security:
-      retry_safe: true
-      needs:
-      - test
-      job_name: Security entity
-    staging:
-      retry_safe: true
-      needs:
-      - security
-      job_name: Staging entity
-      environment: staging
-      observe_after: true
-    production:
-      retry_safe: true
-      needs:
-      - staging
-      observe_before: staging
-      job_name: Production entity
-      environment: production
-      observe_after: true
-  recovery:
-    rollback:
-      observe_after: true
-      job_name: Rollback entity
-      environment: production
-      from: production
-      'on':
+  entities(E):
+  - build
+  - test
+  - security
+  - staging
+  - production
+  - rollback
+  dependencies(D):
+  - from: build
+    to: test
+  - from: test
+    to: security
+  - from: security
+    to: staging
+  - from: staging
+    to: production
+  observable_properties(O):
+    status:
+      values:
+      - success
       - failure
-      - telemetry_block
-      - telemetry_unknown
-      - maintenance_violation
-      release_source: known_good
-goals: &id002
-  goal:
-    achieve(A):
-    - production.status == success
-    - staging.status == success
-    maintain(M):
-    - production.duration <= 1800000
-    - production.health == healthy
-    duration_unit: milliseconds
-    avoid(V):
-    - condition: production.status == success
-      when: test.status != success
-    - condition: production.status == success
-      when: staging.status != success
-  telemetry_constraints: &id001
-    error_rate_high_gt: 0.05
-    latency_p95_ms_high_gt: 500
-runtime:
+      - transient_failure
+      - dispatch_rejected
+      - cancelled
+      - timeout
+      - skipped
+      - unknown
+    duration:
+      unit: milliseconds
+    health:
+      values:
+      - healthy
+      - unhealthy
+      - unknown
+  recovery(R):
+  - from: production
+    to: rollback
+goals:
+  achieve(A):
+  - production.status == success
+  - staging.status == success
+  maintain(M):
+  - production.duration <= 1800000
+  - production.health == healthy
+  duration_unit: milliseconds
+  avoid(V):
+  - condition: production.status == success
+    when: test.status != success
+  - condition: production.status == success
+    when: staging.status != success
+execution:
+  max_retries: 1
+  observation_attempts: 36
+  observation_interval_seconds: 5
+  reconciliation_attempts: 3
+  reconciliation_interval_seconds: 5
+  retry_interval_seconds: 5
+  observation_timeout_seconds: 180
+  healthy_observations: 2
+  retry_safe:
+  - build
+  - test
+  - security
+  - staging
+  - production
+observation_schema:
+  attempt_id_required: true
+  duration_required_for:
+  - production
+  before:
+    production: staging
+  after:
+  - staging
+  - production
+  - rollback
+recovery_policy:
+  rollback:
+    run_after:
+    - failure
+    - telemetry_block
+    - telemetry_unknown
+    - maintenance_violation
+    release_source: known_good
+    retryable: false
+    verify_health: true
+    terminal_on_success: restored
+    terminal_on_failure: failed
+bindings:
   project: payment-service
   controller:
     workflow_file: entity-execution.yml
@@ -84,15 +104,6 @@ runtime:
       staging: staging
       production: production
       rollback: production
-    release_sources:
-      rollback: known_good
-    observation_attempts: 36
-    observation_interval_seconds: 5
-    reconciliation_attempts: 3
-    reconciliation_interval_seconds: 5
-    retry_interval_seconds: 5
-    observation_timeout_seconds: 180
-    healthy_observations: 2
   environments:
     staging:
       ready_url: http://127.0.0.1:3001/ready
@@ -108,91 +119,6 @@ runtime:
     availability_query: min(payment_service_ready{ci_run_id="{{run_id}}"})
     sample_age_seconds_query: time() - max(timestamp(payment_service_ready{ci_run_id="{{run_id}}"}))
   max_age_seconds: 30
-  thresholds: *id001
-capabilities:
-  entities:
-  - build
-  - test
-  - security
-  - staging
-  - production
-  - rollback
-  actions:
-    run_job:
-    - build
-    - test
-    - security
-    - staging
-    - production
-    - rollback
-    observe_telemetry:
-    - production
-    - rollback
-    - staging
-    record_decision:
-    - build
-    - test
-    - security
-    - staging
-    - production
-    - rollback
-    reconcile_job:
-    - build
-    - test
-    - security
-    - staging
-    - production
-    - rollback
-    accept_telemetry:
-    - production
-    - rollback
-    - staging
-    record_recovery:
-    - - production
-      - rollback
-    finish:
-    - achieved
-    - stopped
-    - unknown
-  observations:
-    status:
-    - entity
-    - attempt
-    - status
-    duration:
-    - entity
-    - attempt
-    - duration
-    reconciled:
-    - entity
-    - attempt
-    - round
-    - status
-    telemetry_measurement:
-    - entity
-    - attempt
-    - round
-    - data_status
-    - readiness
-    - error_rate
-    - latency_p95_ms
-    - availability
-    - elapsed_ms
-  execution_statuses:
-  - success
-  - failure
-  - transient_failure
-  - dispatch_rejected
-  - cancelled
-  - timeout
-  - skipped
-  - unknown
-  retry_safe:
-  - build
-  - test
-  - security
-  - staging
-  - production
-  recovery:
-    production: rollback
-  goal_rules: *id002
+  thresholds:
+    error_rate_high_gt: 0.05
+    latency_p95_ms_high_gt: 500

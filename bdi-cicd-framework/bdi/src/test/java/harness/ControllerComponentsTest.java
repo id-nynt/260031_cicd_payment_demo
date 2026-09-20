@@ -13,6 +13,12 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ControllerComponentsTest {
+    @Test void oldCanonicalSchemaRequiresRegeneration() {
+        var error = assertThrows(java.io.IOException.class,
+            () -> WorkflowRuntime.unwrap(java.util.Map.of("schema_version", 1)));
+        assertTrue(error.getMessage().contains("regenerate"));
+    }
+
     @Test
     void onlyRecoveryUsesPinnedKnownGoodSource() throws Exception {
         var config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));

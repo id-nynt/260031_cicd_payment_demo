@@ -25,7 +25,7 @@ public record ProjectConfig(String project, Map<String, String> jobs,
             parsed = new Yaml().load(input);
         }
         boolean canonical = parsed instanceof Map<?, ?> document && document.containsKey("schema_version");
-        if (canonical) parsed = ((Map<?, ?>) parsed).get("runtime");
+        if (canonical) parsed = WorkflowRuntime.unwrap(parsed);
         if (!(parsed instanceof Map<?, ?> root)) throw new IOException("Project config must be a YAML mapping");
         String name = requiredString(root, "project");
         Map<String, String> jobs = canonical ? Map.of() : strings(root.get("jobs"), "jobs");

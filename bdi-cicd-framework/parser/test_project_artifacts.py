@@ -114,13 +114,13 @@ class ProjectArtifactsTest(unittest.TestCase):
 
     def test_forged_hash_cannot_bless_changed_contract_or_input_projection(self):
         original = self.workflow.read_bytes()
-        for field in ['capabilities', 'goals']:
+        for field in ['workflow', 'goals']:
             self.workflow.write_bytes(original)
             document = yaml.safe_load(self.workflow.read_text())
-            if field == 'capabilities':
-                document[field]['actions']['run_job'].append('unmapped')
+            if field == 'workflow':
+                document[field]['entities(E)'].append('unmapped')
             else:
-                document[field]['goal']['maintain(M)'] = ['production.health == healthy']
+                document[field]['maintain(M)'] = ['production.health == healthy']
             self.workflow.write_text(yaml.safe_dump(document, sort_keys=False), encoding='utf-8')
             record = json.loads(self.manifest.read_text())
             record['workflow_sha256'] = artifacts.digest(self.workflow)

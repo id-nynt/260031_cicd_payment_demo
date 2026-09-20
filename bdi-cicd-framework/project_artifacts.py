@@ -30,7 +30,7 @@ def generate(project, pipeline, goal):
     document, _ = compile_inputs(pipeline, goal)
     workflow.parent.mkdir(parents=True, exist_ok=True)
     agent.parent.mkdir(parents=True, exist_ok=True)
-    workflow.write_text(yaml.safe_dump(document, sort_keys=False), encoding='utf-8', newline='\n')
+    workflow.write_text('# Generated from 01_pipeline.yaml and 02_goal.yaml; do not edit.\n' + yaml.safe_dump(document, sort_keys=False), encoding='utf-8', newline='\n')
     generate_agent(workflow, ROOT / 'generator/controller_generic.asl', agent)
     record = {'schema_version': 1,
               'inputs': {name: {'path': os.path.relpath(Path(path).resolve(), project).replace('\\', '/'),

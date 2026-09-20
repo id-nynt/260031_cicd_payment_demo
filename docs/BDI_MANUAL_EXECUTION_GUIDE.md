@@ -151,6 +151,8 @@ py -3 -B bdi-cicd-framework/run_controller.py --validate-only
 
 **Expected result:** generation lists the saved workflow model, agent and manifest; validation prints `Project artifacts are consistent`. The generated `bdi/controller_agent.asl` contains `achievement(staging, success)` and `achievement(production, success)`.
 
+Open `models/03_workflow_model.yaml`: schema 2 starts with entities (E), dependencies (D), observations (O), recovery (R) and goals. Execution policies follow; GitHub and telemetry details appear once under `bindings`. Read this to explain the agent, but edit inputs 01/02 to customize it. Attempt correlation and verified recovery stay enabled.
+
 The persistent outputs are `models/03_workflow_model.yaml`, `bdi/controller_agent.asl` and `models/generation-manifest.json`. Campaigns reuse them. App-only changes and fault selections need no regeneration. If you customize inputs, review and commit them together with the generated outputs before publication.
 
 ### A5. Publish the repaired worker

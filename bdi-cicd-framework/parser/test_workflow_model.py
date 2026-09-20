@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import yaml
-from workflow_model import ModelError, compile_documents, compile_inputs, generate_agent, load_workflow, read
+from workflow_model import ModelError, compile_documents, compile_inputs, generate_agent, load_workflow, read, expand_workflow
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -15,8 +15,8 @@ class CanonicalModelTest(unittest.TestCase):
     def test_normal_chain_and_separate_recovery(self):
         doc, model = compile_documents(self.pipeline,self.goals)
         self.assertEqual(model.dependencies,(('build','test'),('test','security'),('security','staging'),('staging','production')))
-        self.assertNotIn('rollback',doc['workflow']['jobs'])
-        self.assertIn('rollback',doc['workflow']['recovery'])
+        self.assertIn('rollback',doc['workflow']['entities(E)'])
+        self.assertIn({'from': 'production', 'to': 'rollback'},doc['workflow']['recovery(R)'])
         self.assertIn('production', [m.entity for m in model.maintenance if m.property=='health'])
 
     def test_serialized_model_alone_generates_identical_agent(self):
@@ -35,7 +35,7 @@ class CanonicalModelTest(unittest.TestCase):
 
     def test_corrupted_runtime_binding_is_rejected(self):
         doc,_=compile_documents(self.pipeline,self.goals)
-        doc['runtime']['controller']['jobs']['build']='Different job'
+        doc['bindings']['controller']['jobs']['unmapped']='Different job'
         with tempfile.TemporaryDirectory() as directory:
             p=Path(directory)/'model.yaml';p.write_text(yaml.safe_dump(doc,sort_keys=False),encoding='utf-8')
             with self.assertRaises(ModelError):load_workflow(p)
@@ -60,10 +60,10 @@ class CanonicalModelTest(unittest.TestCase):
     def test_retry_safety_is_explicit_and_contract_preserves_budgets(self):
         self.pipeline['jobs']['production'].pop('retry_safe')
         doc,_=compile_documents(self.pipeline,self.goals)
-        self.assertNotIn('production',doc['capabilities']['retry_safe'])
-        self.assertIn('test',doc['capabilities']['retry_safe'])
-        self.assertEqual(2,doc['workflow']['execution']['healthy_observations'])
-        self.assertIn('elapsed_ms',doc['capabilities']['observations']['telemetry_measurement'])
+        self.assertNotIn('production',doc['execution']['retry_safe'])
+        self.assertIn('test',doc['execution']['retry_safe'])
+        self.assertEqual(2,doc['execution']['healthy_observations'])
+        self.assertIn('elapsed_ms',expand_workflow(doc)[0]['capabilities']['observations']['telemetry_measurement'])
 
     def test_health_requirement_cannot_be_silently_dropped(self):
         g=copy.deepcopy(self.goals);g['goal']['maintain(M)']=['production.duration <= 100000']
@@ -73,8 +73,8 @@ class CanonicalModelTest(unittest.TestCase):
     def test_second_project_needs_no_legacy_gate_fields(self):
         doc,model=compile_inputs(ROOT/'examples/reporting_pipeline.yaml',ROOT/'examples/reporting_goal.yaml')
         self.assertEqual(model.required_entities,('package','verify','preview'))
-        self.assertNotIn('promotion_gate',doc['runtime'])
-        self.assertNotIn('github_job_names',doc['runtime'])
+        self.assertNotIn('promotion_gate',doc['bindings'])
+        self.assertNotIn('github_job_names',doc['bindings'])
 
     def test_invalid_or_duplicate_goal_constraints_are_rejected(self):
         for field,value in [('maintain(M)',None),('maintain(M)',['production.duration <= 1','production.duration <= 100000']),('achieve(A)',['production.status == success']*2)]:
@@ -98,5 +98,34 @@ class CanonicalModelTest(unittest.TestCase):
             generate_agent(workflow, ROOT/'generator/controller_generic.asl', agent)
             self.assertEqual(load_workflow(workflow)[1], model)
             self.assertIn('achievement(staging, failure).', agent.read_text())
+
+    def test_compact_contract_rejects_weakened_or_inconsistent_fields(self):
+        document, _ = compile_documents(self.pipeline, self.goals)
+        mutations = [
+            lambda d: d['observation_schema'].update(attempt_id_required=False),
+            lambda d: d['observation_schema'].update(attempt_id_required=1),
+            lambda d: d['workflow']['observable_properties(O)']['status']['values'].remove('unknown'),
+            lambda d: d['workflow']['dependencies(D)'].append({'from': 'missing', 'to': 'test'}),
+            lambda d: d['recovery_policy']['rollback'].update(verify_health=False),
+            lambda d: d['recovery_policy']['rollback'].update(retryable=True),
+            lambda d: d['recovery_policy']['rollback'].update(terminal_on_success='achieved'),
+            lambda d: d['observation_schema']['after'].remove('rollback'),
+            lambda d: d.update(schema_version=1),
+        ]
+        for mutate in mutations:
+            doc = copy.deepcopy(document)
+            mutate(doc)
+            with self.subTest(doc=doc), self.assertRaises(ModelError):
+                expand_workflow(doc)
+
+    def test_compact_contract_has_single_goals_and_binding_sections(self):
+        doc, _ = compile_documents(self.pipeline, self.goals)
+        self.assertNotIn('capabilities', doc)
+        self.assertNotIn('runtime', doc)
+        self.assertNotIn('jobs', doc['workflow'])
+        self.assertEqual(self.goals['goal'], doc['goals'])
+        self.assertNotIn('observation_attempts', doc['bindings']['controller'])
+        self.assertEqual(self.pipeline['execution']['observation_attempts'],
+                         expand_workflow(doc)[0]['runtime']['controller']['observation_attempts'])
 
 if __name__=='__main__': unittest.main()

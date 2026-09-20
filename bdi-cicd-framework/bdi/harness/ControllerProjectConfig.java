@@ -18,7 +18,7 @@ public record ControllerProjectConfig(String project, String workflowFile,
     public static ControllerProjectConfig load(Path path) throws IOException {
         Object parsed;
         try (var input = Files.newInputStream(path)) { parsed = new Yaml().load(input); }
-        if (parsed instanceof Map<?, ?> document && document.containsKey("schema_version")) parsed = document.get("runtime");
+        parsed = WorkflowRuntime.unwrap(parsed);
         if (!(parsed instanceof Map<?, ?> root) || !(root.get("controller") instanceof Map<?, ?> controller)) {
             throw new IOException("Project manifest requires a controller mapping");
         }

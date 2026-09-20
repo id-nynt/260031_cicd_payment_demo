@@ -7,15 +7,64 @@ Use the [manual experiment](BDI_MANUAL_EXECUTION_GUIDE.md) for the eight human s
 | Stage | Inputs / component | Output and responsibility |
 |---|---|---|
 | 1. Engineer configuration | [01_pipeline.yaml](../bdi-cicd-framework/models/01_pipeline.yaml), [02_goal.yaml](../bdi-cicd-framework/models/02_goal.yaml) | Entities, bindings, capabilities, dependencies, budgets and goals |
-| 2. Contract compilation | [generate_project.py](../bdi-cicd-framework/generate_project.py) Ã¢â€ â€™ [workflow_model.compile_inputs](../bdi-cicd-framework/parser/workflow_model.py) | Saved, validated [03_workflow_model.yaml](../bdi-cicd-framework/models/03_workflow_model.yaml) |
+| 2. Contract compilation | [generate_project.py](../bdi-cicd-framework/generate_project.py) ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ [workflow_model.compile_inputs](../bdi-cicd-framework/parser/workflow_model.py) | Saved, validated [03_workflow_model.yaml](../bdi-cicd-framework/models/03_workflow_model.yaml) |
 | 3. Agent generation | Saved contract + [controller_generic.asl](../bdi-cicd-framework/generator/controller_generic.asl), through `generate_agent` | Persistent [controller_agent.asl](../bdi-cicd-framework/bdi/controller_agent.asl), plus generation manifest |
-| 4. Campaign launch | [run_controller.py](../bdi-cicd-framework/run_controller.py) Ã¢â€ â€™ [ControllerMain.java](../bdi-cicd-framework/bdi/harness/ControllerMain.java) | Validate consistency, archive exact artifacts/provenance, acquire repository lock, load Jason |
+| 4. Campaign launch | [run_controller.py](../bdi-cicd-framework/run_controller.py) ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ [ControllerMain.java](../bdi-cicd-framework/bdi/harness/ControllerMain.java) | Validate consistency, archive exact artifacts/provenance, acquire repository lock, load Jason |
 | 5. Agent environment | [controller.mas2j](../bdi-cicd-framework/bdi/controller.mas2j) binds `controller_agent` to [ControllerEnvironment.java](../bdi-cicd-framework/bdi/harness/ControllerEnvironment.java) | Execute selected actions and publish correlated observations |
-| 6. External execution | [GitHubEntityExecution.java](../bdi-cicd-framework/bdi/harness/GitHubEntityExecution.java) Ã¢â€ â€™ [entity-execution.yml](../.github/workflows/entity-execution.yml) | Execute only the entity selected by Jason |
+| 6. External execution | [GitHubEntityExecution.java](../bdi-cicd-framework/bdi/harness/GitHubEntityExecution.java) ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ [entity-execution.yml](../.github/workflows/entity-execution.yml) | Execute only the entity selected by Jason |
 
 Generate once per input/generator revision. App commits, campaign IDs and fault-file contents do not regenerate the agent. Runtime rejects missing, stale or inconsistent persistent artifacts. Campaign directories contain execution evidence and archival copies, not campaign-specific generated agents. Agent generation reads the saved contract as its **sole project-specific input**; the generic template is framework policy.
 
 The compiler validates exact entity/action/observation/recovery/goal agreement. Runtime reconstructs the contract from engineer inputs, verifies hashes and checks the complete deterministic agent projection. This catches altered rules as well as missing facts; updating a hash alone cannot bless an inconsistent agent.
+
+## Read the simplified workflow model (schema 2)
+
+`03_workflow_model.yaml` is now the readable, authoritative project contract. It starts with the BDI definition; execution bindings appear once at the end. It is generated, not another input for engineers to maintain.
+
+| Section | Meaning and source |
+|---|---|
+| `workflow.entities(E)` | Normal and recovery entity names from input 01 |
+| `workflow.dependencies(D)` | Ordered prerequisite edges from input 01 `needs` |
+| `workflow.observable_properties(O)` | Framework-supported execution statuses, duration unit and health values |
+| `workflow.recovery(R)` | Source-to-recovery mapping from input 01 |
+| `goals` | Input 02 achievements, maintenance and avoidance rules, including failure goals |
+| `execution` | Retry safety, maximum retries, health observation and reconciliation limits |
+| `observation_schema` | Required attempt correlation, duration targets, and observation points before/after jobs |
+| `recovery_policy` | Triggers, verified known-good source, no recovery retry, health verification, restored/failed result |
+| `bindings` | Project name, GitHub worker/job names, environments, endpoints, metric queries and thresholds |
+
+For example, the main definition reads like this (excerpt):
+
+```yaml
+workflow:
+  name: Payment service release with BDI recovery
+  entities(E): [build, test, security, staging, production, rollback]
+  dependencies(D):
+    - from: build
+      to: test
+    - from: test
+      to: security
+    - from: security
+      to: staging
+    - from: staging
+      to: production
+  recovery(R):
+    - from: production
+      to: rollback
+goals:
+  achieve(A):
+    - production.status == success
+    - staging.status == success
+```
+
+The full generated file includes O and the policies/bindings described above. There are no repeated goal blocks, repeated job definitions, YAML aliases or serialized lists of every framework action. The compiler derives the internal capability dictionary from this saved contract plus predefined action/observation signatures. It validates the complete generated agent against those derived capabilities and the policy template. The agent generator still reads no project-specific file other than saved 03.
+
+`attempt_id_required` stays true: an old execution cannot satisfy a newer attempt. Execution status includes `unknown` and `dispatch_rejected` as well as normal GitHub conclusions, because those outcomes require different agent decisions. The logical entity remains `rollback` to match the existing worker. `terminal_on_success: restored` is a recovery outcome, not candidate achievement; campaign outcome remains stopped after restoration.
+
+Python `expand_workflow` validates the compact contract and derives internal settings. Java `WorkflowRuntime` translates its bindings/policy for `ControllerProjectConfig` and `ProjectConfig`; it does not choose the next job. The payment agent generated before and after this migration is identical. GitHub workflow and app behavior do not change.
+
+After a schema/generator update, explicitly regenerate each persistent project with its original inputs. Runtime rejects stale artifacts or schema 1 and never silently migrates them. Historical campaign snapshots remain unchanged; their JSON receipts remain usable as evidence and compatible known-good receipts. This worktree's default artifacts and both Java test fixtures have already been regenerated. For custom projects, use their `--project-dir`, `--pipeline` and `--goal` arguments as before.
+
 
 ## What comes from where?
 
@@ -118,6 +167,6 @@ Only the exact observed execution status `failure` satisfies a failure goal. `di
 
 Java receives both entity and desired status, records `requested_goals`, `achieved_goals`, `unmet_goals` and `goal_message`, and retains attempt-correlated real GitHub execution evidence. A failure-goal campaign has `negative_goal_experiment: true` and emits no `verified_releases`, even when its experiment goals are achieved. Use a normal success-goal campaign to establish a known-good deployment. Failed goal pursuit prints **Attempted but failed to achieve goals.**; unresolved execution remains `unknown`, while a confirmed unmet outcome is `stopped`.
 
-A failure goal does not remove separately declared maintenance goals. For a staging-only failure experiment, use the provided `examples/staging_failure_goal.yaml`; retaining production success/health goals would also require production and can make the combined goals unreachable. The generated contract remains the full validated execution contract; this change does not replace its schema with a summary view.
+A failure goal does not remove separately declared maintenance goals. For a staging-only failure experiment, use the provided `examples/staging_failure_goal.yaml`; retaining production success/health goals would also require production and can make the combined goals unreachable. The simplified schema 2 contract preserves these semantics and is the executable contract, not a separate summary.
 
 For an explicitly requested production failure, matching the goal ends the experiment without automatic rollback. The worker can fail after changing production; use the manual restoration phase afterward. Ordinary production-success campaigns retain their existing verified recovery policy.

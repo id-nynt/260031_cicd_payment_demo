@@ -1,40 +1,58 @@
-schema_version: 1
+schema_version: 2
 workflow:
   name: Reporting service
-  execution:
-    max_retries: 1
-    observation_attempts: 3
-    observation_interval_seconds: 0
-    reconciliation_attempts: 2
-    reconciliation_interval_seconds: 0
-    retry_interval_seconds: 5
-    observation_timeout_seconds: 180
-    healthy_observations: 2
-  jobs:
-    package:
-      job_name: Package report
-      retry_safe: false
-      needs: []
-    verify:
-      needs:
-      - package
-      job_name: Verify report
-      retry_safe: false
-    preview:
-      needs:
-      - verify
-      job_name: Deploy preview
-      retry_safe: false
-  recovery: {}
-goals: &id001
-  goal:
-    achieve(A):
-    - preview.status == success
-    avoid(V):
-    - condition: preview.status == success
-      when: verify.status != success
-    duration_unit: milliseconds
-runtime:
+  entities(E):
+  - package
+  - verify
+  - preview
+  dependencies(D):
+  - from: package
+    to: verify
+  - from: verify
+    to: preview
+  observable_properties(O):
+    status:
+      values:
+      - success
+      - failure
+      - transient_failure
+      - dispatch_rejected
+      - cancelled
+      - timeout
+      - skipped
+      - unknown
+    duration:
+      unit: milliseconds
+    health:
+      values:
+      - healthy
+      - unhealthy
+      - unknown
+  recovery(R): []
+goals:
+  achieve(A):
+  - preview.status == success
+  avoid(V):
+  - condition: preview.status == success
+    when: verify.status != success
+  duration_unit: milliseconds
+execution:
+  max_retries: 1
+  observation_attempts: 3
+  observation_interval_seconds: 0
+  reconciliation_attempts: 2
+  reconciliation_interval_seconds: 0
+  retry_interval_seconds: 5
+  observation_timeout_seconds: 180
+  healthy_observations: 2
+  retry_safe: []
+observation_schema:
+  attempt_id_required: true
+  duration_required_for: []
+  before: {}
+  after: []
+recovery_policy: {}
+bindings:
   project: reporting-service
   controller:
     workflow_file: reporting-entity.yml
@@ -43,72 +61,3 @@ runtime:
       verify: Verify report
       preview: Deploy preview
     environments: {}
-    release_sources: {}
-    observation_attempts: 3
-    observation_interval_seconds: 0
-    reconciliation_attempts: 2
-    reconciliation_interval_seconds: 0
-    retry_interval_seconds: 5
-    observation_timeout_seconds: 180
-    healthy_observations: 2
-capabilities:
-  entities:
-  - package
-  - verify
-  - preview
-  actions:
-    run_job:
-    - package
-    - verify
-    - preview
-    observe_telemetry: []
-    record_decision:
-    - package
-    - verify
-    - preview
-    reconcile_job:
-    - package
-    - verify
-    - preview
-    accept_telemetry: []
-    record_recovery: []
-    finish:
-    - achieved
-    - stopped
-    - unknown
-  observations:
-    status:
-    - entity
-    - attempt
-    - status
-    duration:
-    - entity
-    - attempt
-    - duration
-    reconciled:
-    - entity
-    - attempt
-    - round
-    - status
-    telemetry_measurement:
-    - entity
-    - attempt
-    - round
-    - data_status
-    - readiness
-    - error_rate
-    - latency_p95_ms
-    - availability
-    - elapsed_ms
-  execution_statuses:
-  - success
-  - failure
-  - transient_failure
-  - dispatch_rejected
-  - cancelled
-  - timeout
-  - skipped
-  - unknown
-  retry_safe: []
-  recovery: {}
-  goal_rules: *id001

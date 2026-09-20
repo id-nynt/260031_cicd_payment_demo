@@ -9,13 +9,13 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from run_controller import ModelError, known_good_sha, validate_live_environment
-from workflow_model import compile_inputs
+from workflow_model import compile_inputs, runtime_settings
 
 
 class ControllerInputsTest(unittest.TestCase):
     def setUp(self):
         document, self.model = compile_inputs(ROOT / "models/01_pipeline.yaml", ROOT / "models/02_goal.yaml")
-        self.project = document["runtime"]
+        self.project = runtime_settings(document)
         self.sha = "a" * 40
         self.receipt = {"mode": "github", "outcome": "achieved", "project": "payment-service",
                         "repository": "example/demo", "release_sha": self.sha,

@@ -56,7 +56,7 @@ def atom(value):
     return value
 
 
-def compile_documents(pipeline, goals):
+def _compile_expanded(pipeline, goals):
     p, g = deepcopy(pipeline), deepcopy(goals)
     keys(p, {'name','project','workflow_file','execution','jobs','recovery','telemetry'},
          {'name','project','workflow_file','execution','jobs'})
@@ -174,30 +174,117 @@ def compile_documents(pipeline, goals):
     return document,model
 
 
+def compact_workflow(expanded, model):
+    w, r = expanded['workflow'], deepcopy(expanded['runtime'])
+    policy = w['execution']
+    controller = r['controller']
+    for key in policy:
+        controller.pop(key, None)
+    controller.pop('release_sources', None)
+    return {
+        'schema_version': 2,
+        'workflow': {
+            'name': model.name,
+            'entities(E)': list(model.entities),
+            'dependencies(D)': [{'from': source, 'to': target} for source, target in model.dependencies],
+            'observable_properties(O)': {
+                'status': {'values': expanded['capabilities']['execution_statuses']},
+                'duration': {'unit': model.duration_unit},
+                'health': {'values': ['healthy', 'unhealthy', 'unknown']}},
+            'recovery(R)': [{'from': source, 'to': target} for source, target in model.recovery]},
+        'goals': deepcopy(expanded['goals']['goal']),
+        'execution': {**policy, 'retry_safe': expanded['capabilities']['retry_safe']},
+        'observation_schema': {
+            'attempt_id_required': True,
+            'duration_required_for': [m.entity for m in model.maintenance if m.property == 'duration'],
+            'before': {target: source for target, source in model.observations},
+            'after': list(model.observe_after)},
+        'recovery_policy': {
+            name: {'run_after': item['on'], 'release_source': item['release_source'],
+                   'retryable': False, 'verify_health': True,
+                   'terminal_on_success': 'restored', 'terminal_on_failure': 'failed'}
+            for name, item in w['recovery'].items()},
+        'bindings': r,
+    }
+
+
+def compile_documents(pipeline, goals):
+    expanded, model = _compile_expanded(pipeline, goals)
+    return compact_workflow(expanded, model), model
+
+
 def compile_inputs(pipeline, goals):
-    return compile_documents(read(pipeline),read(goals))
+    return compile_documents(read(pipeline), read(goals))
+
+
+def expand_workflow(doc):
+    if type(doc.get('schema_version')) is not int or doc['schema_version'] != 2:
+        raise ModelError('Unsupported workflow schema; explicitly regenerate project artifacts for schema 2')
+    fields = {'schema_version','workflow','goals','execution','observation_schema','recovery_policy','bindings'}
+    keys(doc, fields, fields)
+    w, r, observation = doc['workflow'], doc['bindings'], doc['observation_schema']
+    fields = {'name','entities(E)','dependencies(D)','observable_properties(O)','recovery(R)'}
+    keys(w, fields, fields)
+    try:
+        if observation.get('attempt_id_required') is not True:
+            raise ModelError('Observation attempt correlation is required')
+        for rp in doc['recovery_policy'].values():
+            if rp.get('retryable') is not False or rp.get('verify_health') is not True:
+                raise ModelError('Recovery requires no retry and verified health')
+        entities = w['entities(E)']
+        if not isinstance(entities, list) or len(set(entities)) != len(entities):
+            raise ModelError('Entities must be a unique list')
+        controller = r['controller']
+        if set(controller['jobs']) != set(entities):
+            raise ModelError('Entity bindings disagree with workflow entities')
+        recovery = {edge['to']: edge['from'] for edge in w['recovery(R)']}
+        policy = deepcopy(doc['execution'])
+        retry_safe = policy.pop('retry_safe')
+        jobs, recoveries = {}, {}
+        for entity in entities:
+            binding = {'job_name': controller['jobs'][entity]}
+            if entity in controller['environments']:
+                binding['environment'] = controller['environments'][entity]
+            if entity in recovery:
+                rp = doc['recovery_policy'][entity]
+                recoveries[entity] = {**binding, 'from': recovery[entity], 'on': rp['run_after'],
+                                      'release_source': rp['release_source'],
+                                      'observe_after': entity in observation['after']}
+            else:
+                jobs[entity] = {**binding, 'needs': [e['from'] for e in w['dependencies(D)'] if e['to'] == entity],
+                                'retry_safe': entity in retry_safe}
+                if entity in observation['before']: jobs[entity]['observe_before'] = observation['before'][entity]
+                if entity in observation['after']: jobs[entity]['observe_after'] = True
+        pipeline = {'name': w['name'], 'project': r['project'], 'workflow_file': controller['workflow_file'],
+                    'execution': policy, 'jobs': jobs, 'recovery': recoveries}
+        goals = {'goal': doc['goals']}
+        if 'metrics' in r:
+            pipeline['telemetry'] = {k: r[k] for k in ('environments','metrics','max_age_seconds')}
+            goals['telemetry_constraints'] = r['thresholds']
+        expanded, model = _compile_expanded(pipeline, goals)
+        # Reconstruct the entire canonical contract: rejects dropped correlation, altered
+        # observation domains, unknown edges/actions, and weakened recovery verification.
+        if compact_workflow(expanded, model) != doc:
+            raise ModelError('Workflow fields disagree with the normalized contract')
+        return expanded, model
+    except (KeyError, TypeError, AttributeError) as error:
+        raise ModelError('Incomplete workflow model or invalid bindings') from error
+
+
+def runtime_settings(doc):
+    return expand_workflow(doc)[0]['runtime']
 
 
 def load_workflow(path):
-    doc=read(path)
-    keys(doc,{'schema_version','workflow','goals','runtime','capabilities'}, {'schema_version','workflow','goals','runtime','capabilities'})
-    if type(doc['schema_version']) is not int or doc['schema_version']!=1: raise ModelError("Unsupported workflow schema")
-    w,r=doc['workflow'],doc['runtime']
-    keys(w,{'name','execution','jobs','recovery'},{'name','execution','jobs','recovery'})
-    if not isinstance(r,dict) or not isinstance(r.get('controller'),dict): raise ModelError("Invalid runtime binding")
-    try:
-        pipeline={**w,'project':r['project'],'workflow_file':r['controller']['workflow_file']}
-        if 'metrics' in r: pipeline['telemetry']={k:r[k] for k in ('environments','metrics','max_age_seconds')}
-        expected,model=compile_documents(pipeline,doc['goals'])
-    except (KeyError,TypeError) as error:
-        raise ModelError("Incomplete workflow model") from error
-    if expected!=doc: raise ModelError("Workflow runtime bindings disagree with the normalized model")
-    return doc,model
+    doc = read(path)
+    _, model = expand_workflow(doc)
+    return doc, model
 
 
 def render_agent(workflow, template):
     doc,model=load_workflow(workflow)
-    policy=doc['workflow']['execution']
+    expanded, _ = expand_workflow(doc)
+    policy=expanded['workflow']['execution']
     facts=project_beliefs(model).replace('// Generated from 03_workflow_model.yaml; do not edit.',
                                         '// Generated solely from the validated workflow model; do not edit.')
     for key in ('observation_attempts','observation_interval_seconds','reconciliation_attempts','reconciliation_interval_seconds'):
@@ -208,11 +295,11 @@ def render_agent(workflow, template):
     facts+=f"retry_interval({policy['retry_interval_seconds']*1000}).\n"
     facts+=f"observation_timeout({policy['observation_timeout_seconds']*1000}).\n"
     facts+=f"healthy_observations({policy['healthy_observations']}).\n"
-    for name in doc['capabilities']['retry_safe']: facts+=f'retry_safe({name}).\n'
-    for name in doc['capabilities']['actions']['observe_telemetry']: facts+=f'healthy_count({name}, 0).\n'
-    if 'thresholds' in doc['runtime']:
-        facts+=f"error_rate_limit({doc['runtime']['thresholds']['error_rate_high_gt']}).\n"
-        facts+=f"latency_limit({doc['runtime']['thresholds']['latency_p95_ms_high_gt']}).\n"
+    for name in expanded['capabilities']['retry_safe']: facts+=f'retry_safe({name}).\n'
+    for name in expanded['capabilities']['actions']['observe_telemetry']: facts+=f'healthy_count({name}, 0).\n'
+    if 'thresholds' in expanded['runtime']:
+        facts+=f"error_rate_limit({expanded['runtime']['thresholds']['error_rate_high_gt']}).\n"
+        facts+=f"latency_limit({expanded['runtime']['thresholds']['latency_p95_ms_high_gt']}).\n"
     return facts+'\n'+Path(template).read_text(encoding='utf-8'), doc, model
 
 

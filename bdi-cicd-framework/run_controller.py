@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "parser"))
 from model_transform import ModelError  # noqa: E402
 from project_artifacts import validate, paths  # noqa: E402
 import shutil
+from workflow_model import runtime_settings
 
 
 def load_mapping(path: Path) -> dict:
@@ -87,7 +88,7 @@ def main() -> int:
     if args.reconcile_only and (args.scenario or args.known_good or args.baseline):
         raise ModelError("--reconcile-only cannot be combined with scenario or release options")
     document, model, generation, inputs = validate(args.project_dir)
-    project = document["runtime"]
+    project = runtime_settings(document)
     if args.validate_only:
         print(f"Project artifacts are consistent: {args.project_dir.resolve()}")
         return 0

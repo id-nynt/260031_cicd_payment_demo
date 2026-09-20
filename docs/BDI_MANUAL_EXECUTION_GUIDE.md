@@ -329,20 +329,98 @@ Check each command before continuing. Stage only the intended UI change, not unr
 
 ### B4. Start the BDI agent for v2
 
-Read B5 and arrange observation windows before launching. First run the healthy case below; B6 has separate fault-case commands.
+Run this whole phase in **one Controller PowerShell window**, even if you previously completed A6. A new window does not retain `$knownGood`, `$v2Sha`, `$candidateDir` or environment variables. GitHub CLI's stored login survives, so you normally do not need to sign in again.
+
+Close any finished MAS Console. Keep Docker, the runner and v1 running. Read B5 and arrange your observation windows. This phase starts a **healthy** campaign; use B6's launch commands for faults, because the cleanup below removes fault settings.
+
+**1. Clear old settings in this window.**
 
 ```powershell
-$env:BDI_RELEASE_SHA = $v2Sha
-Remove-Item Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
-$candidateDir = 'bdi-cicd-framework/runs/' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '-v2-healthy'
-$candidateDir
-py -3 -B bdi-cicd-framework/run_controller.py --validate-only
-py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good $knownGood --confirm-compatible-rollback --artifacts-dir $candidateDir
+Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
+Remove-Item Env:GH_TOKEN,Env:GITHUB_TOKEN,Env:GITHUB_API_URL -ErrorAction SilentlyContinue
+Remove-Item Env:BDI_EXECUTION_PLAN,Env:BDI_SCENARIO,Env:BDI_READY_URL,Env:BDI_PROMETHEUS_URL -ErrorAction SilentlyContinue
+Remove-Item Env:BDI_PAUSE_AFTER_ENTITY,Env:BDI_PAUSE_MILLISECONDS,Env:BDI_POLL_SECONDS,Env:BDI_ENTITY_TIMEOUT_MINUTES -ErrorAction SilentlyContinue
 ```
 
-**Expected result:** MAS Console opens, `Master goal started.` appears and Jason selects build immediately. Do not separately launch Jason or click Run workflow on GitHub. The rollback flag acknowledges that v1 source is compatible with the retained database; it does not restore database contents.
+**Expected result:** normally no output. This removes only session settings, not stored GitHub login, containers, campaign evidence or pending execution records. Unresolved execution still requires reconciliation before another campaign.
 
-Use a **fresh campaign directory every time**, including after closing a console early. Directory already exists / WinError 183 protects old evidence. Run the directory-assignment line again, not the old launch alone. If the previous execution is unresolved, reconcile it before starting again.
+**2. Restore authentication from the stored GitHub CLI login.**
+
+```powershell
+$env:GITHUB_REPOSITORY = 'id-nynt/260031_cicd_payment_demo'
+$env:GITHUB_TOKEN = gh auth token --hostname github.com
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+    throw 'GitHub CLI has no usable stored login. Complete gh auth login, then repeat B4.'
+}
+```
+
+**Expected result:** no token is printed. If login is missing, run `gh auth login --hostname github.com --git-protocol https --web`, finish browser sign-in, then repeat B4. Do not display `$env:GITHUB_TOKEN`. If you intentionally use a separate Actions-write token instead of the stored CLI credential, load it with A6's hidden-token prompt after cleanup.
+
+**3. Restore the published worker and v2 source selections.**
+
+List your local tags, then enter the existing names from A5 and B3. Do not create or move tags here.
+
+```powershell
+git tag --list 'bdi-worker-*'
+git tag --list '*v2*'
+$workerRef = Read-Host 'Existing published worker tag from A5'
+$v2Tag = Read-Host 'Existing published v2 tag from B3'
+if ([string]::IsNullOrWhiteSpace($workerRef) -or [string]::IsNullOrWhiteSpace($v2Tag)) {
+    throw 'Both tag names are required'
+}
+git rev-parse --verify "refs/tags/${workerRef}^{commit}"
+if ($LASTEXITCODE -ne 0) { throw 'Worker tag not found locally; check the A5 selection' }
+$v2Sha = git rev-parse --verify "refs/tags/${v2Tag}^{commit}"
+if ($LASTEXITCODE -ne 0) { throw 'v2 tag not found locally; check the B3 selection' }
+$env:BDI_WORKFLOW_REF = $workerRef
+$env:BDI_RELEASE_SHA = $v2Sha
+```
+
+**Expected result:** `$workerRef` selects the repaired worker and `$v2Sha` is the full candidate commit. Local existence does not prove publication: use the tags you successfully pushed in A5/B3. Keep the same worker tag for comparisons.
+
+**4. Restore the verified v1 receipt path directly.**
+
+Use the full path saved in B1, not a variable from an old window. For the verified baseline found during this session, the path was:
+
+```text
+C:\NHI\2026_IT-Project\260031_payment-repair\bdi-cicd-framework\runs\20260921-055346-143-v1\controller-result.json
+```
+
+```powershell
+$receiptPath = Read-Host 'Full path to the verified live v1 controller-result.json (without quotes)'
+if ([string]::IsNullOrWhiteSpace($receiptPath)) { throw 'A baseline receipt path is required' }
+$knownGood = (Resolve-Path -LiteralPath $receiptPath -ErrorAction Stop).Path
+$baseline = Get-Content -LiteralPath $knownGood -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+if ($baseline.mode -ne 'github' -or $baseline.outcome -ne 'achieved' -or
+    $baseline.repository -ne $env:GITHUB_REPOSITORY -or
+    $baseline.verified_releases.production.release_sha -ne $baseline.release_sha -or
+    -not $baseline.verified_releases.production.github_run_id) {
+    throw 'This is not a verified live production baseline; select the successful B1 receipt'
+}
+$v1Sha = $baseline.release_sha
+```
+
+**Expected result:** the receipt is accepted, and `$v1Sha` is available for later restoration. The build-only connection-check receipt is not a deployment baseline. If B1 already succeeded, you do not need to deploy it again just because variables were lost.
+
+**5. Create fresh evidence, check the selections, and launch.**
+
+```powershell
+$candidateDir = 'bdi-cicd-framework/runs/' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '-v2-healthy'
+[pscustomobject]@{
+    Repository = $env:GITHUB_REPOSITORY
+    Worker = $env:BDI_WORKFLOW_REF
+    CandidateSHA = $env:BDI_RELEASE_SHA
+    KnownGoodReceipt = $knownGood
+    EvidenceDirectory = $candidateDir
+}
+py -3 -B bdi-cicd-framework/run_controller.py --validate-only
+if ($LASTEXITCODE -ne 0) { throw 'Artifact validation failed; resolve it before launching' }
+py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --confirm-compatible-rollback --artifacts-dir "$candidateDir"
+```
+
+**Expected result:** the settings table contains all five values and no token. Artifact validation passes; MAS Console opens, `Master goal started.` appears and Jason selects build. Do not separately launch Jason or click Run workflow on GitHub. The rollback flag confirms that v1 source is compatible with the retained database; it does not restore database contents.
+
+Keep this window open for B6-B8. Use a **fresh campaign directory each time**. Directory already exists / WinError 183 protects old evidence: repeat step 5's directory assignment before relaunching. If the previous execution is unresolved, reconcile it first. Do not clear pending records to bypass that check.
 
 ### B5. Watch the pipeline and app
 

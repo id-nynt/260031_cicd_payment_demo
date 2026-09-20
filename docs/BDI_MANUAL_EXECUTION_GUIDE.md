@@ -101,7 +101,7 @@ When finished, stop the rehearsal stack from the same window:
 docker compose stop
 ```
 
-This preserves its database volume. Close that window so its local port variables are not carried into later commands.
+This preserves its database volume. Close that window so its local port variables are not carried into later commands. Keep Docker Desktop/Engine running. The rehearsal app on **3002 stays stopped**; steps 4–9 prepare the experiment without starting a deployment. In step 10, Jason selects staging/production jobs, and those jobs start separate app stacks on **3001/3000** using `docker compose up -d --build`.
 
 ## 4. Start the deployment runner
 
@@ -268,7 +268,7 @@ $env:BDI_WORKFLOW_REF = $v1Tag
 $env:BDI_RELEASE_SHA = $v1Sha
 ```
 
-Use your actual repository if different. The token needs Actions dispatch/read access. Do not print or include it in evidence.
+Use your actual repository if different. A fine-grained token must include this repository and **Actions: Read and write** for workflow dispatch and observation; see [GitHub's dispatch permissions](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event). Git push credentials and the controller's `GITHUB_TOKEN` can differ. After repairing CLI authentication, repeat the token assignment above in the controller window. Do not print or include the token in evidence.
 
 | Selection | Meaning |
 |---|---|
@@ -309,6 +309,17 @@ Keep these views open:
 | App / Prometheus | Staging 3001/9091; production 3000/9090 |
 
 Expected: build -> test -> security -> staging -> staging verification -> production -> production verification -> achieved. No rollback. The first baseline has no earlier recovery release; a failed baseline must not be accepted as known-good. Resolve failures/uncertainty and use a new directory for another attempt.
+
+**Closing and rerunning:** opening the MAS console only confirms that Jason started. Check `controller-result.json` and `controller-journal.jsonl` for the outcome. Closing the console does not delete its campaign directory. `WinError 183` means the requested directory already exists; the controller refuses to overwrite evidence. After the previous campaign has finished and any uncertainty is resolved (step 17), choose a fresh directory and repeat the step 10 launch commands:
+
+```powershell
+$sessionName = 'manual-' + (Get-Date -Format yyyyMMdd-HHmmss)
+$baselineDir = "bdi-cicd-framework/runs/$sessionName-v1"
+```
+
+Keep the existing v1 tag and generated project artifacts. A new directory does not fix authentication or clear pending execution.
+
+**Where to see the app update:** when the staging job succeeds, open `http://localhost:3001/checkout`; after production deployment, open `http://localhost:3000/checkout`. Refresh the page after each deployment. These stacks stay running after the campaign/console ends while Docker remains running. Port 3002 does not show campaign updates. On the first deployment, the live URLs are unavailable until their jobs start the stacks; later they may still show the previous release. Verify the new release using step 11's receipt and `/health` identity, even if the UI looks unchanged. A dispatch failure before deployment will not start or update the app.
 
 ## 11. Verify and retain the baseline
 
@@ -472,6 +483,8 @@ Remove-Item Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
 | Symptom | Inspect first |
 |---|---|
 | No Actions run | Startup error, token/repository, published worker/default branch, selected ref |
+| `WinError 183` / campaign directory exists | Preserve the previous directory; resolve its outcome, then use a fresh name (step 10) |
+| Dispatch HTTP 403: `Resource not accessible by personal access token` | Repair the controller token's repository/Actions permissions (step 9); a new directory alone will not help |
 | Waiting for runner | Online status, `payment-deploy` label, Environment approvals |
 | Docker permission error | `docker info` as the runner account |
 | Port already allocated | Existing stacks and `docker ps`; avoid a second stack on production ports |
@@ -486,6 +499,8 @@ py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only
 ```
 
 Keep the same repository credentials and intended project configuration. Reconciliation reads remote state; it does not resume the old campaign or declare achievement. Unknown preserves pending intent; confirmed terminal status clears it. Do not erase the marker to force deployment. Worktrees share a repository lock; independent clones do not.
+
+**Current HTTP 403 limitation:** the controller conservatively records even an explicit dispatch rejection as uncertain. It can leave `outcome=unknown`, `recovery_outcome=unresolved` and a pending marker although no run was accepted. After fixing authentication, reconciliation may still report unknown because there is no matching run. Stop retrying campaigns in that case; preserve the journal for a controller repair that handles the recorded rejection. Do not delete the marker or treat this result as a verified baseline.
 
 ## 18. Return to v1 and repeat the experiment
 

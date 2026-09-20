@@ -2,6 +2,41 @@
 
 Perform one numbered step at a time and check its result before continuing. This guide does not use an end-to-end experiment script. You start each campaign yourself; within a campaign, Jason selects jobs automatically so you can observe the BDI behavior.
 
+The walkthrough has two parts. **Steps 1–9 prepare the systems and test them separately. Steps 10–19 run and observe the real deployment experiment:** establish a verified v1 baseline, deploy v2, introduce faults, observe recovery, and return to v1 for another attempt.
+
+**Part A — Preparation, setup and individual system checks (no live BDI deployment yet)**
+
+| Step | Main action |
+|---|---|
+| 1 | Understand the start buttons |
+| 2 | Check the framework version and tools |
+| 3 | Turn on the local app and inspect telemetry |
+| 4 | Start the deployment runner |
+| 5 | Review endpoints, duration and published worker |
+| 6 | Generate the project once |
+| 7 | Rehearse Jason without deploying |
+| 8 | Store v1 as an immutable source version |
+| 9 | Authenticate and select the live versions |
+
+Step 3 tests a separate local app on port 3002; step 7 tests Jason with simulated execution. Neither deploys the experiment's staging or production app. Generate the persistent model and agent in step 6 only when their inputs or generator change.
+
+**Part B — Real v1-to-v2 deployment, observation and repeat experiments**
+
+| Step | Main action |
+|---|---|
+| 10 | Press the live experiment's start button |
+| 11 | Verify and retain the baseline |
+| 12 | Inspect the actual telemetry |
+| 13 | Create and store v2 |
+| 14 | Start healthy v2 |
+| 15 | Run individual fault experiments |
+| 16 | Demonstrate rollback with a visible pause |
+| 17 | Diagnose the boundary and reconcile uncertainty |
+| 18 | Return to v1 and repeat the experiment |
+| 19 | Retain evidence and finish |
+
+Steps 10–12 deploy and verify v1; steps 13–14 deploy v2. Watch Jason's decisions, the selected GitHub Actions jobs, and the app/telemetry on staging 3001 and production 3000. Steps 15–16 are separate fault/recovery campaigns. Use step 17 whenever execution is uncertain, before starting another campaign. Step 18 explains how to repeat using the same source versions and a fresh evidence directory.
+
 The [generation and runtime explanation](BDI_GENERATION_AND_RUNTIME.md) links the inputs, generators, outputs, environment and telemetry sources. This guide uses the implemented job-level design. Embedded GitHub steps in `01_pipeline.yaml` are a proposed extension, not current syntax.
 
 **PowerShell** commands run at the repository root in a dedicated controller checkout, outside the runner's `_work` directory and execution slot. **Runner terminal** commands run on the Linux deployment runner. The examples assume Windows can reach the runner's services through localhost; verify this if using WSL/Docker Desktop.

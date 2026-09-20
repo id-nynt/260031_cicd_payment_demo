@@ -11,3 +11,9 @@ Validation: 41 Python tests and 29 Java tests passed. Tests cover malformed toke
 Live build-only verification requires an authenticated GitHub CLI session. The published worker tag `bdi-worker-20260921-052412` was confirmed, but the available session returned HTTP 401 for `/user`. The user was asked to authenticate without sharing a token in chat. A build-only project was generated locally under `runs/connection-check-project`; it cannot select deployment jobs.
 
 A real Jason smoke campaign with simulated adapters also reached achieved; its journal parsed successfully and contained exactly one terminal event (`runs/credential-fix-smoke`).
+
+## Live verification after GitHub CLI sign-in
+
+The subsequent authorized build-only campaign completed successfully on 2026-09-21 (local time). GitHub accepted the correlated dispatch, ran only Build entity, and Java polled its terminal success; Jason reported `achieved/not_needed` and exited 0. All five other worker jobs were skipped. Run: https://github.com/id-nynt/260031_cicd_payment_demo/actions/runs/35533490743 . Local campaign: `runs/connection-check-20260921-054754`. The `live-build-*` files retain the result, journal and provenance.
+
+The self-hosted runner `bdi-demo` was confirmed online/idle with `self-hosted`, `Linux`, `X64`, `payment-deploy` labels. Build ran on GitHub's hosted runner; no self-hosted deployment or production telemetry verification was performed. This build-only receipt has no verified releases and cannot substitute for a deployed v1 baseline. The earlier credential blocker is resolved for the CLI session; a user's controller PowerShell must still load its token, repository and worker ref.

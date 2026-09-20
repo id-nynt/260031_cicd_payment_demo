@@ -147,7 +147,21 @@ def compile_documents(pipeline, goals):
     elif telemetry or g.get('telemetry_constraints'):
         raise ModelError("Telemetry configuration without observed entities")
     workflow={'name':p['name'],'execution':execution,'jobs':jobs,'recovery':recoveries}
-    document={'schema_version':1,'workflow':workflow,'goals':g,'runtime':runtime}
+    capabilities = {
+        'entities': list(model.entities),
+        'actions': {'run_job': list(model.entities), 'observe_telemetry': sorted(observed),
+                    'reconcile_job': list(model.entities), 'accept_telemetry': sorted(observed),
+                    'record_recovery': [list(pair) for pair in model.recovery],
+                    'finish': ['achieved', 'stopped', 'unknown']},
+        'observations': {'status': ['entity', 'attempt', 'status'],
+                         'duration': ['entity', 'attempt', 'duration'],
+                         'reconciled': ['entity', 'attempt', 'round', 'status'],
+                         'telemetry_measurement': ['entity', 'attempt', 'round', 'data_status',
+                                                   'readiness', 'error_rate', 'latency_p95_ms', 'availability']},
+        'recovery': {source: target for source, target in model.recovery},
+        'goal_rules': g,
+    }
+    document={'schema_version':1,'workflow':workflow,'goals':g,'runtime':runtime,'capabilities':capabilities}
     return document,model
 
 
@@ -157,7 +171,7 @@ def compile_inputs(pipeline, goals):
 
 def load_workflow(path):
     doc=read(path)
-    keys(doc,{'schema_version','workflow','goals','runtime'}, {'schema_version','workflow','goals','runtime'})
+    keys(doc,{'schema_version','workflow','goals','runtime','capabilities'}, {'schema_version','workflow','goals','runtime','capabilities'})
     if type(doc['schema_version']) is not int or doc['schema_version']!=1: raise ModelError("Unsupported workflow schema")
     w,r=doc['workflow'],doc['runtime']
     keys(w,{'name','execution','jobs','recovery'},{'name','execution','jobs','recovery'})
@@ -172,7 +186,7 @@ def load_workflow(path):
     return doc,model
 
 
-def generate_agent(workflow, template, agent):
+def render_agent(workflow, template):
     doc,model=load_workflow(workflow)
     policy=doc['workflow']['execution']
     facts=project_beliefs(model).replace('// Generated from 03_workflow_model.yaml; do not edit.',
@@ -185,5 +199,21 @@ def generate_agent(workflow, template, agent):
     if 'thresholds' in doc['runtime']:
         facts+=f"error_rate_limit({doc['runtime']['thresholds']['error_rate_high_gt']}).\n"
         facts+=f"latency_limit({doc['runtime']['thresholds']['latency_p95_ms_high_gt']}).\n"
-    Path(agent).write_text(facts+'\n'+Path(template).read_text(encoding='utf-8'),encoding='utf-8',newline='\n')
-    return doc,model
+    return facts+'\n'+Path(template).read_text(encoding='utf-8'), doc, model
+
+
+def validate_agent(workflow, template, agent):
+    # Exact deterministic comparison checks all entity/action domains, dependencies,
+    # observation/recovery facts, goal constraints AND the executable policy rules.
+    # No output is written and no project input other than the saved IR is read.
+    expected, doc, model = render_agent(workflow, template)
+    if Path(agent).read_text(encoding='utf-8') != expected:
+        raise ModelError('Agent entities, actions, observations, recovery or goal rules disagree with workflow/policy')
+    return doc, model
+
+
+def generate_agent(workflow, template, agent):
+    text, doc, model = render_agent(workflow, template)
+    Path(agent).write_text(text, encoding='utf-8', newline='\n')
+    validate_agent(workflow, template, agent)
+    return doc, model

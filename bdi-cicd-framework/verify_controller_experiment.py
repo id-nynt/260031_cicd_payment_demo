@@ -56,15 +56,26 @@ def main():
     for key in list(env):
         if key.startswith("BDI_") or key in ("GITHUB_TOKEN", "GH_TOKEN"):
             env.pop(key)
+    # Generate once per configuration revision, outside the campaign loop.
+    configurations = {
+        'payment': (quick, ROOT / 'models/02_goal.yaml'),
+        'staging': (quick, ROOT / 'examples/staging_goal.yaml'),
+        'duration': (quick, duration_path),
+        'reporting': (ROOT / 'examples/reporting_pipeline.yaml', ROOT / 'examples/reporting_goal.yaml'),
+    }
+    for key, (pipeline, goal) in configurations.items():
+        subprocess.run([sys.executable, str(ROOT / 'generate_project.py'), '--project-dir',
+                        str(output / 'projects' / key), '--pipeline', str(pipeline), '--goal', str(goal)],
+                       env=env, check=True, stdout=subprocess.DEVNULL)
     rows = []
     for name, scenario, expected, outcome, recovery, extra in CASES:
         directory = output / name
+        key = {'staging_only': 'staging', 'maintenance_violation': 'duration',
+               'second_project': 'reporting'}.get(name, 'payment')
+        extra = extra if name not in ('staging_only', 'second_project') else []
         command = [sys.executable, str(ROOT / "run_controller.py"), "--scenario", scenario,
+                   "--project-dir", str(output / 'projects' / key),
                    "--artifacts-dir", str(directory), *extra]
-        if name == "maintenance_violation":
-            command += ["--goal", str(duration_path)]
-        if name != "second_project":
-            command += ["--pipeline", str(quick)]
         with (output / (name + "-console.log")).open("w", encoding="utf-8") as log:
             completed = subprocess.run(command, cwd=ROOT.parent, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=180)
         result = json.loads((directory / "controller-result.json").read_text(encoding="utf-8"))
@@ -95,7 +106,6 @@ def main():
                      "manifest": json.loads((directory / "generation-manifest.json").read_text(encoding="utf-8"))})
         (output / "summary.json").write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
         print(f"PASS {name}: {','.join(actual)} -> {outcome}/{recovery}", flush=True)
-    subprocess.run([sys.executable, str(ROOT / "run_controller.py"), "--generate-only"], cwd=ROOT.parent, env=env, check=True)
     print(f"Local scenario evidence: {output}")
 
 

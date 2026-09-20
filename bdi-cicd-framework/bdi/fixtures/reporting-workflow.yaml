@@ -1,4 +1,3 @@
-# Generated test fixture; checked against canonical compiler by test_worker_contract.py
 schema_version: 1
 workflow:
   name: Reporting service
@@ -21,7 +20,7 @@ workflow:
       - verify
       job_name: Deploy preview
   recovery: {}
-goals:
+goals: &id001
   goal:
     achieve(A):
     - preview.status == success
@@ -43,3 +42,49 @@ runtime:
     observation_interval_seconds: 0
     reconciliation_attempts: 2
     reconciliation_interval_seconds: 0
+capabilities:
+  entities:
+  - package
+  - verify
+  - preview
+  actions:
+    run_job:
+    - package
+    - verify
+    - preview
+    observe_telemetry: []
+    reconcile_job:
+    - package
+    - verify
+    - preview
+    accept_telemetry: []
+    record_recovery: []
+    finish:
+    - achieved
+    - stopped
+    - unknown
+  observations:
+    status:
+    - entity
+    - attempt
+    - status
+    duration:
+    - entity
+    - attempt
+    - duration
+    reconciled:
+    - entity
+    - attempt
+    - round
+    - status
+    telemetry_measurement:
+    - entity
+    - attempt
+    - round
+    - data_status
+    - readiness
+    - error_rate
+    - latency_p95_ms
+    - availability
+  recovery: {}
+  goal_rules: *id001

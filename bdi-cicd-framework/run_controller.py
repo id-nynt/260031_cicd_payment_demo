@@ -1,4 +1,4 @@
-"""Validate, generate, and start the BDI CI/CD controller with one command."""
+"""Validate persistent project artifacts and start a campaign without generation."""
 
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "parser"))
 from model_transform import ModelError  # noqa: E402
-from workflow_model import compile_inputs, generate_agent, read  # noqa: E402
+from project_artifacts import validate, paths  # noqa: E402
+import shutil
 
 
 def load_mapping(path: Path) -> dict:
@@ -51,8 +52,8 @@ def git_sha(repository_root: Path) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pipeline", type=Path, default=ROOT / "models" / "01_pipeline.yaml")
-    parser.add_argument("--goal", type=Path, default=ROOT / "models" / "02_goal.yaml")
+    parser.add_argument("--project-dir", type=Path, default=ROOT, help="persistent generated project directory")
+    parser.add_argument("--validate-only", action="store_true", help="check consistency without starting a campaign")
     parser.add_argument("--scenario", choices=["healthy", "transient_test_failure", "exhausted_test_failure",
                                                 "telemetry_block", "telemetry_unknown", "telemetry_delayed",
                                                 "production_failure", "production_unhealthy", "production_unknown",
@@ -61,51 +62,19 @@ def main() -> int:
     parser.add_argument("--baseline", action="store_true", help="explicit first baseline run without prior recovery release")
     parser.add_argument("--confirm-compatible-rollback", action="store_true", help="confirm source rollback is compatible with retained database schema/data")
     parser.add_argument("--artifacts-dir", type=Path,
-                        help="directory for this campaign's manifest, journal, result, and lock")
+                        help="new directory for this campaign's provenance, snapshots, journal and result")
     parser.add_argument("--pause-after", help="scenario entity after which to pause before returning its result")
     parser.add_argument("--pause-ms", type=int, default=0)
-    parser.add_argument("--generate-only", action="store_true")
     parser.add_argument("--reconcile-only", action="store_true", help="read remote status of durable pending execution; never dispatch or resume a campaign")
     parser.add_argument("--gui", action="store_true", help="open Jason MAS Console and keep the final agent mind available until closed")
     args = parser.parse_args()
 
-    if args.reconcile_only and (args.scenario or args.generate_only or args.known_good or args.baseline):
-        raise ModelError("--reconcile-only cannot be combined with scenario, generation or release options")
-    pipeline = args.pipeline.resolve()
-    goal = args.goal.resolve()
-    document, model = compile_inputs(pipeline, goal)
+    if args.reconcile_only and (args.scenario or args.known_good or args.baseline):
+        raise ModelError("--reconcile-only cannot be combined with scenario or release options")
+    document, model, generation, inputs = validate(args.project_dir)
     project = document["runtime"]
-    campaign = "campaign-" + uuid.uuid4().hex
-    artifacts = (args.artifacts_dir.resolve() if args.artifacts_dir else ROOT / "runs" / campaign)
-    # Never reuse another campaign's outputs, including with --generate-only.
-    artifacts.mkdir(parents=True, exist_ok=False)
-    (artifacts / "01_pipeline.input.yaml").write_bytes(pipeline.read_bytes())
-    (artifacts / "02_goal.input.yaml").write_bytes(goal.read_bytes())
-    workflow = artifacts / "03_workflow_model.yaml"
-    agent = artifacts / "controller_agent.asl"
-    manifest = artifacts / "generation-manifest.json"
-    workflow.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8", newline="\n")
-    # This call reloads and validates the saved model. It cannot access the inputs.
-    document, model = generate_agent(workflow, ROOT / "generator/controller_generic.asl", agent)
-    project = document["runtime"]
-    mas = artifacts / "controller.mas2j"
-    mas.write_text((ROOT / "bdi/controller.mas2j").read_text(encoding="utf-8"), encoding="utf-8")
-    digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
-    record = {"schema_version": 1, "campaign_id": campaign,
-              "inputs": {"pipeline": {"path": str(pipeline), "sha256": digest(pipeline)},
-                         "goal": {"path": str(goal), "sha256": digest(goal)}},
-              "workflow_sha256": digest(workflow), "generated_agent_sha256": digest(agent),
-              "required_entities": list(model.required_entities),
-              "achievements": [item.entity for item in model.achievements]}
-    record['controller_source_sha'] = git_sha(ROOT.parent)
-    record['generic_policy_sha256'] = digest(ROOT / 'generator/controller_generic.asl')
-    record['mas_sha256'] = digest(mas)
-    source_files = [ROOT / "run_controller.py", ROOT / "parser/model_transform.py", ROOT / "parser/workflow_model.py",
-                    ROOT.parent / ".github/workflows/entity-execution.yml", *sorted((ROOT / "bdi/harness").glob("*.java")), *sorted((ROOT / "monitoring").rglob("*.java")), ROOT / "bdi/build.gradle"]
-    record["source_files_sha256"] = {str(p.relative_to(ROOT.parent)): hashlib.sha256(p.read_bytes()).hexdigest() for p in source_files}
-    manifest.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    print(f"Generated campaign {campaign} in {artifacts}; required={list(model.required_entities)}")
-    if args.generate_only:
+    if args.validate_only:
+        print(f"Project artifacts are consistent: {args.project_dir.resolve()}")
         return 0
 
     baseline_sha = ""
@@ -120,6 +89,45 @@ def main() -> int:
         baseline_sha = known_good_sha(args.known_good, project, model, os.environ.get("GITHUB_REPOSITORY", ""))
     elif recovery_required and not args.baseline and not args.reconcile_only:
         raise ModelError("Provide --known-good verified-result.json, or --baseline for the initial known-good deployment")
+
+    campaign = "campaign-" + uuid.uuid4().hex
+    artifacts = args.artifacts_dir.resolve() if args.artifacts_dir else ROOT / "runs" / campaign
+    artifacts.mkdir(parents=True, exist_ok=False)
+    persistent_workflow, persistent_agent, generation_manifest = paths(args.project_dir)
+    workflow = artifacts / "03_workflow_model.yaml"
+    agent = artifacts / "controller_agent.asl"
+    mas = artifacts / "controller.mas2j"
+    manifest = artifacts / "generation-manifest.json"
+    # Immutable archival copies of the validated project revision, never regenerated.
+    for source, target in [(persistent_workflow, workflow), (persistent_agent, agent),
+                           (generation_manifest, artifacts / "project-generation-manifest.json"),
+                           (inputs['pipeline'], artifacts / "01_pipeline.input.yaml"),
+                           (inputs['goal'], artifacts / "02_goal.input.yaml"),
+                           (ROOT / "bdi/controller.mas2j", mas)]:
+        shutil.copyfile(source, target)
+    # Detect concurrent edits during snapshot creation, before Jason/Java can dispatch.
+    if validate(args.project_dir)[2] != generation:
+        raise ModelError("Project revision changed while snapshotting; restart after generation finishes")
+    digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+    for source, target in [(persistent_workflow, workflow), (persistent_agent, agent),
+                           (generation_manifest, artifacts / "project-generation-manifest.json"),
+                           (inputs['pipeline'], artifacts / "01_pipeline.input.yaml"),
+                           (inputs['goal'], artifacts / "02_goal.input.yaml")]:
+        if digest(source) != digest(target):
+            raise ModelError("Project artifacts changed while snapshotting; restart after generation finishes")
+    record = {"schema_version": 1, "campaign_id": campaign, "inputs": generation['inputs'],
+              "persistent_artifacts": {"workflow": str(persistent_workflow), "agent": str(persistent_agent),
+                                       "manifest": str(generation_manifest), "manifest_sha256": digest(generation_manifest)},
+              "workflow_sha256": digest(workflow), "generated_agent_sha256": digest(agent),
+              "mas_sha256": digest(mas), "required_entities": list(model.required_entities),
+              "achievements": [item.entity for item in model.achievements]}
+    source_files = [ROOT / "run_controller.py", ROOT / "project_artifacts.py", ROOT / "generate_project.py",
+                    ROOT / "parser/model_transform.py", ROOT / "parser/workflow_model.py",
+                    ROOT.parent / ".github/workflows/entity-execution.yml", *sorted((ROOT / "bdi/harness").glob("*.java")),
+                    *sorted((ROOT / "monitoring").rglob("*.java")), ROOT / "bdi/build.gradle"]
+    record["source_files_sha256"] = {str(p.relative_to(ROOT.parent)): digest(p) for p in source_files}
+    manifest.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(f"Starting {campaign} using existing project artifacts in {args.project_dir.resolve()}", flush=True)
 
     repository_root = ROOT.parent
     environment = os.environ.copy()

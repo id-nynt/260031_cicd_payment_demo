@@ -46,21 +46,6 @@ class ControllerInputsTest(unittest.TestCase):
             with self.assertRaises(ModelError):
                 self.read(data)
 
-    def test_generation_is_campaign_isolated_and_refuses_output_reuse(self):
-        with tempfile.TemporaryDirectory() as directory:
-            first=Path(directory)/'first';second=Path(directory)/'second'
-            command=[sys.executable,'-B',str(ROOT/'run_controller.py'),'--generate-only','--artifacts-dir']
-            subprocess.run(command+[str(first)],check=True,capture_output=True)
-            original=(first/'controller_agent.asl').read_bytes()
-            repeated=subprocess.run(command+[str(first)],capture_output=True)
-            self.assertEqual(repeated.returncode,2)
-            self.assertEqual(original,(first/'controller_agent.asl').read_bytes())
-            subprocess.run(command+[str(second)],check=True,capture_output=True)
-            manifests=[json.loads((p/'generation-manifest.json').read_text()) for p in [first,second]]
-            self.assertNotEqual(manifests[0]['campaign_id'],manifests[1]['campaign_id'])
-            self.assertEqual(manifests[0]['generated_agent_sha256'],manifests[1]['generated_agent_sha256'])
-            self.assertTrue((first/'01_pipeline.input.yaml').exists())
-            self.assertTrue(manifests[0]['source_files_sha256'])
 
 
 if __name__ == "__main__":

@@ -1,4 +1,6 @@
-> Historical iteration: commands and paths below predate the canonical repair. Use [the current controller guide](../bdi-cicd-framework/README.md).
+> Archived historical guidance. Use [the current manual](../../BDI_MANUAL_EXECUTION_GUIDE.md). Do not use these commands for the new policy.
+
+> Historical iteration: commands and paths below predate the canonical repair. Use [the current controller guide](../../../bdi-cicd-framework/README.md).
 
 # BDI controller experiment results
 

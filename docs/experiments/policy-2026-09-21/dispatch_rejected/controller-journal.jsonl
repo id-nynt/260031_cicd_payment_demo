@@ -1,0 +1,5 @@
+{"timestamp":"2026-09-20T15:14:22.827369200Z","event":"controller_started","mode":"scenario","project":"payment-service","scenario":"dispatch_rejected"}
+{"timestamp":"2026-09-20T15:14:22.965298200Z","event":"bdi_decision","entity":"build","decision":"run","attempt":1,"relevant_beliefs":"dependencies_satisfied_and_goal_required"}
+{"timestamp":"2026-09-20T15:14:22.967298800Z","event":"entity_execution_started","attempt":1,"entity":"build"}
+{"timestamp":"2026-09-20T15:14:22.975815500Z","event":"entity_execution_finished","github_run_id":0,"run_url":"scenario://dispatch_rejected/build/1","duration_ms":42,"attempt":1,"status":"dispatch_rejected","entity":"build","execution_id":"scenario-762c4ecd-aa60-4fb3-9be5-0b42444ed1f3"}
+{"timestamp":"2026-09-20T15:14:23.059707300Z","event":"controller_finished","outcome":"stopped","project":"payment-service","recovery_outcome":"not_attempted"}

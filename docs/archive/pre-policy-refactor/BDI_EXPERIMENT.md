@@ -1,4 +1,6 @@
-> Historical pre-canonical gate experiment. For current commands and verified recovery, use the [manual experiment walkthrough](BDI_MANUAL_EXECUTION_GUIDE.md). The description below records the earlier architecture.
+> Archived historical guidance. Use [the current manual](../../BDI_MANUAL_EXECUTION_GUIDE.md). Do not use these commands for the new policy.
+
+> Historical pre-canonical gate experiment. For current commands and verified recovery, use the [manual experiment walkthrough](../../BDI_MANUAL_EXECUTION_GUIDE.md). The description below records the earlier architecture.
 
 # Payment-service BDI promotion experiment
 

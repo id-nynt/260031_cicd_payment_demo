@@ -1,0 +1,69 @@
+{
+  "campaign_id" : "campaign-8df9bf54ff7a423abc15e90b59bb0121",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\bdi\\build\\policy-refactor-validation\\temporary_fault\\generation-manifest.json",
+  "timestamp" : "2026-09-20T15:13:16.674036900Z",
+  "outcome" : "achieved",
+  "recovery_outcome" : "not_needed",
+  "project" : "payment-service",
+  "mode" : "scenario",
+  "repository" : "",
+  "release_sha" : "04e0ec211c40978158ad3e0706bd9adaf234196e",
+  "known_good_sha" : "1111111111111111111111111111111111111111",
+  "telemetry" : {
+    "staging" : "allow",
+    "production" : "allow"
+  },
+  "executions" : {
+    "build" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-626b6d9e-375f-4d16-bda1-c3af020c0515",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://telemetry_transient/build/1"
+    },
+    "test" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-c1e7640e-bef4-4171-958b-9abf20ff60af",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://telemetry_transient/test/1"
+    },
+    "security" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-ab0d2295-4c2a-4705-8da0-399fd9417612",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://telemetry_transient/security/1"
+    },
+    "staging" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-c5ceaf30-fcf5-49a9-9071-a2f5887fb4d1",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://telemetry_transient/staging/1"
+    },
+    "production" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-ace6d1b5-b31d-48ca-b057-66e54016e1ab",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://telemetry_transient/production/1"
+    }
+  },
+  "achieved_goals" : [ "production", "staging" ],
+  "unmet_goals" : [ ],
+  "verified_releases" : {
+    "staging" : {
+      "execution_id" : "scenario-c5ceaf30-fcf5-49a9-9071-a2f5887fb4d1",
+      "github_run_id" : 0,
+      "release_sha" : "04e0ec211c40978158ad3e0706bd9adaf234196e",
+      "environment" : "staging"
+    },
+    "production" : {
+      "execution_id" : "scenario-ace6d1b5-b31d-48ca-b057-66e54016e1ab",
+      "github_run_id" : 0,
+      "release_sha" : "04e0ec211c40978158ad3e0706bd9adaf234196e",
+      "environment" : "production"
+    }
+  }
+}

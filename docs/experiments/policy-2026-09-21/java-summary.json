@@ -1,0 +1,32 @@
+[
+  {
+    "name": "harness.CampaignIntegrityTest",
+    "tests": "1",
+    "failures": "0",
+    "errors": "0"
+  },
+  {
+    "name": "harness.ControllerComponentsTest",
+    "tests": "8",
+    "failures": "0",
+    "errors": "0"
+  },
+  {
+    "name": "harness.ExecutionReconciliationTest",
+    "tests": "10",
+    "failures": "0",
+    "errors": "0"
+  },
+  {
+    "name": "harness.PaymentBaselineTest",
+    "tests": "4",
+    "failures": "0",
+    "errors": "0"
+  },
+  {
+    "name": "harness.TelemetryFreshnessTest",
+    "tests": "3",
+    "failures": "0",
+    "errors": "0"
+  }
+]

@@ -1,3 +1,5 @@
+> Archived historical guidance. Use [the current manual](../../BDI_MANUAL_EXECUTION_GUIDE.md). Do not use these commands for the new policy.
+
 # BDI CI/CD architecture audit and implementation plan
 
 Current update (20 September 2026): the active launcher uses `01_pipeline.yaml` / `02_goal.yaml`, generates the controller model/agent, and implements conditional BDI-selected recovery plus production/recovery telemetry verification. The numbered files are logical policy inputs; commands stay in the dispatch workflow. See [the current manual](BDI_LIVE_MANUAL_DEMO.md) and [results](BDI_CONTROLLER_EXPERIMENT_RESULTS.md). Statements below about a gate-only architecture or absent automatic recovery describe the original audit baseline.
@@ -20,15 +22,15 @@ An in-memory invocation of the existing parser confirmed that the checked-in pay
 
 | Area inspected | Current purpose and authoritative files |
 |---|---|
-| Application | Node.js/TypeScript/Fastify, direct `pg` database access, fake and optional Stripe providers: [app.ts](../src/app.ts), [payments.ts](../src/payments.ts), [providers.ts](../src/providers.ts), [config.ts](../src/config.ts). Drizzle appears in planning material but is not the implementation. |
-| UI and persistence | [ui.ts](../src/ui.ts), the actively imported [payment-page.ts](../src/payment-page.ts), and [SQL migrations](../src/db/migrations/). `ui.ts` also contains an unused older payment-page implementation. |
-| Packaging and execution | [package.json](../package.json), lockfile, [Dockerfile](../Dockerfile), [Compose](../docker-compose.yml), and [ci-cd.yml](../.github/workflows/ci-cd.yml). |
-| Telemetry and experiments | [telemetry.ts](../src/telemetry.ts), [experiment.ts](../src/experiment.ts), [collector](../otel-collector.yaml), [Prometheus](../prometheus.yml), and [scripts](../scripts/). |
-| Framework models/parser | [model_transform.py](../bdi-cicd-framework/parser/model_transform.py), parser tests, payment and sample pipeline/goal/model files under [models](../bdi-cicd-framework/models/). |
-| Framework generator | [bdi_generic.asl](../bdi-cicd-framework/generator/bdi_generic.asl), generic/sample generated files, and payment generated beliefs/agent. |
-| Framework runtime | Both MAS entry points, gate and replay environments, observation/belief interfaces, GitHub observers/executor, correlation/logging, mocks/scenarios, fixtures, and Java tests under [bdi](../bdi-cicd-framework/bdi/). |
-| Framework monitoring/actions | Current Prometheus reader plus older telemetry adapter, classifiers, audit sinks, shell actions, allowlisting, and attempt budgets under [monitoring](../bdi-cicd-framework/monitoring/) and [actions](../bdi-cicd-framework/actions/). |
-| Build/configuration | Active [bdi/build.gradle](../bdi-cicd-framework/bdi/build.gradle), wrapper configuration, and older [config/build.gradle](../bdi-cicd-framework/config/build.gradle). The latter expects a `project.mas2j` in its own directory, which is absent. |
+| Application | Node.js/TypeScript/Fastify, direct `pg` database access, fake and optional Stripe providers: [app.ts](../../../src/app.ts), [payments.ts](../../../src/payments.ts), [providers.ts](../../../src/providers.ts), [config.ts](../../../src/config.ts). Drizzle appears in planning material but is not the implementation. |
+| UI and persistence | [ui.ts](../../../src/ui.ts), the actively imported [payment-page.ts](../../../src/payment-page.ts), and [SQL migrations](../../../src/db/migrations). `ui.ts` also contains an unused older payment-page implementation. |
+| Packaging and execution | [package.json](../../../package.json), lockfile, [Dockerfile](../../../Dockerfile), [Compose](../../../docker-compose.yml), and [ci-cd.yml](../../../.github/workflows/ci-cd.yml). |
+| Telemetry and experiments | [telemetry.ts](../../../src/telemetry.ts), [experiment.ts](../../../src/experiment.ts), [collector](../../../otel-collector.yaml), [Prometheus](../../../prometheus.yml), and [scripts](../../../scripts). |
+| Framework models/parser | [model_transform.py](../../../bdi-cicd-framework/parser/model_transform.py), parser tests, payment and sample pipeline/goal/model files under [models](../../../bdi-cicd-framework/models). |
+| Framework generator | [bdi_generic.asl](../../../bdi-cicd-framework/generator/bdi_generic.asl), generic/sample generated files, and payment generated beliefs/agent. |
+| Framework runtime | Both MAS entry points, gate and replay environments, observation/belief interfaces, GitHub observers/executor, correlation/logging, mocks/scenarios, fixtures, and Java tests under [bdi](../../../bdi-cicd-framework/bdi). |
+| Framework monitoring/actions | Current Prometheus reader plus older telemetry adapter, classifiers, audit sinks, shell actions, allowlisting, and attempt budgets under [monitoring](../../../bdi-cicd-framework/monitoring) and [actions](../../../bdi-cicd-framework/actions). |
+| Build/configuration | Active [bdi/build.gradle](../../../bdi-cicd-framework/bdi/build.gradle), wrapper configuration, and older [config/build.gradle](../../../bdi-cicd-framework/config/build.gradle). The latter expects a `project.mas2j` in its own directory, which is absent. |
 | Documentation/history | Root README/PROJECT, all existing `docs/`, framework READMEs, and recent Git history. Several planning documents describe earlier or proposed behavior. |
 
 ## 2. Current end-to-end behavior
@@ -51,15 +53,15 @@ flowchart LR
   J --> B[Jason beliefs]
 ```
 
-Instrumentation is explicitly implemented in [telemetry.ts](../src/telemetry.ts). It records HTTP request/error counters, a duration histogram, a database/readiness gauge, and payment outcome counters. Telemetry is disabled when the OTLP metrics endpoint is absent; Compose supplies it. There is no configured OpenTelemetry trace pipeline or OpenTelemetry log pipeline. Fastify application logs and collector debug output are separate logs.
+Instrumentation is explicitly implemented in [telemetry.ts](../../../src/telemetry.ts). It records HTTP request/error counters, a duration histogram, a database/readiness gauge, and payment outcome counters. Telemetry is disabled when the OTLP metrics endpoint is absent; Compose supplies it. There is no configured OpenTelemetry trace pipeline or OpenTelemetry log pipeline. Fastify application logs and collector debug output are separate logs.
 
 HTTP and readiness metrics carry `ci_run_id`. The payment outcome counter does **not** carry that label. A rejected fake payment can return HTTP 201: its business outcome is failed, but it is not an HTTP server error. The BDI promotion queries use `/payments` **5xx rate**, p95 latency, and readiness, not business rejection counts or the all-route 4xx/5xx percentage shown by `telemetry:show`.
 
-The [project manifest](../bdi-cicd-framework/models/payment_project.yaml) supplies PromQL queries and thresholds: error rate greater than 5%, p95 latency greater than 500 ms, or readiness below 1 prevents a healthy assessment. Rate/histogram queries use a two-minute window. Missing/nonfinite query results become `unknown`. Prometheus keeps seven days of local samples; the collector expires metrics after 15 seconds without updates. The reader does not independently validate sample age or scrape-target health on every assessment, so “fresh” currently means available run-filtered query results, not a complete freshness guarantee.
+The [project manifest](../../../bdi-cicd-framework/models/payment_project.yaml) supplies PromQL queries and thresholds: error rate greater than 5%, p95 latency greater than 500 ms, or readiness below 1 prevents a healthy assessment. Rate/histogram queries use a two-minute window. Missing/nonfinite query results become `unknown`. Prometheus keeps seven days of local samples; the collector expires metrics after 15 seconds without updates. The reader does not independently validate sample age or scrape-target health on every assessment, so “fresh” currently means available run-filtered query results, not a complete freshness guarantee.
 
 ### GitHub Actions execution
 
-The exact job graph in [ci-cd.yml](../.github/workflows/ci-cd.yml) is:
+The exact job graph in [ci-cd.yml](../../../.github/workflows/ci-cd.yml) is:
 
 ```mermaid
 flowchart LR
@@ -93,11 +95,11 @@ ci-cd.yml: bdi-gate
   -> process exit -> GitHub job result -> production needs condition
 ```
 
-[ProjectGateEnvironment](../bdi-cicd-framework/bdi/harness/ProjectGateEnvironment.java) polls the current GitHub run and staging telemetry, then publishes `promotion_goal(Target)`, `workflow_state(...)`, `telemetry_state(...)`, and `evidence_round(...)`. It loads `payment_project.yaml`, or the configured replacement. It explicitly rejects fixture use inside Actions and requires the observed run ID to match the current Actions run.
+[ProjectGateEnvironment](../../../bdi-cicd-framework/bdi/harness/ProjectGateEnvironment.java) polls the current GitHub run and staging telemetry, then publishes `promotion_goal(Target)`, `workflow_state(...)`, `telemetry_state(...)`, and `evidence_round(...)`. It loads `payment_project.yaml`, or the configured replacement. It explicitly rejects fixture use inside Actions and requires the observed run ID to match the current Actions run.
 
-[GitHubRunObserver](../bdi-cicd-framework/bdi/harness/GitHubRunObserver.java) performs read-only Jobs API requests, mapping display names to logical roles. It reads the first 100 latest jobs of a single run. [GateEvidence](../bdi-cicd-framework/bdi/harness/GateEvidence.java) requires every mapped role except the promotion target to succeed; it does not derive the target's prerequisites from the generated model.
+[GitHubRunObserver](../../../bdi-cicd-framework/bdi/harness/GitHubRunObserver.java) performs read-only Jobs API requests, mapping display names to logical roles. It reads the first 100 latest jobs of a single run. [GateEvidence](../../../bdi-cicd-framework/bdi/harness/GateEvidence.java) requires every mapped role except the promotion target to succeed; it does not derive the target's prerequisites from the generated model.
 
-[ProjectTelemetryProvider](../bdi-cicd-framework/bdi/harness/ProjectTelemetryProvider.java) does the numeric threshold classification in Java. [gate_agent.asl](../bdi-cicd-framework/bdi/gate_agent.asl) chooses `block` on confirmed workflow/telemetry failure, `allow` when both are acceptable, and otherwise waits for another observation. [ProjectGateMain](../bdi-cicd-framework/bdi/harness/ProjectGateMain.java) imposes a default 90-second watchdog that exits as `unknown`. JVM results are 0/1/2; Gradle reports either nonzero JVM result as a failed task.
+[ProjectTelemetryProvider](../../../bdi-cicd-framework/bdi/harness/ProjectTelemetryProvider.java) does the numeric threshold classification in Java. [gate_agent.asl](../../../bdi-cicd-framework/bdi/gate_agent.asl) chooses `block` on confirmed workflow/telemetry failure, `allow` when both are acceptable, and otherwise waits for another observation. [ProjectGateMain](../../../bdi-cicd-framework/bdi/harness/ProjectGateMain.java) imposes a default 90-second watchdog that exits as `unknown`. JVM results are 0/1/2; Gradle reports either nonzero JVM result as a failed task.
 
 **The gate does not load `payment_goal.yaml`, `payment_workflow_model.yaml`, or `payment_bdi_agent.asl`.** Its promotion policy is handwritten. Generation is a separate developer command, not a stage that feeds the gate at runtime.
 
@@ -113,7 +115,7 @@ The high-error experiment works because the staging traffic helper accepts the i
 | Older local shell controller | `deployment_agent.asl` and `CicdEnvironment` | Handwritten build/test/deploy/recovery sequence and telemetry reactions | Calls `cicd/actions/*.sh`, which are absent from this application; not the active MAS |
 | Mock/scenario harnesses | Mock/Scenario environments and executors | Simulate success, retries, failures, and recovery | In-memory outcomes; not evidence of real runner execution |
 
-The generic [AgentSpeak template](../bdi-cicd-framework/generator/bdi_generic.asl) already contains `nextentity`, dependency checks, `run_job`, retry budgets, recovery relations, maintenance checks, and goal assessment. It selects one running entity at a time. This is reusable scheduling logic, but its current runtime binding makes it an observer in the payment baseline.
+The generic [AgentSpeak template](../../../bdi-cicd-framework/generator/bdi_generic.asl) already contains `nextentity`, dependency checks, `run_job`, retry budgets, recovery relations, maintenance checks, and goal assessment. It selects one running entity at a time. This is reusable scheduling logic, but its current runtime binding makes it an observer in the payment baseline.
 
 The payment model sets `max_retries: 0` and has no recovery actions. Its generated promotion rule immediately stops on missing/blocked telemetry; it does not reproduce the active gate's bounded wait-and-reobserve behavior. The generic runtime-degradation plan listens for `status(Entity, fail)`, while the current telemetry belief adapter publishes `health(...)`/`gate(...)`. The comment claiming health is normalized to execution failure is therefore not an implemented connection.
 

@@ -26,7 +26,7 @@ The application provides:
 - Optional v2 fault modes for repeatable CI/CD and telemetry experiments; normal behaviour remains the default.
 - REST endpoints for creating, viewing, and processing payments.
 - Docker Compose packaging for repeatable local and server deployment.
-- CI/CD entity jobs for build, tests, advisory dependency audit, staging, and production, selected by a persistent Jason/BDI controller; historical gate and manual-rollback configurations are archived outside active workflows.
+- CI/CD entity jobs for build, tests, blocking production dependency audit, staging, and production, selected by a persistent Jason/BDI controller; historical gate and manual-rollback configurations are archived outside active workflows.
 
 The fake provider is the recommended starting point because it is usable without a Stripe account, API key, webhook, or external network dependency.
 

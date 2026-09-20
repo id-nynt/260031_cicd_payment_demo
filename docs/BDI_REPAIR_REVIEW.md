@@ -1,3 +1,5 @@
+> Historical repair review. Its validation counts and advisory-audit notes describe earlier commits. Current policy and validation are documented in [generation/runtime](BDI_GENERATION_AND_RUNTIME.md) and [policy validation](experiments/policy-2026-09-21/README.md).
+
 # Repair base review
 
 Worktree: `260031_payment-repair`, branch `repair/bdi-canonical-controller`.

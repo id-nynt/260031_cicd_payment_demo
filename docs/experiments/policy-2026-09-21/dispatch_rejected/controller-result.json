@@ -1,0 +1,25 @@
+{
+  "campaign_id" : "campaign-65420c1faa82416d84a3892a243f0ee5",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\bdi\\build\\policy-refactor-validation\\dispatch_rejected\\generation-manifest.json",
+  "timestamp" : "2026-09-20T15:14:22.994229900Z",
+  "outcome" : "stopped",
+  "recovery_outcome" : "not_attempted",
+  "project" : "payment-service",
+  "mode" : "scenario",
+  "repository" : "",
+  "release_sha" : "04e0ec211c40978158ad3e0706bd9adaf234196e",
+  "known_good_sha" : "1111111111111111111111111111111111111111",
+  "telemetry" : { },
+  "executions" : {
+    "build" : {
+      "status" : "dispatch_rejected",
+      "durationMs" : 42,
+      "executionId" : "scenario-762c4ecd-aa60-4fb3-9be5-0b42444ed1f3",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://dispatch_rejected/build/1"
+    }
+  },
+  "achieved_goals" : [ ],
+  "unmet_goals" : [ "production", "staging" ],
+  "verified_releases" : { }
+}

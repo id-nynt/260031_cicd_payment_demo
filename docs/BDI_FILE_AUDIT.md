@@ -1,3 +1,5 @@
+> Historical file inventory. Superseded operating guides are now in `docs/archive/pre-policy-refactor`; see the current manual and setup reference for execution.
+
 # Project file audit: active, legacy and cleanup candidates
 
 Audit date: 20 September 2026. Scope: this payment-repair worktree, its tracked source/tests/docs, configured launch paths, and observed local generated directories. No files were deleted or moved. The user's uncommitted additions to `NOTE.md` were preserved.
@@ -113,9 +115,9 @@ Current Jason policy owns retry/reobservation/recovery and threshold classificat
 |---|---|
 | [docs/legacy/pre-canonical/](legacy/pre-canonical/) | Intentional archive: old agents, `gate.mas2j`, `project.mas2j`, alternate Gradle files and manual rollback workflow. Preserve for the research comparison; not executable configuration. |
 | [docs/experiments/](experiments/) | Retained historical and current verification evidence. Preserve. |
-| [BDI_EXPERIMENT.md](BDI_EXPERIMENT.md), [BDI_ARCHITECTURE_AUDIT_AND_PLAN.md](BDI_ARCHITECTURE_AUDIT_AND_PLAN.md), [BDI_CONTROLLER_EXPERIMENT_RESULTS.md](BDI_CONTROLLER_EXPERIMENT_RESULTS.md) | Earlier experiment/audit/results material. Useful history, not current operating instructions. The architecture audit's opening update still describes launcher generation and should be read as historical. |
+| [BDI_EXPERIMENT.md](archive/pre-policy-refactor/BDI_EXPERIMENT.md), [BDI_ARCHITECTURE_AUDIT_AND_PLAN.md](archive/pre-policy-refactor/BDI_ARCHITECTURE_AUDIT_AND_PLAN.md), [BDI_CONTROLLER_EXPERIMENT_RESULTS.md](archive/pre-policy-refactor/BDI_CONTROLLER_EXPERIMENT_RESULTS.md) | Earlier experiment/audit/results material. Useful history, not current operating instructions. The architecture audit's opening update still describes launcher generation and should be read as historical. |
 | [00_PLAN.md](00_PLAN.md), [PROJECT.md](../PROJECT.md) | Earlier planning/design material. Candidates to label/archive more clearly; not runtime dependencies. |
-| [BDI_LIVE_MANUAL_DEMO.md](BDI_LIVE_MANUAL_DEMO.md) | Short redirect to the current manual. Small intentional compatibility document, not harmful duplication. |
+| [BDI_LIVE_MANUAL_DEMO.md](archive/pre-policy-refactor/BDI_LIVE_MANUAL_DEMO.md) | Short redirect to the current manual. Small intentional compatibility document, not harmful duplication. |
 | [.github/workflows/README-legacy-ci-cd.md](../.github/workflows/README-legacy-ci-cd.md) | Markdown pointer explaining current selected-entity workflows; despite its name it is not an active workflow or an old YAML pipeline. |
 | [NOTE.md](NOTE.md) | User notes/style reference with uncommitted additions. Preserve; do not classify personal research notes as generated clutter. |
 

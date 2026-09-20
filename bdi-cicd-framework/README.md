@@ -2,6 +2,8 @@
 
 Engineer inputs are **models/01_pipeline.yaml** and **models/02_goal.yaml**. The payment example supplies job bindings, endpoints and PromQL in the pipeline input; recovery actions have their own mapping. Goals supply achievements, safety constraints and telemetry thresholds. No separate project manifest is read by the controller.
 
+Read [how generation and runtime connect](../docs/BDI_GENERATION_AND_RUNTIME.md) for the origin of E/D/O/R, predefined versus project-specific rules, the active agent/environment, telemetry configuration sources, and the assessment of embedding GitHub job steps. Follow the [manual experiment walkthrough](../docs/BDI_MANUAL_EXECUTION_GUIDE.md) one step at a time for local startup, version tags, baseline/v2 campaigns and recovery.
+
 ## Project generation and campaign execution
 
 ```text

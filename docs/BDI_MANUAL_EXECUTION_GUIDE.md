@@ -438,10 +438,135 @@ py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only
 
 Keep the same repository credentials and intended project configuration. Reconciliation reads remote state; it does not resume the old campaign or declare achievement. Unknown preserves pending intent; confirmed terminal status clears it. Do not erase the marker to force deployment. Worktrees share a repository lock; independent clones do not.
 
-## 18. Retain evidence and finish
+## 18. Return to v1 and repeat the experiment
+
+Use the original v1 tag/commit and run a new healthy v1 campaign. You do not need to undo the v2 commits, delete the v2 branch or move any tags.
+
+### 18.1. Decide what you need to restore
+
+| Operation | What it changes |
+|---|---|
+| Select `$env:BDI_RELEASE_SHA = $v1Sha` | Source for the next normal jobs; it does not deploy until you start a campaign |
+| Run a new v1 campaign | Rebuilds and deploys v1 to both staging and production and verifies their health |
+| Successful automatic rollback | Restores production; staging may still contain v2 |
+| Switch a local branch to v1 | Local source files only; existing containers keep running their previous version |
+| Restart existing containers | Restarts their current configuration/image; does not select the Git v1 source |
+
+**Recommended reset:** a fresh v1 campaign using the existing verified v1 receipt, followed by the same v2 source in a new campaign. This keeps the software versions and agent configuration comparable across repetitions. It resets deployed source and experiment mode, not database contents.
+
+### 18.2. Finish the previous campaign first
+
+Actions:
+
+- Preserve its entire evidence directory and note its outcome.
+- Confirm GitHub has no still-running selected deployment; close the old MAS after it finishes.
+- If the controller stopped with uncertain execution, follow step 17's reconciliation before redeploying. Do not delete its pending marker or lock to force a run.
+- Keep Docker and the deployment runner running, or restart them using steps 3/4 as appropriate. Do not start the separate local rehearsal stack on deployment ports.
+
+Checkpoint: there is no unresolved or overlapping deployment. A previous `stopped/restored` result is evidence of restoration, not an `achieved` candidate receipt; use the original achieved v1 receipt below.
+
+### 18.3. Recover the original version and receipt selections
+
+If you kept the same PowerShell window, `$v1Tag`, `$v1Sha`, `$v2Tag` and `$knownGood` may still exist. In a new window, set them explicitly from your saved evidence. Replace the three example values before running:
+
+```powershell
+$v1Tag = 'YOUR-ORIGINAL-SESSION-v1'
+$v2Tag = 'YOUR-ORIGINAL-SESSION-v2'
+$knownGood = (Resolve-Path 'bdi-cicd-framework/runs/YOUR-ORIGINAL-SESSION-v1/controller-result.json').Path
+$v1Sha = git rev-list -n 1 $v1Tag
+$v2Sha = git rev-list -n 1 $v2Tag
+$receipt = Get-Content $knownGood -Raw | ConvertFrom-Json
+$receipt | Select-Object mode, outcome, release_sha, repository
+if ($receipt.mode -ne 'github' -or $receipt.outcome -ne 'achieved' -or $receipt.release_sha -ne $v1Sha) {
+    throw 'Select the original achieved live v1 receipt matching the v1 tag'
+}
+```
+
+The launcher also checks project/repository identity and verified recovery environment. If you used a different pinned worker ref originally, recover that value from the earlier campaign's `generation-manifest.json` rather than changing worker versions accidentally. Local tags and their referenced commits must still exist; retrieve missing published tags through your normal Git workflow if needed, without overwriting existing tags.
+
+If the trusted achieved receipt is lost, recover it from your evidence backup. A tag alone cannot replace it. If no trusted receipt exists, explicitly establish v1 again with `--baseline` and a new directory, as in step 10; that campaign has no automatic recovery source. Do not manufacture a receipt or use a scenario result.
+
+### 18.4. Clear faults and select v1 for deployment
+
+Use the same repository and controller configuration as the original experiment. Reauthenticate in a new shell:
+
+```powershell
+gh auth status
+$env:GITHUB_TOKEN = gh auth token
+if ($LASTEXITCODE -ne 0) { throw 'GitHub authentication failed' }
+$env:GITHUB_REPOSITORY = 'id-nynt/260031_cicd_payment_demo'
+$env:BDI_WORKFLOW_REF = $v1Tag
+$env:BDI_RELEASE_SHA = $v1Sha
+Remove-Item Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
+Remove-Item Env:BDI_PAUSE_AFTER_ENTITY -ErrorAction SilentlyContinue
+Remove-Item Env:BDI_PAUSE_MILLISECONDS -ErrorAction SilentlyContinue
+Remove-Item Env:BDI_READY_URL -ErrorAction SilentlyContinue
+Remove-Item Env:BDI_PROMETHEUS_URL -ErrorAction SilentlyContinue
+py -3 -B bdi-cicd-framework/run_controller.py --validate-only
+```
+
+Substitute your actual repository and original worker ref if different. Clearing `BDI_EXECUTION_PLAN` disconnects the fault file, even if it still contains a previous fault. When later reattaching it, empty it first as in step 15.
+
+Checkpoint: the persistent project artifacts are valid and candidate source is v1. The controller checkout can remain on the current framework or v2 branch: selected GitHub jobs check out `BDI_RELEASE_SHA`. Do not regenerate just because you repeat a campaign. If configuration/generator changed, intentionally restore the compatible project revision or generate and record a new revision; then describe the repeat as a changed-configuration experiment.
+
+### 18.5. Redeploy and verify v1
+
+Confirm v1 is compatible with the database/schema currently retained from v2. Then choose a new evidence directory:
+
+```powershell
+$repeatName = 'repeat-' + (Get-Date -Format yyyyMMdd-HHmmss)
+$resetDir = "bdi-cicd-framework/runs/$repeatName-v1"
+py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good $knownGood --confirm-compatible-rollback --artifacts-dir $resetDir
+```
+
+The existing v1 receipt is valid as the recovery selection even when the candidate is also v1. A recovery attempt still finishes stopped/restored, not achieved; only a completely healthy normal campaign establishes the reset checkpoint.
+
+After the final result, close the console and inspect:
+
+```powershell
+$reset = Get-Content "$resetDir/controller-result.json" -Raw | ConvertFrom-Json
+$reset | Select-Object mode, outcome, release_sha, recovery_outcome
+if ($reset.mode -ne 'github' -or $reset.outcome -ne 'achieved' -or $reset.release_sha -ne $v1Sha) {
+    throw 'v1 reset is not verified; inspect this campaign before repeating v2'
+}
+Invoke-RestMethod http://localhost:3001/health
+Invoke-RestMethod http://localhost:3001/ready
+Invoke-RestMethod http://localhost:3000/health
+Invoke-RestMethod http://localhost:3000/ready
+$knownGood = (Resolve-Path "$resetDir/controller-result.json").Path
+```
+
+Checkpoint: staging and production are healthy v1 deployments, their new execution IDs match this campaign's evidence, and v1 wording appears in the UI. Keep both the original receipt and this fresh achieved v1 receipt. Do not reuse an old directory or overwrite earlier evidence.
+
+### 18.6. Repeat v2 without recreating versions
+
+For the same comparison, reuse the existing v2 tag/SHA. You do not need a new v2 commit or tag unless its source actually changes.
+
+```powershell
+$env:BDI_RELEASE_SHA = $v2Sha
+$candidateDir = "bdi-cicd-framework/runs/$repeatName-v2-healthy"
+py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good $knownGood --confirm-compatible-rollback --artifacts-dir $candidateDir
+```
+
+Then repeat the individual fault experiments in steps 15/16, using new directory names based on `$repeatName` and an explicitly selected fault each time. Keep the v1 receipt as `$knownGood` when demonstrating v2-to-v1 restoration.
+
+For editing local files from v1 rather than merely deploying it, first preserve uncommitted work and stop using that checkout for an active controller. A new branch preserves the existing v2 history:
+
+```powershell
+git status --short
+git switch -c "demo/$repeatName-from-v1" $v1Sha
+```
+
+This optional source checkout does not deploy anything. Keep a compatible controller checkout available; an older app tag may contain an older framework. Do not use `git reset --hard`, force-update tags, or delete branches to repeat the experiment.
+
+Database rows, volumes and historical Prometheus samples remain. Execution-ID correlation separates new observations, but this is not a pristine-data reset. If the research protocol needs identical initial data, plan a separate verified database backup/restore procedure; do not treat `docker compose down -v` as routine repetition.
+
+## 19. Retain evidence and finish
 
 Keep each entire campaign directory: snapshots, `generation-manifest.json`, `project-generation-manifest.json`, journal and result. Add expected/actual sequence, GitHub URLs, app/Prometheus observations and MAS screenshots. Keep the trusted v1 receipt for subsequent recovery experiments.
 
 The app continues running after the controller ends. Closing the MAS does not cancel a remote GitHub job. Before stopping the runner, confirm no campaign or remote deployment is active. Preserve database volumes.
 
 No live commands in this guide were executed while writing it. Local simulation is not live deployment evidence. Historical records remain under [experiments](experiments/).
+
+For files that can be regenerated, legacy compatibility material and cleanup candidates, see the [project file audit](BDI_FILE_AUDIT.md). Campaign evidence and known-good receipts are not disposable caches.

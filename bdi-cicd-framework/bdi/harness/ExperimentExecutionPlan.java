@@ -11,8 +11,8 @@ import java.util.Properties;
 /** Configuration-only per-entity injection lookup used by experiment runs. */
 public final class ExperimentExecutionPlan {
     public record Injection(String failureMode, String forceErrorRate,
-                            String extraLatencyMs, String executionDelayMs) {
-        static Injection none() { return new Injection("none", "0", "0", "0"); }
+                            String extraLatencyMs, String executionDelayMs, String experimentMode) {
+        static Injection none() { return new Injection("none", "0", "0", "0", "normal"); }
     }
 
     private final Properties properties = new Properties();
@@ -50,7 +50,8 @@ public final class ExperimentExecutionPlan {
             value(prefix + "failure_mode", value(entity + ".failure_mode", "none")),
             value(prefix + "force_error_rate", value(entity + ".force_error_rate", "0")),
             value(prefix + "extra_latency_ms", value(entity + ".extra_latency_ms", "0")),
-            value(prefix + "execution_delay_ms", value(entity + ".execution_delay_ms", "0")));
+            value(prefix + "execution_delay_ms", value(entity + ".execution_delay_ms", "0")),
+            value(prefix + "experiment_mode", value(entity + ".experiment_mode", "normal")));
     }
 
     private String value(String key, String fallback) {

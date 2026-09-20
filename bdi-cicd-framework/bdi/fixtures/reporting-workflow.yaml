@@ -7,18 +7,24 @@ workflow:
     observation_interval_seconds: 0
     reconciliation_attempts: 2
     reconciliation_interval_seconds: 0
+    retry_interval_seconds: 5
+    observation_timeout_seconds: 180
+    healthy_observations: 2
   jobs:
     package:
       job_name: Package report
+      retry_safe: false
       needs: []
     verify:
       needs:
       - package
       job_name: Verify report
+      retry_safe: false
     preview:
       needs:
       - verify
       job_name: Deploy preview
+      retry_safe: false
   recovery: {}
 goals: &id001
   goal:
@@ -42,6 +48,9 @@ runtime:
     observation_interval_seconds: 0
     reconciliation_attempts: 2
     reconciliation_interval_seconds: 0
+    retry_interval_seconds: 5
+    observation_timeout_seconds: 180
+    healthy_observations: 2
 capabilities:
   entities:
   - package
@@ -53,6 +62,10 @@ capabilities:
     - verify
     - preview
     observe_telemetry: []
+    record_decision:
+    - package
+    - verify
+    - preview
     reconcile_job:
     - package
     - verify
@@ -86,5 +99,16 @@ capabilities:
     - error_rate
     - latency_p95_ms
     - availability
+    - elapsed_ms
+  execution_statuses:
+  - success
+  - failure
+  - transient_failure
+  - dispatch_rejected
+  - cancelled
+  - timeout
+  - skipped
+  - unknown
+  retry_safe: []
   recovery: {}
   goal_rules: *id001

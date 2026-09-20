@@ -7,7 +7,8 @@ export function createExperiment(mode: Config['EXPERIMENT_MODE']) {
 
   return {
     isReady: mode !== 'unhealthy',
-    async beforeFakePayment(): Promise<boolean> {
+    async beforeFakePayment(requestFault = false): Promise<boolean> {
+      if (mode === 'request_faults' && requestFault) return true;
       if (mode === 'high_latency') await delay(800);
       if (mode === 'high_error_rate') return ++fakePaymentAttempts % 3 === 0;
       return false;

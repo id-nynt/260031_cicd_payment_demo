@@ -103,6 +103,15 @@ class ProjectArtifactsTest(unittest.TestCase):
         artifacts.generate_agent(self.workflow, ROOT / 'generator/controller_generic.asl', self.agent)
         self.assertEqual(original, self.agent.read_bytes())
 
+    def test_existing_campaign_has_actionable_error_without_starting_java(self):
+        directory = self.root / 'existing'
+        directory.mkdir()
+        with patch.object(sys, 'argv', ['run_controller.py', '--project-dir', str(self.root),
+                                       '--scenario', 'healthy', '--artifacts-dir', str(directory)]), \
+             patch.object(run_controller.subprocess, 'run', side_effect=AssertionError('started process')):
+            with self.assertRaisesRegex(ModelError, 'fresh --artifacts-dir'):
+                run_controller.main()
+
     def test_forged_hash_cannot_bless_changed_contract_or_input_projection(self):
         original = self.workflow.read_bytes()
         for field in ['capabilities', 'goals']:

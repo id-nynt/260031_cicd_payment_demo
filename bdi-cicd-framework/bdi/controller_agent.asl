@@ -33,7 +33,7 @@ required(production).
 
 achievement(production, success).
 achievement(staging, success).
-max_duration(production, 100000).
+max_duration(production, 1800000).
 require_healthy(production).
 avoid_missing(production, test).
 avoid_missing(production, staging).
@@ -48,10 +48,21 @@ attempt_count(security, 0).
 attempt_count(staging, 0).
 attempt_count(production, 0).
 attempt_count(rollback, 0).
-observation_limit(18).
+observation_limit(36).
 observation_interval(5000).
 reconciliation_limit(3).
 reconciliation_interval(5000).
+retry_interval(5000).
+observation_timeout(180000).
+healthy_observations(2).
+retry_safe(build).
+retry_safe(test).
+retry_safe(security).
+retry_safe(staging).
+retry_safe(production).
+healthy_count(production, 0).
+healthy_count(rollback, 0).
+healthy_count(staging, 0).
 error_rate_limit(0.05).
 latency_limit(500).
 
@@ -74,7 +85,9 @@ nextentity(E) :- workflow_active & required(E) & entity(E) & depends(E, Requirem
     & holds(Requirements) & safe_to_execute(E) & not running(_)
     & not phase_result(E, success) & not terminal(E, _).
 retry_allowed(E) :- max_retries(Max) & attempt_count(E, Attempts) & Attempts <= Max
-    & not recovery(E, _) & not recovery_entity(E).
+    & retry_safe(E) & not recovery_entity(E).
+retryable_result(transient_failure).
+retryable_result(timeout).
 
 !control.
 
@@ -103,6 +116,7 @@ retry_allowed(E) :- max_retries(Max) & attempt_count(E, Attempts) & Attempts <= 
 
 +!run_entity(E) : attempt_count(E, Previous)
  <- Attempt = Previous + 1; -attempt_count(E, Previous); +attempt_count(E, Attempt);
+    -phase_result(E, _); -telemetry(E, _); -healthy_count(E, _); +healthy_count(E, 0);
     +running(E); +run_attempt(E, Attempt);
     .print("BDI_DECISION=run entity=", E, " attempt=", Attempt);
     run_job(E, Attempt).
@@ -135,11 +149,13 @@ retry_allowed(E) :- max_retries(Max) & attempt_count(E, Attempts) & Attempts <= 
 +reconciled(E, A, Round, Result) : running(E) & run_attempt(E, A) & Result \== unknown
  <- +status(E, A, Result).
 +status(E, A, Result) : running(E) & run_attempt(E, A) & Result \== success & Result \== unknown
-    & retry_allowed(E)
+    & retryable_result(Result) & retry_allowed(E) & retry_interval(Delay)
  <- -running(E); -run_attempt(E, A);
-    .print("BDI_DECISION=retry entity=", E, " after=", Result); !control.
+    .print("BDI_DECISION=retry entity=", E, " after=", Result); record_decision(E, retry, A); .wait(Delay); !control.
++status(E, A, dispatch_rejected) : running(E) & run_attempt(E, A)
+ <- -running(E); -run_attempt(E, A); !failed(E, dispatch_rejected, stopped).
 +status(E, A, Result) : running(E) & run_attempt(E, A) & Result \== success & Result \== unknown
-    & not retry_allowed(E)
+    & Result \== dispatch_rejected & (not retryable_result(Result) | not retry_allowed(E))
  <- -running(E); -run_attempt(E, A); !failed(E, failure, stopped).
 
 // Recovery is conditional, single-attempt, and cannot satisfy the candidate goal.
@@ -155,26 +171,40 @@ retry_allowed(E) :- max_retries(Max) & attempt_count(E, Attempts) & Attempts <= 
     !end(Outcome, not_attempted).
 
 // Measurements are data. These AgentSpeak rules apply engineer-defined constraints.
-+telemetry_measurement(E, A, Round, unavailable, _, _, _, _) : observing(E) & attempt_count(E, A)
- <- +telemetry_sample(E, A, Round, unknown).
-+telemetry_measurement(E, A, Round, fresh, not_ready, _, _, _) : observing(E) & attempt_count(E, A)
- <- +telemetry_sample(E, A, Round, block).
-+telemetry_measurement(E, A, Round, fresh, ready, Error, Latency, Availability)
++telemetry_measurement(E, A, Round, unavailable, _, _, _, _, Time) : observing(E) & attempt_count(E, A)
+ <- +telemetry_sample(E, A, Round, unknown, Time).
++telemetry_measurement(E, A, Round, fresh, not_ready, _, _, _, Time) : observing(E) & attempt_count(E, A)
+ <- +telemetry_sample(E, A, Round, block, Time).
++telemetry_measurement(E, A, Round, fresh, ready, Error, Latency, Availability, Time)
     : observing(E) & attempt_count(E, A) & error_rate_limit(MaxError) & latency_limit(MaxLatency)
       & (Error > MaxError | Latency > MaxLatency | Availability < 1)
- <- +telemetry_sample(E, A, Round, block).
-+telemetry_measurement(E, A, Round, fresh, ready, Error, Latency, Availability)
+ <- +telemetry_sample(E, A, Round, block, Time).
++telemetry_measurement(E, A, Round, fresh, ready, Error, Latency, Availability, Time)
     : observing(E) & attempt_count(E, A) & error_rate_limit(MaxError) & latency_limit(MaxLatency)
       & Error <= MaxError & Latency <= MaxLatency & Availability >= 1
- <- +telemetry_sample(E, A, Round, allow).
+ <- +telemetry_sample(E, A, Round, allow, Time).
 
-+telemetry_sample(E, A, Round, unknown) : observing(E) & attempt_count(E, A) & observation_limit(Max) & Round < Max
-    & observation_interval(Delay)
+observation_open(Round, Time) :- observation_limit(Max) & Round < Max & observation_timeout(Deadline) & Time < Deadline.
++telemetry_sample(E, A, Round, allow, Time) : observing(E) & attempt_count(E, A)
+    & healthy_count(E, Count) & healthy_observations(Need) & Count + 1 >= Need & observation_timeout(Deadline) & Time <= Deadline
+ <- !accept_sample(E, allow).
++telemetry_sample(E, A, Round, allow, Time) : observing(E) & attempt_count(E, A)
+    & healthy_count(E, Count) & healthy_observations(Need) & Count + 1 < Need & observation_open(Round, Time)
+ <- -healthy_count(E, Count); Next = Count + 1; +healthy_count(E, Next); !reobserve(E, Round).
++telemetry_sample(E, A, Round, allow, Time) : observing(E) & attempt_count(E, A)
+    & healthy_count(E, Count) & healthy_observations(Need) & observation_timeout(Deadline)
+    & (Count + 1 < Need | Time > Deadline) & not observation_open(Round, Time)
+ <- !accept_sample(E, unknown).
++telemetry_sample(E, A, Round, Decision, Time) : observing(E) & attempt_count(E, A)
+    & Decision \== allow & observation_open(Round, Time)
+ <- -healthy_count(E, _); +healthy_count(E, 0); !reobserve(E, Round).
++telemetry_sample(E, A, Round, Decision, Time) : observing(E) & attempt_count(E, A)
+    & Decision \== allow & not observation_open(Round, Time)
+ <- !accept_sample(E, Decision).
++!reobserve(E, Round) : observation_interval(Delay)
  <- .print("BDI_DECISION=wait_reconsider entity=", E, " round=", Round);
-    .wait(Delay); observe_telemetry(E).
-+telemetry_sample(E, A, Round, unknown) : observing(E) & attempt_count(E, A) & observation_limit(Max) & Round >= Max
- <- -observing(E); accept_telemetry(E, unknown); +telemetry(E, unknown); !observed(E, unknown).
-+telemetry_sample(E, A, Round, Decision) : observing(E) & attempt_count(E, A) & Decision \== unknown
+    record_decision(E, reobserve, Round); .wait(Delay); observe_telemetry(E).
++!accept_sample(E, Decision)
  <- -observing(E); accept_telemetry(E, Decision); +telemetry(E, Decision); !observed(E, Decision).
 +!observed(E, allow) : recovery_active(_, E)
  <- .print("BDI_RECOVERY=restored entity=", E); !end(stopped, restored).

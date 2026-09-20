@@ -70,7 +70,7 @@ main{background:white;border:1px solid #e3e8f0;border-radius:16px;padding:32px;b
       if (parsed.data.provider === 'fake' && (!parsed.data.demoCardNumber || !/^\d{16}$/.test(parsed.data.demoCardNumber.replace(/\s/g, '')))) return reply.code(400).send({ error: 'invalid_demo_card', message: 'Enter a 16-digit demo card number' });
       const selectedProvider = providerFor(parsed.data.provider);
       if (!selectedProvider) return reply.code(400).send({ error: 'provider_not_available', message: 'Selected provider is not configured' });
-      if (parsed.data.provider === 'fake' && await experiment.beforeFakePayment()) {
+      if (parsed.data.provider === 'fake' && await experiment.beforeFakePayment(request.headers['x-experiment-fault'] === 'error')) {
         return reply.code(503).send({ error: 'experiment_injected_failure', message: 'Demo payment temporarily unavailable' });
       }
       const external = await selectedProvider.createPayment({ ...parsed.data, paymentId });

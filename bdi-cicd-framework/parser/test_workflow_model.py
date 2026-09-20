@@ -48,10 +48,22 @@ class CanonicalModelTest(unittest.TestCase):
                    lambda p:p['recovery']['rollback'].update(environment='staging'),
                    lambda p:p['recovery']['rollback'].update(release_source='candidate'),
                    lambda p:p['execution'].update(max_retries=True),
+                   lambda p:p['jobs']['production'].update(retry_safe='yes'),
+                   lambda p:p['execution'].update(healthy_observations=121),
+                   lambda p:p['execution'].update(observation_attempts=1,healthy_observations=2),
+                   lambda p:p['execution'].update(observation_timeout_seconds=0),
                    lambda p:p['telemetry']['metrics'].update(availability_query='min(unrelated)')]
         for mutate in mutations:
             p=copy.deepcopy(self.pipeline);mutate(p)
             with self.subTest(p=p),self.assertRaises(ModelError):compile_documents(p,self.goals)
+
+    def test_retry_safety_is_explicit_and_contract_preserves_budgets(self):
+        self.pipeline['jobs']['production'].pop('retry_safe')
+        doc,_=compile_documents(self.pipeline,self.goals)
+        self.assertNotIn('production',doc['capabilities']['retry_safe'])
+        self.assertIn('test',doc['capabilities']['retry_safe'])
+        self.assertEqual(2,doc['workflow']['execution']['healthy_observations'])
+        self.assertIn('elapsed_ms',doc['capabilities']['observations']['telemetry_measurement'])
 
     def test_health_requirement_cannot_be_silently_dropped(self):
         g=copy.deepcopy(self.goals);g['goal']['maintain(M)']=['production.duration <= 100000']

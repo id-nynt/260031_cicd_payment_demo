@@ -55,7 +55,7 @@ def main() -> int:
     parser.add_argument("--project-dir", type=Path, default=ROOT, help="persistent generated project directory")
     parser.add_argument("--validate-only", action="store_true", help="check consistency without starting a campaign")
     parser.add_argument("--scenario", choices=["healthy", "transient_test_failure", "exhausted_test_failure",
-                                                "telemetry_block", "telemetry_unknown", "telemetry_delayed",
+                                                "telemetry_block", "telemetry_unknown", "telemetry_delayed", "telemetry_transient", "production_transient", "telemetry_flapping", "observation_deadline", "deterministic_test_failure", "dispatch_rejected", "production_retry",
                                                 "production_failure", "production_unhealthy", "production_unknown",
                                                 "rollback_failure", "rollback_unknown", "rollback_unhealthy", "execution_uncertain", "reconciled_success", "reconciled_failure"])
     parser.add_argument("--known-good", type=Path, help="achieved live campaign result verifying the baseline release")
@@ -97,7 +97,11 @@ def main() -> int:
 
     campaign = "campaign-" + uuid.uuid4().hex
     artifacts = args.artifacts_dir.resolve() if args.artifacts_dir else ROOT / "runs" / campaign
-    artifacts.mkdir(parents=True, exist_ok=False)
+    try:
+        artifacts.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as error:
+        raise ModelError(f"Campaign directory already exists: {artifacts}. Preserve its evidence; "
+                         "choose a fresh --artifacts-dir or omit it for an automatic unique directory.") from error
     persistent_workflow, persistent_agent, generation_manifest = paths(args.project_dir)
     workflow = artifacts / "03_workflow_model.yaml"
     agent = artifacts / "controller_agent.asl"

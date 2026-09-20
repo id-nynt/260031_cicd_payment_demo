@@ -71,24 +71,30 @@ def compile_documents(pipeline, goals):
     if not re.fullmatch(r"[A-Za-z0-9_.-]+\.ya?ml",p['workflow_file']):
         raise ModelError("workflow_file must be a workflow filename")
     defaults = {'max_retries':0,'observation_attempts':18,'observation_interval_seconds':5,
-                'reconciliation_attempts':3,'reconciliation_interval_seconds':5}
+                'reconciliation_attempts':3,'reconciliation_interval_seconds':5,
+                'retry_interval_seconds':5,'observation_timeout_seconds':180,'healthy_observations':2}
     keys(p['execution'], defaults, {'max_retries'})
     execution = defaults | p['execution']
     for key, value in execution.items():
-        integer(value, 1 if key.endswith('attempts') else 0, 120 if key.endswith('attempts') else 60)
+        integer(value, 1 if key.endswith('attempts') or key in ('observation_timeout_seconds','healthy_observations') else 0,
+                3600 if key == 'observation_timeout_seconds' else 120 if key.endswith('attempts') or key == 'healthy_observations' else 60)
+    if execution['healthy_observations'] > execution['observation_attempts']:
+        raise ModelError('healthy_observations cannot exceed observation_attempts')
     jobs, recoveries = p['jobs'], p.get('recovery', {})
     if not isinstance(jobs, dict) or not jobs or not isinstance(recoveries, dict) or set(jobs) & set(recoveries):
         raise ModelError("Normal jobs and recovery actions must be disjoint mappings")
     normalized = {}; aliases = {}; environments = {}; sources = {}
     for name, job in jobs.items():
         atom(name)
-        keys(job, {'needs','job_name','environment','observe_before','observe_after'}, {'job_name'})
+        keys(job, {'needs','job_name','environment','observe_before','observe_after','retry_safe'}, {'job_name'})
+        job.setdefault('retry_safe', False)
+        if type(job['retry_safe']) is not bool: raise ModelError('retry_safe must be boolean')
         needs = job.get('needs', [])
         if isinstance(needs, str): needs = [needs]
         if not isinstance(needs, list) or any(not isinstance(x,str) for x in needs) or len(needs)!=len(set(needs)) or any(x not in jobs for x in needs):
             raise ModelError(f"Invalid normal dependency for {name}")
         job['needs'] = needs
-        normalized[name] = {k:v for k,v in job.items() if k not in ('job_name','environment')}
+        normalized[name] = {k:v for k,v in job.items() if k not in ('job_name','environment','retry_safe')}
     for name, recovery in recoveries.items():
         atom(name)
         keys(recovery, {'from','on','job_name','environment','release_source','observe_after'},
@@ -150,6 +156,7 @@ def compile_documents(pipeline, goals):
     capabilities = {
         'entities': list(model.entities),
         'actions': {'run_job': list(model.entities), 'observe_telemetry': sorted(observed),
+                    'record_decision': list(model.entities),
                     'reconcile_job': list(model.entities), 'accept_telemetry': sorted(observed),
                     'record_recovery': [list(pair) for pair in model.recovery],
                     'finish': ['achieved', 'stopped', 'unknown']},
@@ -157,7 +164,9 @@ def compile_documents(pipeline, goals):
                          'duration': ['entity', 'attempt', 'duration'],
                          'reconciled': ['entity', 'attempt', 'round', 'status'],
                          'telemetry_measurement': ['entity', 'attempt', 'round', 'data_status',
-                                                   'readiness', 'error_rate', 'latency_p95_ms', 'availability']},
+                                                   'readiness', 'error_rate', 'latency_p95_ms', 'availability','elapsed_ms']},
+        'execution_statuses': ['success','failure','transient_failure','dispatch_rejected','cancelled','timeout','skipped','unknown'],
+        'retry_safe': [name for name, job in jobs.items() if job['retry_safe']],
         'recovery': {source: target for source, target in model.recovery},
         'goal_rules': g,
     }
@@ -196,6 +205,11 @@ def render_agent(workflow, template):
               'reconciliation_attempts':'reconciliation_limit','reconciliation_interval_seconds':'reconciliation_interval'}[key]
         value=policy[key]*(1000 if key.endswith('seconds') else 1)
         facts+=f"{name}({value}).\n"
+    facts+=f"retry_interval({policy['retry_interval_seconds']*1000}).\n"
+    facts+=f"observation_timeout({policy['observation_timeout_seconds']*1000}).\n"
+    facts+=f"healthy_observations({policy['healthy_observations']}).\n"
+    for name in doc['capabilities']['retry_safe']: facts+=f'retry_safe({name}).\n'
+    for name in doc['capabilities']['actions']['observe_telemetry']: facts+=f'healthy_count({name}, 0).\n'
     if 'thresholds' in doc['runtime']:
         facts+=f"error_rate_limit({doc['runtime']['thresholds']['error_rate_high_gt']}).\n"
         facts+=f"latency_limit({doc['runtime']['thresholds']['latency_p95_ms_high_gt']}).\n"

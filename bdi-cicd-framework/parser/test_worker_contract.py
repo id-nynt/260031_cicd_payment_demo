@@ -4,6 +4,18 @@ from pathlib import Path
 from workflow_model import read, compile_inputs
 ROOT=Path(__file__).resolve().parents[2]
 class WorkerContractTest(unittest.TestCase):
+    def test_fault_controls_and_security_gate_match_the_runtime(self):
+        worker=read(ROOT/'.github/workflows/entity-execution.yml')
+        for name in ('build','test','security','staging','production'):
+            steps=worker['jobs'][name]['steps']
+            transient=next(s for s in steps if s.get('name')=='Controlled transient failure')
+            self.assertEqual("inputs.failure_mode == 'transient_failure'", transient['if'])
+            self.assertEqual('exit 1',transient['run'])
+        security=next(s for s in worker['jobs']['security']['steps'] if 'npm audit' in s.get('run',''))
+        self.assertFalse(security.get('continue-on-error',False))
+        inputs=worker.get('on',worker.get(True))['workflow_dispatch']['inputs']
+        self.assertIn('request_faults',inputs['experiment_mode']['options'])
+        self.assertIn('transient_failure',inputs['failure_mode']['options'])
     def test_selected_entity_is_the_only_executable_job(self):
         worker=read(ROOT/'.github/workflows/entity-execution.yml')
         self.assertEqual('bdi-${{ inputs.execution_id }}',worker['run-name'])

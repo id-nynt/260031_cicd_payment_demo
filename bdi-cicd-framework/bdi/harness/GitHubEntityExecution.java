@@ -99,7 +99,13 @@ public final class GitHubEntityExecution implements EntityExecution {
         if (expectedJob == null) throw new IllegalArgumentException("Unmapped entity: " + entity);
         String executionId = UUID.randomUUID().toString();
         ExperimentExecutionPlan.Injection injection = experimentPlan.next(entity);
-        String experimentMode = !"0".equals(injection.forceErrorRate()) ? "high_error_rate" : "normal";
+        String experimentMode = !"0".equals(injection.forceErrorRate()) ? "high_error_rate" : injection.experimentMode();
+        if (!java.util.Set.of("normal", "high_error_rate", "request_faults").contains(experimentMode)
+                || !java.util.Set.of("none", "force_failure", "transient_failure").contains(injection.failureMode()))
+            throw new IllegalArgumentException("Unsupported experiment mode or failure mode");
+        journal.event("execution_configuration", null, Map.of("entity", entity, "attempt", attempt,
+            "execution_id", executionId, "failure_mode", injection.failureMode(), "experiment_mode", experimentMode,
+            "release_sha", selectedSha, "workflow_ref", ref));
         pending = JSON.createObjectNode().put("campaign_id", campaignId).put("entity", entity)
             .put("attempt", attempt).put("execution_id", executionId).put("release_sha", selectedSha)
             .put("repository", repository).put("workflow_file", project.workflowFile()).put("api_base", apiBase.toString())
@@ -119,7 +125,7 @@ public final class GitHubEntityExecution implements EntityExecution {
             journal.event("dispatch_rejected", null, Map.of("execution_id", executionId,
                 "http_status", error.status, "reason", error.getMessage(),
                 "next_step", "Check controller GITHUB_TOKEN repository/Actions write access and workflow ref"));
-            return settle("failure");
+            return settle("dispatch_rejected");
         } catch (Exception error) {
             journal.event("execution_uncertain", null, Map.of("execution_id", executionId, "reason", String.valueOf(error.getMessage())));
             return unresolved();
@@ -140,7 +146,7 @@ public final class GitHubEntityExecution implements EntityExecution {
             throw new IllegalStateException("Pending execution belongs to another repository/API");
         try {
             if (pending.path("run_id").asLong() == 0 && rejectedStatus(pending.path("dispatch_rejected_http_status").asInt()))
-                return settle("failure");
+                return settle("dispatch_rejected");
             long runId = pending.path("run_id").asLong();
             if (runId == 0) {
                 String title = "bdi-" + pending.path("execution_id").asText();
@@ -212,7 +218,7 @@ public final class GitHubEntityExecution implements EntityExecution {
         Files.writeString(archiveDirectory.resolve("rejected-dispatch-pending.json"), pending.toString(), java.nio.file.StandardOpenOption.CREATE_NEW);
         journal.event("dispatch_rejection_recovered", null, Map.of("execution_id", pending.path("execution_id").asText(),
             "evidence_directory", evidenceDirectory.toAbsolutePath().toString()));
-        return settle("failure");
+        return settle("dispatch_rejected");
     }
 
     private Result result(String status) {
@@ -271,7 +277,14 @@ public final class GitHubEntityExecution implements EntityExecution {
                 for (JsonNode job : jobs) {
                     if (expectedJob.equals(job.path("name").asText())) {
                         if (!"completed".equals(job.path("status").asText())) throw new IOException("Selected job is not terminal");
-                        return normalize(job.path("conclusion").asText());
+                        String status = normalize(job.path("conclusion").asText());
+                        // Only a dedicated failed worker step proves this controlled transient fault.
+                        // Arbitrary compiler/test/security failures remain deterministic failures.
+                        if (status.equals("failure")) for (JsonNode step : job.path("steps")) {
+                            if ("Controlled transient failure".equals(step.path("name").asText())
+                                    && "failure".equals(step.path("conclusion").asText())) return "transient_failure";
+                        }
+                        return status;
                     }
                 }
                 throw new IOException("Selected job was absent or skipped: " + expectedJob);

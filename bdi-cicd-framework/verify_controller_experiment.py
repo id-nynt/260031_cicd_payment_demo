@@ -11,6 +11,14 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 NORMAL = ["build", "test", "security", "staging", "production"]
 CASES = [
+    ("temporary_fault", "telemetry_transient", NORMAL, "achieved", "not_needed", []),
+    ("production_temporary_fault", "production_transient", NORMAL, "achieved", "not_needed", []),
+    ("flapping", "telemetry_flapping", NORMAL[:-1], "unknown", "not_attempted", []),
+    ("deadline", "observation_deadline", NORMAL[:-1], "unknown", "not_attempted", []),
+    ("deterministic_failure", "deterministic_test_failure", ["build", "test"], "stopped", "not_attempted", []),
+    ("dispatch_rejected", "dispatch_rejected", ["build"], "stopped", "not_attempted", []),
+    ("production_retry", "production_retry", NORMAL + ["production"], "achieved", "not_needed", []),
+    ("production_retry_unsafe", "production_retry", NORMAL + ["rollback"], "stopped", "restored", []),
     ("healthy", "healthy", NORMAL, "achieved", "not_needed", []),
     ("staging_only", "healthy", NORMAL[:-1], "achieved", "not_needed", ["--goal", str(ROOT / "examples/staging_goal.yaml")]),
     ("retry", "transient_test_failure", ["build", "test", "test", "security", "staging", "production"], "achieved", "not_needed", []),
@@ -38,6 +46,7 @@ CASES = [
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "bdi/build" / ("recovery-suite-" + uuid.uuid4().hex[:8]))
+    parser.add_argument("--case", action="append", choices=[case[0] for case in CASES], help="run only named cases")
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -46,8 +55,14 @@ def main():
     project["execution"]["observation_attempts"] = 3
     project["execution"]["observation_interval_seconds"] = 0
     project["execution"]["reconciliation_interval_seconds"] = 0
+    project["execution"]["retry_interval_seconds"] = 0
     quick = output / "quick-pipeline.yaml"
     quick.write_text(yaml.safe_dump(project, sort_keys=False), encoding="utf-8")
+    import copy
+    unsafe = copy.deepcopy(project)
+    unsafe['jobs']['production']['retry_safe'] = False
+    unsafe_path = output / 'unsafe-pipeline.yaml'
+    unsafe_path.write_text(yaml.safe_dump(unsafe,sort_keys=False),encoding='utf-8')
     duration_goal = yaml.safe_load((ROOT / "models/02_goal.yaml").read_text(encoding="utf-8"))
     duration_goal['goal']['maintain(M)'] = ['production.duration <= 1','production.health == healthy']
     duration_path = output / 'duration-goal.yaml'
@@ -59,6 +74,7 @@ def main():
     # Generate once per configuration revision, outside the campaign loop.
     configurations = {
         'payment': (quick, ROOT / 'models/02_goal.yaml'),
+        'unsafe': (unsafe_path, ROOT / 'models/02_goal.yaml'),
         'staging': (quick, ROOT / 'examples/staging_goal.yaml'),
         'duration': (quick, duration_path),
         'reporting': (ROOT / 'examples/reporting_pipeline.yaml', ROOT / 'examples/reporting_goal.yaml'),
@@ -69,9 +85,10 @@ def main():
                        env=env, check=True, stdout=subprocess.DEVNULL)
     rows = []
     for name, scenario, expected, outcome, recovery, extra in CASES:
+        if args.case and name not in args.case: continue
         directory = output / name
         key = {'staging_only': 'staging', 'maintenance_violation': 'duration',
-               'second_project': 'reporting'}.get(name, 'payment')
+               'second_project': 'reporting', 'production_retry_unsafe': 'unsafe'}.get(name, 'payment')
         extra = extra if name not in ('staging_only', 'second_project') else []
         command = [sys.executable, str(ROOT / "run_controller.py"), "--scenario", scenario,
                    "--project-dir", str(output / 'projects' / key),
@@ -93,6 +110,9 @@ def main():
             original = next(e for e in events if e["event"] == "entity_execution_finished" and e["entity"] == reconciliation["entity"])
             assert original["execution_id"] == reconciliation["execution_id"]
             assert original["attempt"] == reconciliation["attempt"]
+        if name in ("temporary_fault", "production_temporary_fault"):
+            assert any(e['event'] == 'telemetry_measurement' and e['round'] >= 3 for e in events)
+            assert 'rollback' not in actual
         if name == "pause":
             from datetime import datetime
             paused = next(e for e in events if e["event"] == "controller_pause")

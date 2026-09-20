@@ -2,26 +2,34 @@ name: Payment service release with BDI recovery
 project: payment-service
 execution:
   max_retries: 1
-  observation_attempts: 18
+  observation_attempts: 36
   observation_interval_seconds: 5
+  observation_timeout_seconds: 180
+  healthy_observations: 2
+  retry_interval_seconds: 5
   reconciliation_attempts: 3
   reconciliation_interval_seconds: 5
 workflow_file: entity-execution.yml
 jobs:
   build:
+    retry_safe: true
     job_name: Build entity
   test:
+    retry_safe: true
     needs: build
     job_name: Test entity
   security:
+    retry_safe: true
     needs: test
     job_name: Security entity
   staging:
+    retry_safe: true
     needs: security
     job_name: Staging entity
     environment: staging
     observe_after: true
   production:
+    retry_safe: true
     needs: staging
     observe_before: staging
     job_name: Production entity

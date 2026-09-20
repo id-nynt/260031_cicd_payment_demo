@@ -3,29 +3,37 @@ workflow:
   name: Payment service release with BDI recovery
   execution:
     max_retries: 1
-    observation_attempts: 18
+    observation_attempts: 36
     observation_interval_seconds: 5
     reconciliation_attempts: 3
     reconciliation_interval_seconds: 5
+    retry_interval_seconds: 5
+    observation_timeout_seconds: 180
+    healthy_observations: 2
   jobs:
     build:
+      retry_safe: true
       job_name: Build entity
       needs: []
     test:
+      retry_safe: true
       needs:
       - build
       job_name: Test entity
     security:
+      retry_safe: true
       needs:
       - test
       job_name: Security entity
     staging:
+      retry_safe: true
       needs:
       - security
       job_name: Staging entity
       environment: staging
       observe_after: true
     production:
+      retry_safe: true
       needs:
       - staging
       observe_before: staging
@@ -50,7 +58,7 @@ goals: &id002
     - production.status == success
     - staging.status == success
     maintain(M):
-    - production.duration <= 100000
+    - production.duration <= 1800000
     - production.health == healthy
     duration_unit: milliseconds
     avoid(V):
@@ -78,10 +86,13 @@ runtime:
       rollback: production
     release_sources:
       rollback: known_good
-    observation_attempts: 18
+    observation_attempts: 36
     observation_interval_seconds: 5
     reconciliation_attempts: 3
     reconciliation_interval_seconds: 5
+    retry_interval_seconds: 5
+    observation_timeout_seconds: 180
+    healthy_observations: 2
   environments:
     staging:
       ready_url: http://127.0.0.1:3001/ready
@@ -118,6 +129,13 @@ capabilities:
     - production
     - rollback
     - staging
+    record_decision:
+    - build
+    - test
+    - security
+    - staging
+    - production
+    - rollback
     reconcile_job:
     - build
     - test
@@ -159,6 +177,22 @@ capabilities:
     - error_rate
     - latency_p95_ms
     - availability
+    - elapsed_ms
+  execution_statuses:
+  - success
+  - failure
+  - transient_failure
+  - dispatch_rejected
+  - cancelled
+  - timeout
+  - skipped
+  - unknown
+  retry_safe:
+  - build
+  - test
+  - security
+  - staging
+  - production
   recovery:
     production: rollback
   goal_rules: *id002

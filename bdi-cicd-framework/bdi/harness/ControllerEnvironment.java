@@ -22,6 +22,7 @@ public final class ControllerEnvironment extends Environment {
     private final Map<String, Integer> attempts = new LinkedHashMap<>();
     private final Map<String, Integer> observationRounds = new LinkedHashMap<>();
     private final Map<String, String> telemetry = new LinkedHashMap<>();
+    private final Map<String, Long> observationStarted = new LinkedHashMap<>();
 
     @Override
     public void init(String[] args) {
@@ -56,6 +57,11 @@ public final class ControllerEnvironment extends Environment {
     public synchronized boolean executeAction(String agentName, Structure action) {
         try {
             return switch (action.getFunctor()) {
+                case "record_decision" -> {
+                    journal.event("bdi_decision", null, Map.of("entity", atom(action, 0),
+                        "decision", atom(action, 1), "counter", integer(action, 2)));
+                    yield true;
+                }
                 case "run_job" -> runJob(action);
                 case "observe_telemetry" -> observeTelemetry(action);
                 case "reconcile_job" -> reconcileJob(action);
@@ -87,6 +93,7 @@ public final class ControllerEnvironment extends Environment {
         int attempt = integer(action, 1);
         attempts.put(entity, attempt);
         observationRounds.remove(entity);
+        observationStarted.remove(entity);
         telemetry.remove(entity);
         if (!controller.jobNames().containsKey(entity)) throw new IllegalArgumentException("Unmapped entity " + entity);
         journal.event("bdi_decision", null, Map.of("decision", "run", "entity", entity,
@@ -134,6 +141,7 @@ public final class ControllerEnvironment extends Environment {
         String decision;
         String reason;
         int round = observationRounds.merge(entity, 1, Integer::sum);
+        observationStarted.putIfAbsent(entity, System.nanoTime());
         ProjectTelemetryProvider.Measurement measurement;
         if (scenario != null && !scenario.isBlank()) {
             boolean recovery = controller.releaseSources().containsKey(entity);
@@ -146,6 +154,10 @@ public final class ControllerEnvironment extends Environment {
                 decision = "block"; reason = "scenario_production_unhealthy";
             }
             else if (scenario.equals("telemetry_block")) { decision = "block"; reason = "scenario_block"; }
+            else if ((scenario.equals("telemetry_transient") || (scenario.equals("production_transient") && protectedEntity)) && round == 1) {
+                decision = "block"; reason = "scenario_temporary_fault";
+            }
+            else if (scenario.equals("telemetry_flapping") && round % 2 == 0) { decision = "block"; reason = "scenario_flapping"; }
             else if (scenario.equals("telemetry_unknown") || (scenario.equals("telemetry_delayed") && round == 1)) {
                 decision = "unknown"; reason = "scenario_wait";
             }
@@ -167,11 +179,14 @@ public final class ControllerEnvironment extends Environment {
 
     private boolean publishMeasurement(String entity, int round, ProjectTelemetryProvider.Measurement m, String executionId) {
         int attempt = attempts.getOrDefault(entity, 0);
+        long elapsed = (System.nanoTime() - observationStarted.get(entity)) / 1_000_000;
+        if ("observation_deadline".equals(scenario)) elapsed = 3_600_001;
+        journal.event("observation_clock", null, Map.of("entity", entity, "round", round, "elapsed_ms", elapsed));
         journal.event("telemetry_measurement", null, Map.of("entity", entity, "attempt", attempt, "round", round,
             "execution_id", executionId, "data_status", m.dataStatus(), "readiness", m.readiness(),
             "error_rate", m.errorRate(), "latency_p95_ms", m.latencyP95Ms(), "availability", m.availability()));
         addPercept(Literal.parseLiteral("telemetry_measurement(" + entity + "," + attempt + "," + round + ","
-            + m.dataStatus() + "," + m.readiness() + "," + m.errorRate() + "," + m.latencyP95Ms() + "," + m.availability() + ")"));
+            + m.dataStatus() + "," + m.readiness() + "," + m.errorRate() + "," + m.latencyP95Ms() + "," + m.availability() + "," + elapsed + ")"));
         informAgsEnvironmentChanged();
         return true;
     }
@@ -225,7 +240,8 @@ public final class ControllerEnvironment extends Environment {
         journal.event("controller_finished", null, Map.of("outcome", outcome, "recovery_outcome", recoveryOutcome, "project", controller.project()));
         if (Boolean.parseBoolean(value("BDI_GUI", "false"))) {
             java.util.logging.Logger.getLogger(getClass().getName()).info(
-                "Campaign finished. Inspect controller_agent beliefs; close MAS Console to exit. No further jobs will run.");
+                "Campaign finished: outcome=" + outcome + ", recovery=" + recoveryOutcome + ". Result: " + resultFile
+                + ". Close MAS Console to exit; Gradle waits while the GUI is open. No further jobs will run.");
             return true;
         }
         Thread shutdown = new Thread(() -> {

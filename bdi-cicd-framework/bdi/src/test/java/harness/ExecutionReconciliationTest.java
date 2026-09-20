@@ -115,9 +115,9 @@ class ExecutionReconciliationTest {
                 Path state=directory.resolve("rejected-"+status+".json");
                 var adapter=adapter(server);adapter.useStateFile(state);
                 var result=adapter.execute("build",1);
-                assertEquals("failure",result.status());assertEquals(0,result.githubRunId());
+                assertEquals("dispatch_rejected",result.status());assertEquals(0,result.githubRunId());
                 assertFalse(Files.exists(state));
-                assertEquals("failure",adapter.execute("build",2).status());
+                assertEquals("dispatch_rejected",adapter.execute("build",2).status());
                 assertEquals(2,posts.get());
             } finally {server.stop(0);}
         }
@@ -161,7 +161,7 @@ class ExecutionReconciliationTest {
             adapter.execute("build",1);
             Path evidence=legacyEvidence(state,"GitHub dispatch returned HTTP 403: forbidden",false);
             Path archive=directory.resolve("archive");
-            assertEquals("failure",adapter.reconcileRejectedDispatch(evidence,archive).status());
+            assertEquals("dispatch_rejected",adapter.reconcileRejectedDispatch(evidence,archive).status());
             assertFalse(Files.exists(state));assertEquals(1,calls.get());
             assertTrue(Files.exists(archive.resolve("rejected-dispatch-pending.json")));
             assertEquals(Files.readString(evidence.resolve("controller-journal.jsonl")),
@@ -198,8 +198,26 @@ class ExecutionReconciliationTest {
             var record=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(Files.readString(state));
             record.put("dispatch_rejected_http_status",403);Files.writeString(state,record.toString());
             var restarted=adapter(server);restarted.useStateFile(state);
-            assertEquals("failure",restarted.reconcilePending().status());
+            assertEquals("dispatch_rejected",restarted.reconcilePending().status());
             assertFalse(Files.exists(state));assertEquals(1,calls.get());
+        } finally {server.stop(0);}
+    }
+
+    @Test void onlyFailedTransientStepClassifiesAJobAsRetryable() throws Exception {
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        var stepConclusion=new AtomicReference<>("skipped");
+        server.createContext("/repos/example/repository/actions/workflows/entity-execution.yml/dispatches",
+            e->respond(e,200,"{\"workflow_run_id\":12}"));
+        server.createContext("/repos/example/repository/actions/runs/12/jobs",e->respond(e,200,
+            "{\"jobs\":[{\"name\":\"Build entity\",\"status\":\"completed\",\"conclusion\":\"failure\","
+            +"\"steps\":[{\"name\":\"Controlled transient failure\",\"conclusion\":\""+stepConclusion.get()+"\"}]}]}"));
+        server.createContext("/repos/example/repository/actions/runs/12",e->respond(e,200,"{\"status\":\"completed\"}"));
+        server.start();
+        try {
+            var adapter=adapter(server);
+            assertEquals("failure",adapter.execute("build",1).status());
+            stepConclusion.set("failure");
+            assertEquals("transient_failure",adapter.execute("build",2).status());
         } finally {server.stop(0);}
     }
 }

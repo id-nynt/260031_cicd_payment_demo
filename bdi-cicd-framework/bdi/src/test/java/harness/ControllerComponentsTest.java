@@ -67,7 +67,7 @@ class ControllerComponentsTest {
         assertEquals("entity-execution.yml", config.workflowFile());
         assertEquals("Build entity", config.jobNames().get("build"));
         assertEquals("staging", config.environments().get("staging"));
-        assertEquals(18, config.observationAttempts());
+        assertEquals(36, config.observationAttempts());
     }
 
     @Test
@@ -80,11 +80,11 @@ class ControllerComponentsTest {
     @Test
     void scenarioExecutorSupportsRetryAndExhaustionInputs() throws Exception {
         var transientFailure = new ScenarioEntityExecution("transient_test_failure");
-        assertEquals("failure", transientFailure.execute("test", 1).status());
+        assertEquals("transient_failure", transientFailure.execute("test", 1).status());
         assertEquals("success", transientFailure.execute("test", 2).status());
         var persistentFailure = new ScenarioEntityExecution("exhausted_test_failure");
-        assertEquals("failure", persistentFailure.execute("test", 1).status());
-        assertEquals("failure", persistentFailure.execute("test", 2).status());
+        assertEquals("transient_failure", persistentFailure.execute("test", 1).status());
+        assertEquals("transient_failure", persistentFailure.execute("test", 2).status());
     }
 
     @Test

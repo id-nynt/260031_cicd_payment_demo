@@ -3,7 +3,7 @@ goal:
   - production.status == success
   - staging.status == success
   maintain(M):
-  - production.duration <= 100000
+  - production.duration <= 1800000
   - production.health == healthy
   duration_unit: milliseconds
   avoid(V):

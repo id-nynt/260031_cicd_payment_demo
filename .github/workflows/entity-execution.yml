@@ -30,13 +30,13 @@ on:
         required: true
         default: none
         type: choice
-        options: [none, force_failure]
+        options: [none, force_failure, transient_failure]
       experiment_mode:
         description: Payment behavior for the selected demo deployment
         required: true
         default: normal
         type: choice
-        options: [normal, high_error_rate]
+        options: [normal, high_error_rate, request_faults]
 
 permissions:
   contents: read
@@ -52,6 +52,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Controlled transient failure
+        if: inputs.failure_mode == 'transient_failure'
+        run: exit 1
+      - name: Controlled experiment failure
+        if: inputs.failure_mode == 'force_failure'
+        run: exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_sha }}
@@ -85,6 +91,9 @@ jobs:
       PAYMENT_PROVIDER: fake
       FAKE_PAYMENT_OUTCOME: succeeded
     steps:
+      - name: Controlled transient failure
+        if: inputs.failure_mode == 'transient_failure'
+        run: exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_sha }}
@@ -110,6 +119,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Controlled transient failure
+        if: inputs.failure_mode == 'transient_failure'
+        run: exit 1
+      - name: Controlled experiment failure
+        if: inputs.failure_mode == 'force_failure'
+        run: exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_sha }}
@@ -118,9 +133,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Advisory production dependency audit
+      - name: Production dependency security gate
         run: npm audit --omit=dev --audit-level=high
-        continue-on-error: true
 
   staging:
     name: Staging entity
@@ -145,6 +159,12 @@ jobs:
       CI_RUN_ID: ${{ inputs.execution_id }}
       MERCHANT_NAME: Staging Merchant
     steps:
+      - name: Controlled transient failure
+        if: inputs.failure_mode == 'transient_failure'
+        run: exit 1
+      - name: Controlled experiment failure
+        if: inputs.failure_mode == 'force_failure'
+        run: exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_sha }}
@@ -195,6 +215,9 @@ jobs:
       CI_RUN_ID: ${{ inputs.execution_id }}
       MERCHANT_NAME: Production Merchant
     steps:
+      - name: Controlled transient failure
+        if: inputs.failure_mode == 'transient_failure'
+        run: exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_sha }}

@@ -198,14 +198,26 @@ Actions:
 
 ```powershell
 git status --short
+$sessionName = 'manual-' + (Get-Date -Format yyyyMMdd-HHmmss)
 $v1Tag = "$sessionName-v1"
+$v1Tag
 git tag -a $v1Tag -m 'Payment experiment baseline candidate'
+if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed; inspect the error before pushing' }
+git show-ref --verify "refs/tags/$v1Tag"
+if ($LASTEXITCODE -ne 0) { throw 'The local v1 tag does not exist; do not push yet' }
 git push origin "refs/tags/$v1Tag"
+if ($LASTEXITCODE -ne 0) { throw 'Push failed; keep this tag name and resolve the reported error' }
 $v1Sha = git rev-list -n 1 $v1Tag
 $v1Sha
 ```
 
-Checkpoint: the tag is available remotely and resolves to a full commit SHA. Tag creation/push does not start a live campaign under these workflows. Keep these PowerShell variables for later steps.
+This step initializes its own live-session name, so it also works if you skipped step 7 or opened a new PowerShell window. `$v1Tag` should print something like `manual-20260920-233000-v1`, never just `-v1`. PowerShell variables are local to that terminal session; they are not stored by Git or shared between terminal windows.
+
+If you see `src refspec refs/tags/-v1 does not match any`, `$sessionName` was empty when the tag name was constructed and there is no local tag at that ref. Run this corrected block to create a properly named tag. This is not caused by using a separate Git worktree. Check the selected source with `git branch --show-current` and `git log -1 --oneline` before tagging.
+
+If a correctly named tag was already created and only its push failed, keep that tag and retry its push after resolving the error; do not rerun tag creation, force-update it or create replacement versions unnecessarily. In a new terminal, restore the exact existing name with `$v1Tag = 'YOUR-EXISTING-TAG'` and verify it with `git show-ref --verify "refs/tags/$v1Tag"`.
+
+Checkpoint: the tag is available remotely and resolves to a full commit SHA. Tag creation/push does not start a live campaign under these workflows. Record the actual tag name and SHA in your experiment notes and keep these PowerShell variables for later steps. In a new terminal, restore `$sessionName`, `$v1Tag` and `$v1Sha` explicitly from those notes before continuing.
 
 ## 9. Authenticate and select the live versions
 

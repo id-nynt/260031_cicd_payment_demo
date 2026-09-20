@@ -7,11 +7,11 @@ Use the [manual experiment](BDI_MANUAL_EXECUTION_GUIDE.md) for the eight human s
 | Stage | Inputs / component | Output and responsibility |
 |---|---|---|
 | 1. Engineer configuration | [01_pipeline.yaml](../bdi-cicd-framework/models/01_pipeline.yaml), [02_goal.yaml](../bdi-cicd-framework/models/02_goal.yaml) | Entities, bindings, capabilities, dependencies, budgets and goals |
-| 2. Contract compilation | [generate_project.py](../bdi-cicd-framework/generate_project.py) → [workflow_model.compile_inputs](../bdi-cicd-framework/parser/workflow_model.py) | Saved, validated [03_workflow_model.yaml](../bdi-cicd-framework/models/03_workflow_model.yaml) |
+| 2. Contract compilation | [generate_project.py](../bdi-cicd-framework/generate_project.py) Ã¢â€ â€™ [workflow_model.compile_inputs](../bdi-cicd-framework/parser/workflow_model.py) | Saved, validated [03_workflow_model.yaml](../bdi-cicd-framework/models/03_workflow_model.yaml) |
 | 3. Agent generation | Saved contract + [controller_generic.asl](../bdi-cicd-framework/generator/controller_generic.asl), through `generate_agent` | Persistent [controller_agent.asl](../bdi-cicd-framework/bdi/controller_agent.asl), plus generation manifest |
-| 4. Campaign launch | [run_controller.py](../bdi-cicd-framework/run_controller.py) → [ControllerMain.java](../bdi-cicd-framework/bdi/harness/ControllerMain.java) | Validate consistency, archive exact artifacts/provenance, acquire repository lock, load Jason |
+| 4. Campaign launch | [run_controller.py](../bdi-cicd-framework/run_controller.py) Ã¢â€ â€™ [ControllerMain.java](../bdi-cicd-framework/bdi/harness/ControllerMain.java) | Validate consistency, archive exact artifacts/provenance, acquire repository lock, load Jason |
 | 5. Agent environment | [controller.mas2j](../bdi-cicd-framework/bdi/controller.mas2j) binds `controller_agent` to [ControllerEnvironment.java](../bdi-cicd-framework/bdi/harness/ControllerEnvironment.java) | Execute selected actions and publish correlated observations |
-| 6. External execution | [GitHubEntityExecution.java](../bdi-cicd-framework/bdi/harness/GitHubEntityExecution.java) → [entity-execution.yml](../.github/workflows/entity-execution.yml) | Execute only the entity selected by Jason |
+| 6. External execution | [GitHubEntityExecution.java](../bdi-cicd-framework/bdi/harness/GitHubEntityExecution.java) Ã¢â€ â€™ [entity-execution.yml](../.github/workflows/entity-execution.yml) | Execute only the entity selected by Jason |
 
 Generate once per input/generator revision. App commits, campaign IDs and fault-file contents do not regenerate the agent. Runtime rejects missing, stale or inconsistent persistent artifacts. Campaign directories contain execution evidence and archival copies, not campaign-specific generated agents. Agent generation reads the saved contract as its **sole project-specific input**; the generic template is framework policy.
 
@@ -31,6 +31,40 @@ The compiler validates exact entity/action/observation/recovery/goal agreement. 
 | Reasoning plans | Generic `controller_generic.asl`, included in generated agent |
 
 `generator/bdi_generic.asl` and the old `observable_properties(O)` representation are retained only for legacy compatibility coverage; they are not the active controller policy. Job implementations remain in the worker. Embedding GitHub `steps`, `services` or `runs-on` in input 01 is not supported; the parser rejects those fields. A single-source worker generator would be a separate extension.
+
+## Agent structure: following the original reference
+
+The active template and generated agent follow the supplied reference's named goals, section layout and phase-result events. The executable progression is:
+
+```text
+!master_goal
+  -> !need_achieve(Entity, Desired)
+  -> !run_pipeline
+  -> !run_entity(Entity)
+  -> run_job(Entity, Attempt)
+  -> status(Entity, Attempt, Result)
+  -> phase_result(Entity, success | fail)
+     success: !maintain -> !check_avoidance -> !run_pipeline
+     retryable failure within budget: !run_pipeline -> retry same entity
+     other/exhausted failure: !recover -> verified recovery, or stop
+  -> !check_master_goal
+```
+
+This is actual AgentSpeak control flow, not a diagram layered over a differently named `!control` loop. A successful deployed phase is health-verified before progression/achievement. Unknown execution takes a reconciliation path before a phase failure can authorize retry or recovery. The generated agent is not edited by hand.
+
+| Reference feature | Current equivalent / necessary adaptation |
+|---|---|
+| `!master_goal`, `!need_achieve`, `!run_pipeline`, `!run_entity` | Preserved named goals |
+| `+phase_result(Entity, success/fail)` | Preserved event-based normal/recovery handling |
+| `retry_allowed` and attempt counters | Preserved, with explicit retry safety and typed failure eligibility |
+| `!maintain`, `!check_avoidance`, `!recover`, `!check_master_goal` | Preserved named responsibilities |
+| `workflow_started/stopped/completed`, `master_goal_achieved` | Visible lifecycle beliefs; recovery ends stopped rather than achieved |
+| `run_job(Entity)` and unqualified status | `run_job(Entity, Attempt)` and attempt-qualified observations match the current Java environment and reject stale results |
+| Global `run_sequence` | Per-entity attempt count plus environment execution UUID; no redundant second attempt identity |
+| Final phase success | Every configured achievement, duration/safety condition and required health observation must pass |
+| `rollback_production` | Current configured logical name is `rollback`, matching the worker; selection still comes from `recovery(production, rollback)` |
+
+The reference's uncorrelated runtime `status(Entity, fail)` handler is not restored: raw telemetry remains correlated and interpreted by Jason, and the campaign is not an always-running monitoring service. Existing budgets, thresholds and immutable known-good recovery protections remain unchanged by this structural adaptation.
 
 ## Decision policy
 
@@ -75,3 +109,15 @@ App HTTP metrics become `payment_http_requests_total`, `payment_http_errors_tota
 `BDI_EXECUTION_PLAN` points to a manually edited properties file, reloaded before each dispatch. Examples: `test.1.failure_mode=transient_failure`, `security.failure_mode=force_failure`, `production.experiment_mode=request_faults`. Attempt-qualified entries override entity defaults. No fault option can satisfy goals or select the next entity; it only changes the selected action's experimental behavior.
 
 The security job now blocks on high/critical production dependency advisories. Tests cover the worker/input/Compose/telemetry mappings. The reporting example remains a second topology tested through generated contracts and Jason simulation; no live reporting application is claimed.
+
+## Success and failure achievement goals
+
+`achieve(A)` accepts `entity.status == success` and `entity.status == failure`. The compiler preserves the desired value in the saved workflow contract and generates `achievement(entity, value)` facts. Jason evaluates every declared achievement, dependency and maintenance constraint. A matching failure completes that entity's goal without retry or automatic recovery; downstream jobs still require successful dependencies. Contradictory or unreachable goals therefore end unmet rather than bypassing dependencies. An unexpected success is not repeatedly dispatched merely to try to create a failure.
+
+Only the exact observed execution status `failure` satisfies a failure goal. `dispatch_rejected`, `unknown`, `timeout`, `cancelled`, `skipped` and the experimental `transient_failure` classification do not. Existing bounded retry rules still apply to eligible transient failures/timeouts. The agent never fabricates a failure or selects fault injection from the desired goal alone.
+
+Java receives both entity and desired status, records `requested_goals`, `achieved_goals`, `unmet_goals` and `goal_message`, and retains attempt-correlated real GitHub execution evidence. A failure-goal campaign has `negative_goal_experiment: true` and emits no `verified_releases`, even when its experiment goals are achieved. Use a normal success-goal campaign to establish a known-good deployment. Failed goal pursuit prints **Attempted but failed to achieve goals.**; unresolved execution remains `unknown`, while a confirmed unmet outcome is `stopped`.
+
+A failure goal does not remove separately declared maintenance goals. For a staging-only failure experiment, use the provided `examples/staging_failure_goal.yaml`; retaining production success/health goals would also require production and can make the combined goals unreachable. The generated contract remains the full validated execution contract; this change does not replace its schema with a summary view.
+
+For an explicitly requested production failure, matching the goal ends the experiment without automatic rollback. The worker can fail after changing production; use the manual restoration phase afterward. Ordinary production-success campaigns retain their existing verified recovery policy.

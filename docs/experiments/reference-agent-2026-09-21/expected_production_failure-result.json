@@ -1,0 +1,61 @@
+{
+  "campaign_id" : "campaign-e5d6e2f9f76945999e2f0f2014ae8134",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\bdi\\build\\failure-goal-validation-3\\expected_production_failure\\generation-manifest.json",
+  "timestamp" : "2026-09-20T18:44:58.644078100Z",
+  "outcome" : "achieved",
+  "recovery_outcome" : "not_needed",
+  "project" : "payment-service",
+  "mode" : "scenario",
+  "repository" : "",
+  "release_sha" : "1d97f4307f19b2693d23f524a6bf3e42bbeae8d8",
+  "known_good_sha" : "1111111111111111111111111111111111111111",
+  "telemetry" : {
+    "staging" : "allow"
+  },
+  "executions" : {
+    "build" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-a8007f61-3e0b-4d10-90c8-68ecbc701bc7",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_failure/build/1"
+    },
+    "test" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-c9aee71c-5769-40f3-b060-5388d1478f34",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_failure/test/1"
+    },
+    "security" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-8861dbaf-1a70-4626-bd14-3792f1e572d9",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_failure/security/1"
+    },
+    "staging" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-35c0567f-122f-42b4-b8d9-f691ada1bd96",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_failure/staging/1"
+    },
+    "production" : {
+      "status" : "failure",
+      "durationMs" : 42,
+      "executionId" : "scenario-2aaf8987-c1b5-4675-af62-c39bac894cc2",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://production_failure/production/1"
+    }
+  },
+  "requested_goals" : [ {
+    "entity" : "production",
+    "status" : "failure"
+  } ],
+  "goal_message" : "Declared goals achieved.",
+  "achieved_goals" : [ "production" ],
+  "unmet_goals" : [ ],
+  "negative_goal_experiment" : true,
+  "verified_releases" : { }
+}

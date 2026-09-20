@@ -11,6 +11,16 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 NORMAL = ["build", "test", "security", "staging", "production"]
 CASES = [
+    ("unreachable_goals", "staging_failure", NORMAL[:-1], "stopped", "not_needed", []),
+
+    ("negative_execution_uncertain", "execution_uncertain", NORMAL, "unknown", "unresolved", []),
+    ("negative_retry_unmet", "production_retry", NORMAL + ["production"], "stopped", "not_needed", []),
+
+    ("expected_staging_failure", "staging_failure", NORMAL[:-1], "achieved", "not_needed", []),
+    ("unmet_staging_failure", "healthy", NORMAL[:-1], "stopped", "not_needed", []),
+    ("negative_dispatch_rejected", "dispatch_rejected", ["build"], "stopped", "not_attempted", []),
+    ("expected_production_failure", "production_failure", NORMAL, "achieved", "not_needed", []),
+
     ("temporary_fault", "telemetry_transient", NORMAL, "achieved", "not_needed", []),
     ("production_temporary_fault", "production_transient", NORMAL, "achieved", "not_needed", []),
     ("flapping", "telemetry_flapping", NORMAL[:-1], "unknown", "not_attempted", []),
@@ -67,12 +77,19 @@ def main():
     duration_goal['goal']['maintain(M)'] = ['production.duration <= 1','production.health == healthy']
     duration_path = output / 'duration-goal.yaml'
     duration_path.write_text(yaml.safe_dump(duration_goal,sort_keys=False),encoding='utf-8')
+    conflict = yaml.safe_load((ROOT / 'examples/staging_failure_goal.yaml').read_text())
+    conflict['goal']['achieve(A)'].append('production.status == success')
+    conflict_path = output / 'conflicting-goal.yaml'
+    conflict_path.write_text(yaml.safe_dump(conflict, sort_keys=False), encoding='utf-8')
     env = os.environ.copy()
     for key in list(env):
         if key.startswith("BDI_") or key in ("GITHUB_TOKEN", "GH_TOKEN"):
             env.pop(key)
     # Generate once per configuration revision, outside the campaign loop.
     configurations = {
+        'conflicting': (quick, conflict_path),
+        'negative_staging': (quick, ROOT / 'examples/staging_failure_goal.yaml'),
+        'negative_production': (quick, ROOT / 'examples/production_failure_goal.yaml'),
         'payment': (quick, ROOT / 'models/02_goal.yaml'),
         'unsafe': (unsafe_path, ROOT / 'models/02_goal.yaml'),
         'staging': (quick, ROOT / 'examples/staging_goal.yaml'),
@@ -87,7 +104,8 @@ def main():
     for name, scenario, expected, outcome, recovery, extra in CASES:
         if args.case and name not in args.case: continue
         directory = output / name
-        key = {'staging_only': 'staging', 'maintenance_violation': 'duration',
+        key = {'unreachable_goals': 'conflicting', 'negative_execution_uncertain': 'negative_production', 'negative_retry_unmet': 'negative_production', 'expected_staging_failure': 'negative_staging', 'unmet_staging_failure': 'negative_staging',
+               'negative_dispatch_rejected': 'negative_staging', 'expected_production_failure': 'negative_production', 'staging_only': 'staging', 'maintenance_violation': 'duration',
                'second_project': 'reporting', 'production_retry_unsafe': 'unsafe'}.get(name, 'payment')
         extra = extra if name not in ('staging_only', 'second_project') else []
         command = [sys.executable, str(ROOT / "run_controller.py"), "--scenario", scenario,
@@ -97,10 +115,22 @@ def main():
             completed = subprocess.run(command, cwd=ROOT.parent, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=180)
         result = json.loads((directory / "controller-result.json").read_text(encoding="utf-8"))
         events = [json.loads(line) for line in (directory / "controller-journal.jsonl").read_text(encoding="utf-8").splitlines()]
+        console = (output / (name + "-console.log")).read_text(encoding='utf-8', errors='replace')
+        assert console.count('Master goal started.') == 1, (name, 'master goal startup')
+        assert console.count('Master goal achieved.') == (1 if outcome == 'achieved' else 0), (name, 'master goal assessment')
+        assert console.count('BDI_WORKFLOW_STATE=completed') == (1 if outcome == 'achieved' else 0), (name, 'completed lifecycle')
+        assert console.count('BDI_WORKFLOW_STATE=stopped') == (0 if outcome == 'achieved' else 1), (name, 'stopped lifecycle')
+        assert sum(e['event'] == 'controller_finished' for e in events) == 1, (name, 'duplicate terminal outcome')
         actual = [event["entity"] for event in events if event["event"] == "entity_execution_started"]
         assert actual == expected, (name, expected, actual)
         assert (result["outcome"], result["recovery_outcome"]) == (outcome, recovery), (name, result)
         assert completed.returncode == {"achieved": 0, "stopped": 1, "unknown": 2}[outcome], (name, completed.returncode)
+        if name in ('expected_staging_failure', 'expected_production_failure'):
+            assert result['negative_goal_experiment'] is True
+            assert not result['verified_releases']
+            assert not result['unmet_goals']
+        if outcome != 'achieved':
+            assert 'Attempted but failed to achieve goals.' in console
         if recovery in ("restored", "failed", "unverified"):
             assert "production" in result["unmet_goals"]
             assert actual.count("rollback") == 1

@@ -298,8 +298,8 @@ def parse_goals(path: Path, entities: tuple[str, ...], recovery: tuple[tuple[str
     for raw in data.get("achieve(A)", []):
         entity, prop, operator, value = _comparison(raw, "goal.achieve(A)")
         _validate_ref(entity, prop, value, entity_set, "achievement")
-        if operator != "==" or prop != "status" or value != "success":
-            raise ModelError("achievement supports only entity.status == success")
+        if operator != "==" or prop != "status" or value not in {"success", "failure"}:
+            raise ModelError("achievement supports entity.status == success or failure")
         achievements.append(Achievement(entity, prop, operator, value))
     maintenance: list[Maintenance] = []
     for raw in data.get("maintain(M)", []):

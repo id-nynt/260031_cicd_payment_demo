@@ -4,6 +4,8 @@ Engineer inputs are **models/01_pipeline.yaml** and **models/02_goal.yaml**. The
 
 Read [how generation and runtime connect](../docs/BDI_GENERATION_AND_RUNTIME.md) for the origin of E/D/O/R, predefined versus project-specific rules, the active agent/environment, telemetry configuration sources, and the assessment of embedding GitHub job steps. Follow the [manual experiment walkthrough](../docs/BDI_MANUAL_EXECUTION_GUIDE.md) one step at a time for local startup, version tags, baseline/v2 campaigns and recovery.
 
+Achievement goals support `entity.status == success` and `entity.status == failure`. Failure goals are explicit negative experiments: a matching executed failure satisfies the goal; rejected dispatch or uncertain execution does not. Unmet campaigns report ?Attempted but failed to achieve goals.? Negative experiments never create verified release receipts. See the [manual failure-goal experiment](../docs/BDI_MANUAL_EXECUTION_GUIDE.md#optional-experiment-require-staging-to-fail).
+
 ## Project generation and campaign execution
 
 ```text

@@ -214,10 +214,11 @@ public final class ControllerEnvironment extends Environment {
         java.util.List<String> achieved = new java.util.ArrayList<>();
         java.util.List<String> unmet = new java.util.ArrayList<>();
         for (var goal : requested) {
-            String entity = goal.asText();
-            boolean healthyRequired = controller.environments().containsKey(entity);
+            String entity = goal.isTextual() ? goal.asText() : goal.path("entity").asText();
+            String desired = goal.isTextual() ? "success" : goal.path("status").asText();
+            boolean healthyRequired = desired.equals("success") && controller.environments().containsKey(entity);
             for (var health : healthGoals) if (health.asText().equals(entity)) healthyRequired = true;
-            boolean satisfied = latest.containsKey(entity) && latest.get(entity).status().equals("success")
+            boolean satisfied = latest.containsKey(entity) && latest.get(entity).status().equals(desired)
                 && (!healthyRequired || "allow".equals(telemetry.get(entity)));
             // Restoring another revision never satisfies delivery of this candidate.
             if (!recoveryOutcome.equals("not_needed") && controller.environments().containsKey(entity)
@@ -225,10 +226,15 @@ public final class ControllerEnvironment extends Environment {
                     && controller.environments().get(r).equals(controller.environments().get(entity)))) satisfied = false;
             (satisfied ? achieved : unmet).add(entity);
         }
+        result.put("requested_goals", requested);
+        result.put("goal_message", outcome.equals("achieved") ? "Declared goals achieved." : "Attempted but failed to achieve goals.");
         result.put("achieved_goals", achieved);
         result.put("unmet_goals", unmet);
         Map<String, Object> verified = new LinkedHashMap<>();
-        if (outcome.equals("achieved")) for (var entry : latest.entrySet()) {
+        boolean negativeExperiment = false;
+        for (var goal : requested) if (goal.path("status").asText().equals("failure")) negativeExperiment = true;
+        result.put("negative_goal_experiment", negativeExperiment);
+        if (outcome.equals("achieved") && !negativeExperiment) for (var entry : latest.entrySet()) {
             if (entry.getValue().status().equals("success") && "allow".equals(telemetry.get(entry.getKey()))) {
                 verified.put(entry.getKey(), Map.of("release_sha", value("BDI_RELEASE_SHA", ""),
                     "github_run_id", entry.getValue().githubRunId(), "execution_id", entry.getValue().executionId(),

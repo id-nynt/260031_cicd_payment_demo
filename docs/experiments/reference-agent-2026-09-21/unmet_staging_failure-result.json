@@ -1,0 +1,54 @@
+{
+  "campaign_id" : "campaign-3e94e63d5cda4e4ab648c61e7b925e15",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\bdi\\build\\failure-goal-validation-3\\unmet_staging_failure\\generation-manifest.json",
+  "timestamp" : "2026-09-20T18:44:33.868849200Z",
+  "outcome" : "stopped",
+  "recovery_outcome" : "not_needed",
+  "project" : "payment-service",
+  "mode" : "scenario",
+  "repository" : "",
+  "release_sha" : "1d97f4307f19b2693d23f524a6bf3e42bbeae8d8",
+  "known_good_sha" : "1111111111111111111111111111111111111111",
+  "telemetry" : {
+    "staging" : "allow"
+  },
+  "executions" : {
+    "build" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-65d9c8d8-2c67-44af-b868-b9886c438c61",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/build/1"
+    },
+    "test" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-05db84ed-601a-4c4c-9542-d30221c84593",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/test/1"
+    },
+    "security" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-f5f2ecec-6243-41f9-95df-61878c2c5f9f",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/security/1"
+    },
+    "staging" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-58bd2db2-63cf-4729-a0b0-4d8517a80077",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/staging/1"
+    }
+  },
+  "requested_goals" : [ {
+    "entity" : "staging",
+    "status" : "failure"
+  } ],
+  "goal_message" : "Attempted but failed to achieve goals.",
+  "achieved_goals" : [ ],
+  "unmet_goals" : [ "staging" ],
+  "negative_goal_experiment" : true,
+  "verified_releases" : { }
+}

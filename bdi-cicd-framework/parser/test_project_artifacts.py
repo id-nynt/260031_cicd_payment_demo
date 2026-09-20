@@ -44,7 +44,7 @@ class ProjectArtifactsTest(unittest.TestCase):
     def test_agent_contract_rejects_each_capability_and_policy_mutation(self):
         original = self.agent.read_text(encoding='utf-8')
         changes = [('entity(build).', 'entity(other).'),
-                   ('run_job(E, Attempt)', 'run_job(other, Attempt)'),
+                   ('run_job(Entity, Attempt)', 'run_job(other, Attempt)'),
                    ('observe_after(production).', ''),
                    ('recovery(production, rollback).', ''),
                    ('achievement(production, success).', ''),

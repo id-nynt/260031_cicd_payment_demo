@@ -86,4 +86,17 @@ class CanonicalModelTest(unittest.TestCase):
             p=Path(directory)/'bad.yaml';p.write_text('jobs: {}\njobs: {}\n')
             with self.assertRaises(ModelError):read(p)
 
+    def test_failure_goal_round_trip_and_agent_fact(self):
+        goals = {'goal': {'achieve(A)': ['staging.status == failure']}, 'telemetry_constraints': self.goals['telemetry_constraints']}
+        doc, model = compile_documents(self.pipeline, goals)
+        self.assertEqual(model.achievements[0].value, 'failure')
+        self.assertNotIn('production', model.required_entities)
+        with tempfile.TemporaryDirectory() as directory:
+            workflow = Path(directory)/'workflow.yaml'
+            agent = Path(directory)/'agent.asl'
+            workflow.write_text(yaml.safe_dump(doc, sort_keys=False), encoding='utf-8')
+            generate_agent(workflow, ROOT/'generator/controller_generic.asl', agent)
+            self.assertEqual(load_workflow(workflow)[1], model)
+            self.assertIn('achievement(staging, failure).', agent.read_text())
+
 if __name__=='__main__': unittest.main()

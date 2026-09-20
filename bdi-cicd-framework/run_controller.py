@@ -54,7 +54,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-dir", type=Path, default=ROOT, help="persistent generated project directory")
     parser.add_argument("--validate-only", action="store_true", help="check consistency without starting a campaign")
-    parser.add_argument("--scenario", choices=["healthy", "transient_test_failure", "exhausted_test_failure",
+    parser.add_argument("--scenario", choices=["healthy", "staging_failure", "transient_test_failure", "exhausted_test_failure",
                                                 "telemetry_block", "telemetry_unknown", "telemetry_delayed", "telemetry_transient", "production_transient", "telemetry_flapping", "observation_deadline", "deterministic_test_failure", "dispatch_rejected", "production_retry",
                                                 "production_failure", "production_unhealthy", "production_unknown",
                                                 "rollback_failure", "rollback_unknown", "rollback_unhealthy", "execution_uncertain", "reconciled_success", "reconciled_failure"])
@@ -147,7 +147,7 @@ def main() -> int:
     environment["BDI_GUI"] = str(args.gui).lower()
     environment.pop("BDI_SCENARIO", None)
     environment["BDI_KNOWN_GOOD_SHA"] = baseline_sha
-    environment["BDI_GOALS"] = json.dumps([item.entity for item in model.achievements])
+    environment["BDI_GOALS"] = json.dumps([{"entity": item.entity, "status": item.value} for item in model.achievements])
     environment["BDI_HEALTH_GOALS"] = json.dumps([item.entity for item in model.maintenance if item.property == "health"])
     environment["BDI_MANIFEST_FILE"] = str(manifest)
     environment["BDI_PROJECT_FILE"] = str(workflow)

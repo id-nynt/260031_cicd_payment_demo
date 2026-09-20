@@ -47,7 +47,7 @@ $knownGood = (Resolve-Path "$baselineDir/controller-result.json").Path
 $baseline.verified_releases
 ```
 
-**Expected:** build → test → security → staging → health verification → production → health verification → `achieved/not_needed`. Staging and production containers are running. Retain this receipt for rollback. If GitHub returns 403, no baseline was deployed; follow setup troubleshooting.
+**Expected:** build â†’ test â†’ security â†’ staging â†’ health verification â†’ production â†’ health verification â†’ `achieved/not_needed`. Staging and production containers are running. Retain this receipt for rollback. If GitHub returns 403, no baseline was deployed; follow setup troubleshooting.
 
 ## 2. Open the deployed app and keep it running
 
@@ -64,7 +64,7 @@ Open production `http://localhost:3000/checkout`, and optionally staging `http:/
 
 ## 3. Change the app visibly and save v2
 
-Create a candidate branch from the **current repaired revision**, so it includes the new app fault capability and current framework. Do not switch this controller checkout back to the old v1 source. For this first experiment, change the receipt heading in `src/ui.ts` to `Payment receipt — v2`; avoid database migrations.
+Create a candidate branch from the **current repaired revision**, so it includes the new app fault capability and current framework. Do not switch this controller checkout back to the old v1 source. For this first experiment, change the receipt heading in `src/ui.ts` to `Payment receipt â€” v2`; avoid database migrations.
 
 ```powershell
 $sessionName = 'manual-' + (Get-Date -Format yyyyMMdd-HHmmss)
@@ -114,6 +114,8 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good $knownGood --co
 | Browser and Prometheus | New receipt wording and execution-correlated metrics |
 
 **Expected:** production remains v1 while build/test/security/staging are evaluated. After production deployment, refresh the browser and make a new payment to see v2 on its receipt. Physical deployment happens before BDI finishes health verification; v2 visible in the browser alone is not achievement.
+
+The agent follows the original reference structure: `!master_goal` â†’ `!need_achieve` â†’ `!run_pipeline` â†’ `!run_entity`, then `phase_result` events select continuation, bounded retry, recovery or stop. Inspect `workflow_started`, `workflow_stopped`, `workflow_completed` and `master_goal_achieved` as well as execution/health beliefs. See the [structure mapping](BDI_GENERATION_AND_RUNTIME.md#agent-structure-following-the-original-reference).
 
 At completion, the console prints the outcome and result path. **Gradle at 75% while the GUI is open is not deployment progress.** Inspect beliefs, close the console, then read the result. No additional jobs run after completion; BDI is not a permanent monitoring daemon.
 
@@ -166,13 +168,13 @@ npm run traffic:experiment -- inject_error 6 --continuous
 
 **Persistent scenario:** keep error traffic running through the observation budget. Expect `wait_reconsider`, then rollback. Stop the traffic command with Ctrl+C when rollback begins. The worker creates healthy verification traffic for restored v1.
 
-**Temporary scenario:** send errors for about 15–20 seconds, Ctrl+C, then immediately send normal traffic:
+**Temporary scenario:** send errors for about 15â€“20 seconds, Ctrl+C, then immediately send normal traffic:
 
 ```powershell
 npm run traffic:experiment -- normal 6 --continuous
 ```
 
-**Expected:** requests now succeed; the two-minute Prometheus error window gradually clears. Jason continues observing, accepts two consecutive healthy observations within the budget, and finishes `achieved/not_needed`. Stop normal traffic after completion. If the fault clears too late, rollback is the correct result—do not extend limits mid-experiment.
+**Expected:** requests now succeed; the two-minute Prometheus error window gradually clears. Jason continues observing, accepts two consecutive healthy observations within the budget, and finishes `achieved/not_needed`. Stop normal traffic after completion. If the fault clears too late, rollback is the correct resultâ€”do not extend limits mid-experiment.
 
 The policy allows at most 36 observations and 180 seconds from the first observation, with five seconds between requests. Execution retry count is separate: one additional execution for a confirmed transient failure of a retry-safe job. For a staging traffic experiment, use `staging.experiment_mode=request_faults`, `--pause-after staging` and port 3001; persistent bad staging stops promotion and leaves production v1 untouched.
 
@@ -204,4 +206,45 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good $knownGood --co
 
 **Expected:** both staging and production return to verified v1, and the reset campaign is achieved. Automatic rollback restores production only; this reset restores both environments. Database records remain. Keep the containers running, set `BDI_RELEASE_SHA=$v2Sha`, choose the next phase 6 scenario, and use a fresh evidence directory.
 
-For failures outside the intended experiment—403, stopped containers, unresolved dispatch or stale artifacts—use [setup and troubleshooting](BDI_SETUP.md). Do not treat those as successful fault experiments.
+For failures outside the intended experimentâ€”403, stopped containers, unresolved dispatch or stale artifactsâ€”use [setup and troubleshooting](BDI_SETUP.md). Do not treat those as successful fault experiments.
+
+## Optional experiment: require staging to fail
+
+Actions:
+
+- Complete setup and keep the verified v1 app running, as in phases 1?2.
+- Select the published v2 source and updated worker, as in phases 3?4.
+- Generate a separate persistent project with a failure goal. This preserves the normal deployment project's goals.
+
+```powershell
+$negativeProject = 'bdi-cicd-framework/projects/staging-failure'
+py -3 -B bdi-cicd-framework/generate_project.py --project-dir $negativeProject --pipeline bdi-cicd-framework/models/01_pipeline.yaml --goal bdi-cicd-framework/examples/staging_failure_goal.yaml
+py -3 -B bdi-cicd-framework/run_controller.py --project-dir $negativeProject --validate-only
+```
+
+**Expected:** saved contract and agent contain `staging.status == failure` / `achievement(staging, failure)`. Generate once; repeat generation only after changing inputs or generator.
+
+Choose deterministic failed execution for this experiment:
+
+```powershell
+$faultFile = Join-Path $PWD 'staging-failure.properties'
+Set-Content $faultFile 'staging.failure_mode=force_failure' -Encoding ascii
+$env:BDI_EXECUTION_PLAN = $faultFile
+$env:BDI_RELEASE_SHA = $v2Sha
+$negativeDir = 'bdi-cicd-framework/runs/staging-failure-' + (Get-Date -Format yyyyMMdd-HHmmss)
+py -3 -B bdi-cicd-framework/run_controller.py --project-dir $negativeProject --gui --baseline --artifacts-dir $negativeDir
+```
+
+Here `--baseline` runs without a known-good recovery receipt; it does not declare this negative experiment a stable baseline. Keep the GitHub credentials and `BDI_WORKFLOW_REF` configured in setup. This command starts Jason; Java dispatches each selected job to the real worker.
+
+**Expected:** build ? test ? security ? staging. Staging reports failure; the agent reports **Master goal achieved.** Production is not dispatched. The result identifies a negative-goal experiment and contains no verified release receipt. A dispatch permission error does not satisfy the failure goal.
+
+To test an unmet goal, remove the fault and start a fresh campaign using the same project:
+
+```powershell
+Remove-Item Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
+$negativeDir = 'bdi-cicd-framework/runs/staging-failure-unmet-' + (Get-Date -Format yyyyMMdd-HHmmss)
+py -3 -B bdi-cicd-framework/run_controller.py --project-dir $negativeProject --gui --baseline --artifacts-dir $negativeDir
+```
+
+**Expected if staging succeeds and its telemetry is healthy:** staging now serves v2; production stays v1. The agent reports **Attempted but failed to achieve goals.** with `outcome: stopped`. Inspect `requested_goals`, `unmet_goals` and the execution journal. Close the MAS Console after the final result. Use phase 8 to restore staging to v1 when needed. Resume ordinary delivery with the default project, without `--project-dir $negativeProject`.

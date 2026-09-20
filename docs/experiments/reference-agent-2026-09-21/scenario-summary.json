@@ -1,0 +1,539 @@
+[
+  {
+    "case": "expected_staging_failure",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "unmet_staging_failure",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_needed",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "staging"
+    ]
+  },
+  {
+    "case": "negative_dispatch_rejected",
+    "actual": [
+      "build"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "staging"
+    ]
+  },
+  {
+    "case": "expected_production_failure",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "production"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "temporary_fault",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "production_temporary_fault",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "flapping",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "unknown",
+    "recovery": "not_attempted",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "deadline",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "unknown",
+    "recovery": "not_attempted",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "deterministic_failure",
+    "actual": [
+      "build",
+      "test"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "dispatch_rejected",
+    "actual": [
+      "build"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "production_retry",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "production_retry_unsafe",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "restored",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "healthy",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "staging_only",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "retry",
+    "actual": [
+      "build",
+      "test",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "exhaustion",
+    "actual": [
+      "build",
+      "test",
+      "test"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "staging_block",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "delayed",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "staging_unknown",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "unknown",
+    "recovery": "not_attempted",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "production_failure",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "restored",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "production_unhealthy",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "restored",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "production_unknown",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "restored",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "rollback_failure",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "failed",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "rollback_unhealthy",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "failed",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "maintenance_violation",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "restored",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "rollback_unknown",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "unknown",
+    "recovery": "unverified",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "reconciled_success",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "reconciled_failure",
+    "actual": [
+      "build",
+      "test",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "execution_uncertain",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "unknown",
+    "recovery": "unresolved",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "baseline_no_recovery",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "pause",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "second_project",
+    "actual": [
+      "package",
+      "verify",
+      "preview"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "preview"
+    ],
+    "unmet_goals": []
+  }
+]

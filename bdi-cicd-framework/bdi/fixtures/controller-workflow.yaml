@@ -1,0 +1,101 @@
+# Generated test fixture; checked against canonical compiler by test_worker_contract.py
+schema_version: 1
+workflow:
+  name: Payment service release with BDI recovery
+  execution:
+    max_retries: 1
+    observation_attempts: 18
+    observation_interval_seconds: 5
+    reconciliation_attempts: 3
+    reconciliation_interval_seconds: 5
+  jobs:
+    build:
+      job_name: Build entity
+      needs: []
+    test:
+      needs:
+      - build
+      job_name: Test entity
+    security:
+      needs:
+      - test
+      job_name: Security entity
+    staging:
+      needs:
+      - security
+      job_name: Staging entity
+      environment: staging
+      observe_after: true
+    production:
+      needs:
+      - staging
+      observe_before: staging
+      job_name: Production entity
+      environment: production
+      observe_after: true
+  recovery:
+    rollback:
+      observe_after: true
+      job_name: Rollback entity
+      environment: production
+      from: production
+      'on':
+      - failure
+      - telemetry_block
+      - telemetry_unknown
+      - maintenance_violation
+      release_source: known_good
+goals:
+  goal:
+    achieve(A):
+    - production.status == success
+    - staging.status == success
+    maintain(M):
+    - production.duration <= 100000
+    - production.health == healthy
+    duration_unit: milliseconds
+    avoid(V):
+    - condition: production.status == success
+      when: test.status != success
+    - condition: production.status == success
+      when: staging.status != success
+  telemetry_constraints: &id001
+    error_rate_high_gt: 0.05
+    latency_p95_ms_high_gt: 500
+runtime:
+  project: payment-service
+  controller:
+    workflow_file: entity-execution.yml
+    jobs:
+      build: Build entity
+      test: Test entity
+      security: Security entity
+      staging: Staging entity
+      production: Production entity
+      rollback: Rollback entity
+    environments:
+      staging: staging
+      production: production
+      rollback: production
+    release_sources:
+      rollback: known_good
+    observation_attempts: 18
+    observation_interval_seconds: 5
+    reconciliation_attempts: 3
+    reconciliation_interval_seconds: 5
+  environments:
+    staging:
+      ready_url: http://127.0.0.1:3001/ready
+      prometheus_url: http://127.0.0.1:9091
+    production:
+      ready_url: http://127.0.0.1:3000/ready
+      prometheus_url: http://127.0.0.1:9090
+  metrics:
+    error_rate_query: (sum(rate(payment_http_errors_total{ci_run_id="{{run_id}}",route="/payments",status_code=~"5.."}[2m]))
+      or vector(0)) / clamp_min(sum(rate(payment_http_requests_total{ci_run_id="{{run_id}}",route="/payments"}[2m])),
+      0.001)
+    latency_p95_ms_query: histogram_quantile(0.95, sum by (le) (rate(payment_http_request_duration_milliseconds_bucket{ci_run_id="{{run_id}}",route="/payments"}[2m])))
+    availability_query: min(payment_service_ready{ci_run_id="{{run_id}}"})
+    sample_age_seconds_query: time() - max(timestamp(payment_service_ready{ci_run_id="{{run_id}}"}))
+  max_age_seconds: 30
+  thresholds: *id001

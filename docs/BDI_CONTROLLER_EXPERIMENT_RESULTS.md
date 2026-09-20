@@ -1,3 +1,5 @@
+> Historical iteration: commands and paths below predate the canonical repair. Use [the current controller guide](../bdi-cicd-framework/README.md).
+
 # BDI controller experiment results
 
 ## Current BDI-selected recovery experiment — 20 September 2026

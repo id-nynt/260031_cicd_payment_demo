@@ -1,6 +1,8 @@
 # Payment Service
 
-A small payment-service demonstration that can run locally, in Docker, on a VM, or through a GitHub Actions CI/CD pipeline. Its research controller can generate a Jason BDI agent from pipeline, goal, and project configuration; that agent selects each CI/CD entity while GitHub Actions executes the selected work.
+A small payment-service demonstration that can run locally, in Docker, on a VM, or through a GitHub Actions CI/CD pipeline. Its research controller can generate a Jason BDI agent from two canonical pipeline and goal inputs; that agent selects each CI/CD entity while GitHub Actions executes the selected work.
+
+Start with the current controller guide; older audit/demo documents describe historical iterations.
 
 See [the BDI controller guide](bdi-cicd-framework/README.md), [manual execution guide](docs/BDI_MANUAL_EXECUTION_GUIDE.md), [architecture audit](docs/BDI_ARCHITECTURE_AUDIT_AND_PLAN.md), and [experiment results](docs/BDI_CONTROLLER_EXPERIMENT_RESULTS.md).
 
@@ -24,7 +26,7 @@ The application provides:
 - Optional v2 fault modes for repeatable CI/CD and telemetry experiments; normal behaviour remains the default.
 - REST endpoints for creating, viewing, and processing payments.
 - Docker Compose packaging for repeatable local and server deployment.
-- CI/CD entity jobs for build, tests, advisory dependency audit, staging, and production, selected by a persistent Jason/BDI controller; the earlier gate chain remains available only as an explicitly enabled legacy workflow.
+- CI/CD entity jobs for build, tests, advisory dependency audit, staging, and production, selected by a persistent Jason/BDI controller; historical gate and manual-rollback configurations are archived outside active workflows.
 
 The fake provider is the recommended starting point because it is usable without a Stripe account, API key, webhook, or external network dependency.
 

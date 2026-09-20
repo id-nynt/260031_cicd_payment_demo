@@ -11,6 +11,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /** Dispatches one configured entity workflow and validates the selected job's terminal result. */
 public final class GitHubEntityExecution implements EntityExecution {
@@ -21,6 +25,8 @@ public final class GitHubEntityExecution implements EntityExecution {
     private final String ref;
     private final String releaseSha;
     private String knownGoodSha = "";
+    private Path stateFile;
+    private ObjectNode pending;
     private final String campaignId;
     private final URI apiBase;
     private final HttpClient client;
@@ -36,6 +42,8 @@ public final class GitHubEntityExecution implements EntityExecution {
             Duration.ofSeconds(number("BDI_POLL_SECONDS", 5)),
             Duration.ofMinutes(number("BDI_ENTITY_TIMEOUT_MINUTES", 20)));
         knownGoodSha = value("BDI_KNOWN_GOOD_SHA", "");
+        stateFile = Path.of(required("BDI_EXECUTION_STATE_FILE"));
+        loadPending();
     }
 
     GitHubEntityExecution(ControllerProjectConfig project, StructuredEventLogger journal, URI apiBase,
@@ -60,27 +68,111 @@ public final class GitHubEntityExecution implements EntityExecution {
         client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     }
 
+    void useStateFile(Path path) throws Exception { stateFile = path; loadPending(); }
+
+    private void loadPending() {
+        try {
+            if (stateFile != null && Files.exists(stateFile)) pending = (ObjectNode) JSON.readTree(Files.readString(stateFile));
+        } catch (Exception error) { throw new IllegalStateException("Cannot read unresolved execution state", error); }
+    }
+
+    private void savePending() throws IOException {
+        if (stateFile == null) return; // In-memory adapter used by isolated HTTP tests only.
+        Files.createDirectories(stateFile.toAbsolutePath().getParent());
+        Path temporary = stateFile.resolveSibling(stateFile.getFileName() + ".tmp");
+        Files.writeString(temporary, JSON.writeValueAsString(pending));
+        try (var file = java.nio.channels.FileChannel.open(temporary, java.nio.file.StandardOpenOption.WRITE)) { file.force(true); }
+        try { Files.move(temporary, stateFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
+        catch (java.nio.file.AtomicMoveNotSupportedException error) {
+            Files.move(temporary, stateFile, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
     @Override
     public Result execute(String entity, int attempt) throws Exception {
+        if (pending != null) {
+            journal.event("dispatch_blocked_unresolved", null, Map.of("entity", entity, "pending", pending.toString()));
+            return unresolved();
+        }
         String selectedSha = sourceFor(entity, releaseSha, knownGoodSha, project);
         String expectedJob = project.jobNames().get(entity);
         if (expectedJob == null) throw new IllegalArgumentException("Unmapped entity: " + entity);
         String executionId = UUID.randomUUID().toString();
         ExperimentExecutionPlan.Injection injection = experimentPlan.next(entity);
         String experimentMode = !"0".equals(injection.forceErrorRate()) ? "high_error_rate" : "normal";
-        Instant started = Instant.now();
+        pending = JSON.createObjectNode().put("campaign_id", campaignId).put("entity", entity)
+            .put("attempt", attempt).put("execution_id", executionId).put("release_sha", selectedSha)
+            .put("repository", repository).put("workflow_file", project.workflowFile()).put("api_base", apiBase.toString())
+            .put("expected_job", expectedJob).put("started", Instant.now().toString()).put("run_id", 0);
+        // Persist BEFORE sending. A crash or lost response must never silently permit another deployment.
+        savePending();
         journal.event("dispatch_intent", null, Map.of("campaign_id", campaignId, "entity", entity,
             "attempt", attempt, "execution_id", executionId, "release_sha", selectedSha));
-        long runId = dispatch(entity, attempt, executionId, injection.failureMode(), experimentMode, selectedSha);
-        String runUrl = "https://github.com/" + repository + "/actions/runs/" + runId;
-        journal.event("dispatch_acknowledged", null, Map.of("campaign_id", campaignId, "entity", entity,
-            "attempt", attempt, "execution_id", executionId, "github_run_id", runId, "run_url", runUrl));
-        String status = awaitSelectedJob(runId, expectedJob, started.plus(maxWait));
-        long duration = Duration.between(started, Instant.now()).toMillis();
-        journal.event("execution_terminal", null, Map.of("campaign_id", campaignId, "entity", entity,
-            "attempt", attempt, "execution_id", executionId, "github_run_id", runId,
-            "run_url", runUrl, "status", status, "duration_ms", duration));
-        return new Result(status, duration, executionId, runId, runUrl);
+        try {
+            long runId = dispatch(entity, attempt, executionId, injection.failureMode(), experimentMode, selectedSha);
+            pending.put("run_id", runId); savePending();
+            journal.event("dispatch_acknowledged", null, Map.of("execution_id", executionId, "github_run_id", runId));
+            return settle(awaitSelectedJob(runId, expectedJob, Instant.now().plus(maxWait)));
+        } catch (Exception error) {
+            journal.event("execution_uncertain", null, Map.of("execution_id", executionId, "reason", String.valueOf(error.getMessage())));
+            return unresolved();
+        }
+    }
+
+    @Override
+    public Result reconcile(String entity, int attempt) throws Exception {
+        if (pending == null || !campaignId.equals(pending.path("campaign_id").asText())
+            || !entity.equals(pending.path("entity").asText()) || attempt != pending.path("attempt").asInt()) return unresolved();
+        return reconcilePending();
+    }
+
+    /** Read-only remote reconciliation; never sends another dispatch. Also usable after a process restart. */
+    public Result reconcilePending() throws Exception {
+        if (pending == null) throw new IllegalStateException("No unresolved execution");
+        if (!repository.equals(pending.path("repository").asText()) || !apiBase.toString().equals(pending.path("api_base").asText()))
+            throw new IllegalStateException("Pending execution belongs to another repository/API");
+        try {
+            long runId = pending.path("run_id").asLong();
+            if (runId == 0) {
+                String title = "bdi-" + pending.path("execution_id").asText();
+                // A bounded search never treats absence as proof that dispatch was rejected.
+                java.util.Set<Long> matches = new java.util.HashSet<>();
+                for (int page = 1; page <= 5; page++) {
+                    JsonNode runs = get("/repos/" + repository + "/actions/workflows/" + pending.path("workflow_file").asText()
+                        + "/runs?event=workflow_dispatch&per_page=100&page=" + page).path("workflow_runs");
+                    for (JsonNode run : runs) if (title.equals(run.path("display_title").asText())) matches.add(run.path("id").asLong());
+                    if (runs.size() < 100) break;
+                }
+                if (matches.size() != 1 || matches.contains(0L)) return unresolved();
+                runId = matches.iterator().next(); pending.put("run_id", runId); savePending();
+            }
+            journal.event("execution_reconciled", null, Map.of("execution_id", pending.path("execution_id").asText(), "github_run_id", runId));
+            return settle(awaitSelectedJob(runId, pending.path("expected_job").asText(), Instant.now().plus(maxWait)));
+        } catch (Exception error) {
+            journal.event("reconciliation_unavailable", null, Map.of("reason", String.valueOf(error.getMessage())));
+            return unresolved();
+        }
+    }
+
+    private Result unresolved() {
+        if (pending == null) return new Result("unknown", 0, "unresolved", 0, "");
+        return result("unknown");
+    }
+
+    private Result result(String status) {
+        long runId = pending.path("run_id").asLong();
+        return new Result(status, Duration.between(Instant.parse(pending.path("started").asText()), Instant.now()).toMillis(),
+            pending.path("execution_id").asText(), runId, runId == 0 ? "" : "https://github.com/" + repository + "/actions/runs/" + runId);
+    }
+
+    private Result settle(String status) throws IOException {
+        Result result = result(status);
+        if (!status.equals("unknown")) {
+            journal.event("execution_terminal", null, Map.of("execution_id", result.executionId(), "github_run_id", result.githubRunId(), "status", status));
+            if (stateFile != null) Files.deleteIfExists(stateFile);
+            pending = null;
+        }
+        return result;
     }
 
     private long dispatch(String entity, int attempt, String executionId, String failureMode,
@@ -90,7 +182,7 @@ public final class GitHubEntityExecution implements EntityExecution {
         inputs.put("entity", entity).put("campaign_id", campaignId).put("execution_id", executionId)
             .put("attempt", String.valueOf(attempt)).put("release_sha", selectedSha)
             .put("failure_mode", failureMode).put("experiment_mode", experimentMode);
-        var body = JSON.createObjectNode().put("ref", ref).put("return_run_details", true).set("inputs", inputs);
+        var body = JSON.createObjectNode().put("ref", ref).set("inputs", inputs);
         HttpResponse<String> response = client.send(request(uri)
             .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body))).build(),
             HttpResponse.BodyHandlers.ofString());
@@ -146,7 +238,7 @@ public final class GitHubEntityExecution implements EntityExecution {
     private URI endpoint(String path) { return URI.create(apiBase.toString().replaceAll("/$", "") + path); }
     private static String normalize(String value) {
         return switch (value) { case "success" -> "success"; case "cancelled" -> "cancelled";
-            case "timed_out" -> "timeout"; case "skipped" -> "skipped"; default -> "failure"; };
+            case "timed_out" -> "timeout"; case "skipped" -> "skipped"; case "failure", "action_required", "startup_failure", "stale" -> "failure"; default -> "unknown"; };
     }
     private static String required(String name) {
         String value = System.getenv(name);

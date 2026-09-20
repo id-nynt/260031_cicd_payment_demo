@@ -38,41 +38,11 @@ test {
     useJUnitPlatform()
 }
 
-tasks.register('runBaseline', JavaExec) {
-    group = 'BDI'
-    description = 'Run the generated agent against one observed GitHub workflow run; no deployment actions'
-    dependsOn classes
-    mainClass = 'jason.infra.local.RunLocalMAS'
-    classpath = sourceSets.main.runtimeClasspath
-    workingDir projectDir
-    args 'project.mas2j', '--log-conf', 'logging.properties'
-}
-
-tasks.register('probeBaseline', JavaExec) {
-    group = 'BDI'
-    description = 'Read workflow state and payment telemetry without starting Jason'
-    dependsOn classes
-    mainClass = 'harness.ProjectBaselineProbe'
-    classpath = sourceSets.main.runtimeClasspath
-    if (project.hasProperty('probeArgs')) {
-        args project.property('probeArgs').toString().split(' ')
-    }
-}
-
-tasks.register('gate', JavaExec) {
-    group = 'BDI'
-    description = 'One-shot Jason promotion gate: 0 allow, nonzero block or unknown'
-    dependsOn classes
-    mainClass = 'harness.ProjectGateMain'
-    classpath = sourceSets.main.runtimeClasspath
-    workingDir projectDir
-}
-
 tasks.register('runController', JavaExec) {
     group = 'BDI'
     description = 'Run the generated controller; BDI_GUI=true enables the Jason MAS Console'
     dependsOn classes
     mainClass = 'harness.ControllerMain'
     classpath = sourceSets.main.runtimeClasspath
-    workingDir projectDir
+    workingDir System.getenv('BDI_RUN_DIR') ?: projectDir
 }

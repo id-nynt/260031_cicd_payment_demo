@@ -1,0 +1,20 @@
+# Logical jobs and policy only. Runner commands live in entity-execution.yml.
+name: Payment service release with BDI recovery
+project_file: payment_project.yaml
+execution:
+  max_retries: 1
+jobs:
+  build: {}
+  test:
+    needs: build
+  security:
+    needs: test
+  staging:
+    needs: security
+  production:
+    needs: staging
+    observe_before: staging
+  rollback:
+    recover_from: production
+    recover_on: [failure, telemetry_block, telemetry_unknown, maintenance_violation]
+    observe_after: true

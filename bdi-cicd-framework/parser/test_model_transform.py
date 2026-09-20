@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class ModelTransformTest(unittest.TestCase):
     def setUp(self):
-        self.pipeline = (ROOT / "models" / "01_pipeline.yaml").read_text(encoding="utf-8")
-        self.goals = (ROOT / "models" / "02_goal.yaml").read_text(encoding="utf-8")
+        self.pipeline = (ROOT / "parser/fixtures/legacy" / "01_pipeline.yaml").read_text(encoding="utf-8")
+        self.goals = (ROOT / "parser/fixtures/legacy" / "02_goal.yaml").read_text(encoding="utf-8")
         self.directory = ROOT / "parser" / "testdata"
 
     def tearDown(self):
@@ -99,7 +99,7 @@ class ModelTransformTest(unittest.TestCase):
         self.assertEqual(first_agent.read_bytes(), second_agent.read_bytes())
 
     def test_real_payment_workflow_mapping(self):
-        model = parse_model(ROOT / "models" / "01_pipeline.yaml", ROOT / "models" / "02_goal.yaml")
+        model = parse_model(ROOT / "parser/fixtures/legacy" / "01_pipeline.yaml", ROOT / "parser/fixtures/legacy" / "02_goal.yaml")
         self.assertEqual(model.entities, ("build", "test", "security", "staging", "production", "rollback"))
         self.assertEqual(set(model.dependencies), {
             ("build", "test"), ("test", "security"), ("security", "staging"),
@@ -113,9 +113,9 @@ class ModelTransformTest(unittest.TestCase):
         self.assertIn("require_healthy(production).", generated)
 
     def test_controller_goal_closure_and_observation(self):
-        pipeline = ROOT / "models" / "payment_pipeline.yaml"
-        staging = parse_model(pipeline, ROOT / "models" / "payment_goal_staging.yaml")
-        production = parse_model(pipeline, ROOT / "models" / "payment_goal_production.yaml")
+        pipeline = ROOT / "parser/fixtures/legacy" / "payment_pipeline.yaml"
+        staging = parse_model(pipeline, ROOT / "parser/fixtures/legacy" / "payment_goal_staging.yaml")
+        production = parse_model(pipeline, ROOT / "parser/fixtures/legacy" / "payment_goal_production.yaml")
         self.assertEqual(staging.required_entities, ("build", "test", "security", "staging"))
         self.assertNotIn("production", staging.required_entities)
         self.assertEqual(production.required_entities,
@@ -126,8 +126,9 @@ class ModelTransformTest(unittest.TestCase):
         self.assertIn("observe_before(production, staging).", generated)
 
     def test_second_project_uses_same_supported_language(self):
-        model = parse_model(ROOT / "examples" / "reporting_pipeline.yaml",
-                            ROOT / "examples" / "reporting_goal.yaml")
+        from workflow_model import compile_inputs
+        _, model = compile_inputs(ROOT / "examples" / "reporting_pipeline.yaml",
+                                  ROOT / "examples" / "reporting_goal.yaml")
         self.assertEqual(model.entities, ("package", "verify", "preview"))
         self.assertEqual(model.required_entities, model.entities)
 

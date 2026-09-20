@@ -41,11 +41,27 @@ public final class ProjectTelemetryProvider implements ObservationProvider {
         }
         this.prometheus = new PrometheusTelemetryObserver(client, endpoints.prometheusUrl().toString(),
             metricQuery(project, "error_rate_query", runId), metricQuery(project, "latency_p95_ms_query", runId),
-            metricQuery(project, "availability_query", runId));
+            metricQuery(project, "availability_query", runId), project.maxAgeSeconds(), project.metrics().containsKey("sample_age_seconds_query")
+                ? metricQuery(project, "sample_age_seconds_query", runId) : null);
     }
 
     static String metricQuery(ProjectConfig project, String name, String runId) {
         return project.metrics().get(name).replace("{{run_id}}", runId);
+    }
+
+    public record Measurement(String dataStatus, String readiness, double errorRate, double latencyP95Ms, double availability) { }
+
+    /** Raw normalized measurements. Policy is evaluated by the controller agent. */
+    public Measurement measure() {
+        String readiness = ready();
+        if (readiness.equals("not_ready")) return new Measurement("fresh", readiness, 0, 0, 0);
+        if (readiness.equals("unknown")) return new Measurement("unavailable", readiness, 0, 0, 0);
+        try {
+            TelemetrySample sample = prometheus.observe(environment);
+            return new Measurement("fresh", readiness, sample.errorRate(), sample.latencyP95Ms(), sample.availability());
+        } catch (Exception error) {
+            return new Measurement("unavailable", readiness, 0, 0, 0);
+        }
     }
 
     public Assessment assess() {

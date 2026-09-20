@@ -1,3 +1,5 @@
+> Historical iteration: commands and paths below predate the canonical repair. Use [the current controller guide](../bdi-cicd-framework/README.md).
+
 # Manual execution guide for the BDI-controlled payment CI/CD experiment
 
 For the current GUI and v1-to-v2 deployment procedure, use [Overall Manual Payment Demo](BDI_LIVE_MANUAL_DEMO.md). This older reference describes the earlier headless implementation; its branch/publication status and Java-owned telemetry waiting descriptions are historical. The current generic Jason plans own telemetry wait/reconsideration.

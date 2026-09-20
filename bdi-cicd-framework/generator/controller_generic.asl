@@ -65,10 +65,18 @@ retry_allowed(E) :- max_retries(Max) & attempt_count(E, Attempts) & Attempts <= 
 +!accepted(E) : workflow_active
  <- +phase_result(E, success); .print("BDI_BELIEF=success entity=", E); !control.
 
-// Unknown execution may still be running remotely. Never retry or recover over it.
+// Reconcile the same remote execution before any retry or recovery can be selected.
 +status(E, A, unknown) : running(E) & run_attempt(E, A)
+ <- .print("BDI_DECISION=reconcile entity=", E); reconcile_job(E, A, 1).
++reconciled(E, A, Round, unknown) : running(E) & run_attempt(E, A)
+    & reconciliation_limit(Max) & Round < Max & reconciliation_interval(Delay)
+ <- .wait(Delay); Next = Round + 1; reconcile_job(E, A, Next).
++reconciled(E, A, Round, unknown) : running(E) & run_attempt(E, A)
+    & reconciliation_limit(Max) & Round >= Max
  <- -running(E); -run_attempt(E, A);
     .print("BDI_STOP=execution_uncertain entity=", E); !end(unknown, unresolved).
++reconciled(E, A, Round, Result) : running(E) & run_attempt(E, A) & Result \== unknown
+ <- +status(E, A, Result).
 +status(E, A, Result) : running(E) & run_attempt(E, A) & Result \== success & Result \== unknown
     & retry_allowed(E)
  <- -running(E); -run_attempt(E, A);
@@ -89,14 +97,28 @@ retry_allowed(E) :- max_retries(Max) & attempt_count(E, Attempts) & Attempts <= 
  <- +terminal(E, Reason); .print("BDI_STOP=", Reason, " entity=", E);
     !end(Outcome, not_attempted).
 
-+telemetry_sample(E, Round, unknown) : observing(E) & observation_limit(Max) & Round < Max
+// Measurements are data. These AgentSpeak rules apply engineer-defined constraints.
++telemetry_measurement(E, A, Round, unavailable, _, _, _, _) : observing(E) & attempt_count(E, A)
+ <- +telemetry_sample(E, A, Round, unknown).
++telemetry_measurement(E, A, Round, fresh, not_ready, _, _, _) : observing(E) & attempt_count(E, A)
+ <- +telemetry_sample(E, A, Round, block).
++telemetry_measurement(E, A, Round, fresh, ready, Error, Latency, Availability)
+    : observing(E) & attempt_count(E, A) & error_rate_limit(MaxError) & latency_limit(MaxLatency)
+      & (Error > MaxError | Latency > MaxLatency | Availability < 1)
+ <- +telemetry_sample(E, A, Round, block).
++telemetry_measurement(E, A, Round, fresh, ready, Error, Latency, Availability)
+    : observing(E) & attempt_count(E, A) & error_rate_limit(MaxError) & latency_limit(MaxLatency)
+      & Error <= MaxError & Latency <= MaxLatency & Availability >= 1
+ <- +telemetry_sample(E, A, Round, allow).
+
++telemetry_sample(E, A, Round, unknown) : observing(E) & attempt_count(E, A) & observation_limit(Max) & Round < Max
     & observation_interval(Delay)
  <- .print("BDI_DECISION=wait_reconsider entity=", E, " round=", Round);
     .wait(Delay); observe_telemetry(E).
-+telemetry_sample(E, Round, unknown) : observing(E) & observation_limit(Max) & Round >= Max
- <- -observing(E); +telemetry(E, unknown); !observed(E, unknown).
-+telemetry_sample(E, Round, Decision) : observing(E) & Decision \== unknown
- <- -observing(E); +telemetry(E, Decision); !observed(E, Decision).
++telemetry_sample(E, A, Round, unknown) : observing(E) & attempt_count(E, A) & observation_limit(Max) & Round >= Max
+ <- -observing(E); accept_telemetry(E, unknown); +telemetry(E, unknown); !observed(E, unknown).
++telemetry_sample(E, A, Round, Decision) : observing(E) & attempt_count(E, A) & Decision \== unknown
+ <- -observing(E); accept_telemetry(E, Decision); +telemetry(E, Decision); !observed(E, Decision).
 +!observed(E, allow) : recovery_active(_, E)
  <- .print("BDI_RECOVERY=restored entity=", E); !end(stopped, restored).
 +!observed(E, block) : recovery_active(_, E)

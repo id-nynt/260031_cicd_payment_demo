@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ControllerComponentsTest {
     @Test
     void onlyRecoveryUsesPinnedKnownGoodSource() throws Exception {
-        var config = ControllerProjectConfig.load(Path.of("../models/payment_project.yaml"));
+        var config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));
         String candidate = "a".repeat(40);
         String baseline = "b".repeat(40);
         assertEquals(candidate, GitHubEntityExecution.sourceFor("production", candidate, baseline, config));
@@ -33,7 +33,7 @@ class ControllerComponentsTest {
             respond(exchange, 200, "{\"status\":\"in_progress\"}"));
         server.start();
         try {
-            var config = ControllerProjectConfig.load(Path.of("../models/payment_project.yaml"));
+            var config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));
             var adapter = new GitHubEntityExecution(config, new StructuredEventLogger(null),
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "example/repository", "test-token",
                 "main", "a".repeat(40), "timeout-test", Duration.ofMillis(1), Duration.ofMillis(100));
@@ -63,7 +63,7 @@ class ControllerComponentsTest {
 
     @Test
     void paymentExecutionMappingIsConfigurable() throws Exception {
-        ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("../models/payment_project.yaml"));
+        ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));
         assertEquals("entity-execution.yml", config.workflowFile());
         assertEquals("Build entity", config.jobNames().get("build"));
         assertEquals("staging", config.environments().get("staging"));
@@ -72,7 +72,7 @@ class ControllerComponentsTest {
 
     @Test
     void secondProjectHasDifferentEntitiesWithoutRuntimeCodeChanges() throws Exception {
-        ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("../examples/reporting_project.yaml"));
+        ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("fixtures/reporting-workflow.yaml"));
         assertEquals(java.util.Set.of("package", "verify", "preview"), config.jobNames().keySet());
         assertTrue(config.environments().isEmpty());
     }
@@ -101,7 +101,7 @@ class ControllerComponentsTest {
             respond(exchange, 200, "{\"status\":\"completed\"}"));
         server.start();
         try {
-            ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("../models/payment_project.yaml"));
+            ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));
             Path journalFile = Files.createTempFile("controller-adapter", ".jsonl");
             var adapter = new GitHubEntityExecution(config, new StructuredEventLogger(journalFile),
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "example/repository", "test-token",
@@ -129,13 +129,13 @@ class ControllerComponentsTest {
             respond(exchange, 200, "{\"status\":\"completed\"}"));
         server.start();
         try {
-            ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("../models/payment_project.yaml"));
+            ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));
             var adapter = new GitHubEntityExecution(config, new StructuredEventLogger(null),
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "example/repository", "test-token",
                 "experiment-v2", "0123456789abcdef0123456789abcdef01234567", "campaign-test",
                 Duration.ofMillis(1), Duration.ofSeconds(2));
-            java.io.IOException error = assertThrows(java.io.IOException.class, () -> adapter.execute("build", 1));
-            assertTrue(error.getMessage().contains("absent or skipped"));
+            assertEquals("unknown", adapter.execute("build", 1).status());
+            assertEquals("unknown", adapter.reconcile("build", 1).status());
         } finally {
             server.stop(0);
         }

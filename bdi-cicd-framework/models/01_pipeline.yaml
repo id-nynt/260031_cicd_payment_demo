@@ -1,20 +1,57 @@
-# Logical jobs and policy only. Runner commands live in entity-execution.yml.
 name: Payment service release with BDI recovery
-project_file: payment_project.yaml
+project: payment-service
 execution:
   max_retries: 1
+  observation_attempts: 18
+  observation_interval_seconds: 5
+  reconciliation_attempts: 3
+  reconciliation_interval_seconds: 5
+workflow_file: entity-execution.yml
 jobs:
-  build: {}
+  build:
+    job_name: Build entity
   test:
     needs: build
+    job_name: Test entity
   security:
     needs: test
+    job_name: Security entity
   staging:
     needs: security
+    job_name: Staging entity
+    environment: staging
+    observe_after: true
   production:
     needs: staging
     observe_before: staging
-  rollback:
-    recover_from: production
-    recover_on: [failure, telemetry_block, telemetry_unknown, maintenance_violation]
+    job_name: Production entity
+    environment: production
     observe_after: true
+recovery:
+  rollback:
+    observe_after: true
+    job_name: Rollback entity
+    environment: production
+    from: production
+    'on':
+    - failure
+    - telemetry_block
+    - telemetry_unknown
+    - maintenance_violation
+    release_source: known_good
+telemetry:
+  environments:
+    staging:
+      ready_url: http://127.0.0.1:3001/ready
+      prometheus_url: http://127.0.0.1:9091
+    production:
+      ready_url: http://127.0.0.1:3000/ready
+      prometheus_url: http://127.0.0.1:9090
+  metrics:
+    error_rate_query: (sum(rate(payment_http_errors_total{ci_run_id="{{run_id}}",route="/payments",status_code=~"5.."}[2m]))
+      or vector(0)) / clamp_min(sum(rate(payment_http_requests_total{ci_run_id="{{run_id}}",route="/payments"}[2m])),
+      0.001)
+    latency_p95_ms_query: histogram_quantile(0.95, sum by (le) (rate(payment_http_request_duration_milliseconds_bucket{ci_run_id="{{run_id}}",route="/payments"}[2m])))
+    availability_query: min(payment_service_ready{ci_run_id="{{run_id}}"})
+    sample_age_seconds_query: time() - max(timestamp(payment_service_ready{ci_run_id="{{run_id}}"}))
+  max_age_seconds: 30

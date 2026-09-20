@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent
 NORMAL = ["build", "test", "security", "staging", "production"]
 CASES = [
     ("healthy", "healthy", NORMAL, "achieved", "not_needed", []),
-    ("staging_only", "healthy", NORMAL[:-1], "achieved", "not_needed", ["--goal", str(ROOT / "models/payment_goal_staging.yaml")]),
+    ("staging_only", "healthy", NORMAL[:-1], "achieved", "not_needed", ["--goal", str(ROOT / "examples/staging_goal.yaml")]),
     ("retry", "transient_test_failure", ["build", "test", "test", "security", "staging", "production"], "achieved", "not_needed", []),
     ("exhaustion", "exhausted_test_failure", ["build", "test", "test"], "stopped", "not_attempted", []),
     ("staging_block", "telemetry_block", NORMAL[:-1], "stopped", "not_attempted", []),
@@ -22,7 +22,11 @@ CASES = [
     ("production_unhealthy", "production_unhealthy", NORMAL + ["rollback"], "stopped", "restored", []),
     ("production_unknown", "production_unknown", NORMAL + ["rollback"], "stopped", "restored", []),
     ("rollback_failure", "rollback_failure", NORMAL + ["rollback"], "stopped", "failed", []),
+    ("rollback_unhealthy", "rollback_unhealthy", NORMAL + ["rollback"], "stopped", "failed", []),
+    ("maintenance_violation", "healthy", NORMAL + ["rollback"], "stopped", "restored", []),
     ("rollback_unknown", "rollback_unknown", NORMAL + ["rollback"], "unknown", "unverified", []),
+    ("reconciled_success", "reconciled_success", NORMAL, "achieved", "not_needed", []),
+    ("reconciled_failure", "reconciled_failure", ["build", "test", "test", "security", "staging", "production"], "achieved", "not_needed", []),
     ("execution_uncertain", "execution_uncertain", NORMAL, "unknown", "unresolved", []),
     ("baseline_no_recovery", "production_unhealthy", NORMAL, "stopped", "not_attempted", ["--baseline"]),
     ("pause", "healthy", NORMAL, "achieved", "not_needed", ["--pause-after", "security", "--pause-ms", "750"]),
@@ -38,11 +42,16 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     # Shortened waits only for this local matrix. The normal live manifest stays unchanged.
-    project = yaml.safe_load((ROOT / "models/payment_project.yaml").read_text(encoding="utf-8"))
-    project["controller"]["observation_attempts"] = 3
-    project["controller"]["observation_interval_seconds"] = 0
-    quick = output / "quick-project.yaml"
+    project = yaml.safe_load((ROOT / "models/01_pipeline.yaml").read_text(encoding="utf-8"))
+    project["execution"]["observation_attempts"] = 3
+    project["execution"]["observation_interval_seconds"] = 0
+    project["execution"]["reconciliation_interval_seconds"] = 0
+    quick = output / "quick-pipeline.yaml"
     quick.write_text(yaml.safe_dump(project, sort_keys=False), encoding="utf-8")
+    duration_goal = yaml.safe_load((ROOT / "models/02_goal.yaml").read_text(encoding="utf-8"))
+    duration_goal['goal']['maintain(M)'] = ['production.duration <= 1','production.health == healthy']
+    duration_path = output / 'duration-goal.yaml'
+    duration_path.write_text(yaml.safe_dump(duration_goal,sort_keys=False),encoding='utf-8')
     env = os.environ.copy()
     for key in list(env):
         if key.startswith("BDI_") or key in ("GITHUB_TOKEN", "GH_TOKEN"):
@@ -50,12 +59,13 @@ def main():
     rows = []
     for name, scenario, expected, outcome, recovery, extra in CASES:
         directory = output / name
-        directory.mkdir()
         command = [sys.executable, str(ROOT / "run_controller.py"), "--scenario", scenario,
                    "--artifacts-dir", str(directory), *extra]
+        if name == "maintenance_violation":
+            command += ["--goal", str(duration_path)]
         if name != "second_project":
-            command += ["--project", str(quick)]
-        with (directory / "console.log").open("w", encoding="utf-8") as log:
+            command += ["--pipeline", str(quick)]
+        with (output / (name + "-console.log")).open("w", encoding="utf-8") as log:
             completed = subprocess.run(command, cwd=ROOT.parent, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=180)
         result = json.loads((directory / "controller-result.json").read_text(encoding="utf-8"))
         events = [json.loads(line) for line in (directory / "controller-journal.jsonl").read_text(encoding="utf-8").splitlines()]
@@ -67,6 +77,11 @@ def main():
             assert "production" in result["unmet_goals"]
             assert actual.count("rollback") == 1
             assert any(e["event"] == "bdi_recovery_decision" for e in events)
+        if name.startswith("reconciled_"):
+            reconciliation = next(e for e in events if e["event"] == "bdi_reconciliation")
+            original = next(e for e in events if e["event"] == "entity_execution_finished" and e["entity"] == reconciliation["entity"])
+            assert original["execution_id"] == reconciliation["execution_id"]
+            assert original["attempt"] == reconciliation["attempt"]
         if name == "pause":
             from datetime import datetime
             paused = next(e for e in events if e["event"] == "controller_pause")

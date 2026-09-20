@@ -1,5 +1,5 @@
 name: BDI Entity Execution
-run-name: BDI ${{ inputs.campaign_id }} / ${{ inputs.entity }} / attempt ${{ inputs.attempt }}
+run-name: bdi-${{ inputs.execution_id }}
 
 on:
   workflow_dispatch:

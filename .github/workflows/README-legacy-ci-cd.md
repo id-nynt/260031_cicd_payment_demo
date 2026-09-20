@@ -1,7 +1,5 @@
-# Legacy CI/CD workflow disabled
+# Selected-entity execution
 
-The former build → test → staging → BDI gate → production workflow was
-removed from the active workflow directory. The BDI controller now dispatches
-one selected entity through `entity-execution.yml`.
+`entity-execution.yml` is the only deployment worker; Jason selects every entity, including rollback. `validate-controller.yml` runs checks and simulated scenarios without deployment. The former gate chain and manual rollback bypass are inactive; historical files are in `docs/legacy/pre-canonical`.
 
-See `docs/BDI_LIVE_MANUAL_DEMO.md` for startup and observation instructions.
+Start with [the controller guide](../../bdi-cicd-framework/README.md).

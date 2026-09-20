@@ -18,6 +18,7 @@ public record ControllerProjectConfig(String project, String workflowFile,
     public static ControllerProjectConfig load(Path path) throws IOException {
         Object parsed;
         try (var input = Files.newInputStream(path)) { parsed = new Yaml().load(input); }
+        if (parsed instanceof Map<?, ?> document && document.containsKey("schema_version")) parsed = document.get("runtime");
         if (!(parsed instanceof Map<?, ?> root) || !(root.get("controller") instanceof Map<?, ?> controller)) {
             throw new IOException("Project manifest requires a controller mapping");
         }
@@ -29,7 +30,7 @@ public record ControllerProjectConfig(String project, String workflowFile,
                 ? Map.of() : strings(controller.get("environments"), "controller.environments");
         int attempts = integer(controller, "observation_attempts", 18, 1, 120);
         int interval = integer(controller, "observation_interval_seconds", 5, 0, 60);
-        Map<String, String> sources = controller.get("release_sources") == null ? Map.of()
+        Map<String, String> sources = (controller.get("release_sources") == null || controller.get("release_sources") instanceof Map<?, ?> m && m.isEmpty()) ? Map.of()
             : strings(controller.get("release_sources"), "controller.release_sources");
         if (!jobs.keySet().containsAll(sources.keySet()) || sources.values().stream().anyMatch(v -> !v.equals("known_good"))) {
             throw new IOException("release_sources must map known jobs to known_good");

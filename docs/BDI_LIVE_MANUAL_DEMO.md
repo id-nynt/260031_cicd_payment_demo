@@ -1,3 +1,5 @@
+> Historical iteration: commands and paths below predate the canonical repair. Use [the current controller guide](../bdi-cicd-framework/README.md).
+
 # Manual payment deployment and BDI recovery experiment
 
 This is the current guide. Earlier audit/results sections describe historical versions.

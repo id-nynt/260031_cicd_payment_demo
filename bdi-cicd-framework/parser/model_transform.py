@@ -98,6 +98,8 @@ class Model:
 
 
 def _load(path: Path) -> dict[str, Any]:
+    if isinstance(path, dict):
+        return path
     try:
         value = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:

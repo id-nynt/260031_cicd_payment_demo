@@ -10,3 +10,8 @@ parser/testdata/*
 !parser/testdata/.gitkeep
 *.class
 *.log
+
+config/.gradle/
+config/build/
+runs/
+__pycache__/

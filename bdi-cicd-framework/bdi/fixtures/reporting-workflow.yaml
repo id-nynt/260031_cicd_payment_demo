@@ -1,0 +1,45 @@
+# Generated test fixture; checked against canonical compiler by test_worker_contract.py
+schema_version: 1
+workflow:
+  name: Reporting service
+  execution:
+    max_retries: 1
+    observation_attempts: 3
+    observation_interval_seconds: 0
+    reconciliation_attempts: 2
+    reconciliation_interval_seconds: 0
+  jobs:
+    package:
+      job_name: Package report
+      needs: []
+    verify:
+      needs:
+      - package
+      job_name: Verify report
+    preview:
+      needs:
+      - verify
+      job_name: Deploy preview
+  recovery: {}
+goals:
+  goal:
+    achieve(A):
+    - preview.status == success
+    avoid(V):
+    - condition: preview.status == success
+      when: verify.status != success
+    duration_unit: milliseconds
+runtime:
+  project: reporting-service
+  controller:
+    workflow_file: reporting-entity.yml
+    jobs:
+      package: Package report
+      verify: Verify report
+      preview: Deploy preview
+    environments: {}
+    release_sources: {}
+    observation_attempts: 3
+    observation_interval_seconds: 0
+    reconciliation_attempts: 2
+    reconciliation_interval_seconds: 0

@@ -19,6 +19,7 @@ public final class ControllerEnvironment extends Environment {
     private final Map<String, EntityExecution.Result> latest = new LinkedHashMap<>();
     private Path resultFile;
     private String scenario;
+    private final Map<String, Integer> attempts = new LinkedHashMap<>();
     private final Map<String, Integer> observationRounds = new LinkedHashMap<>();
     private final Map<String, String> telemetry = new LinkedHashMap<>();
 
@@ -32,10 +33,8 @@ public final class ControllerEnvironment extends Environment {
             journal = new StructuredEventLogger(Path.of(value("BDI_JOURNAL_FILE", "build/controller-journal.jsonl")));
             scenario = System.getenv("BDI_SCENARIO");
             if (!value("BDI_KNOWN_GOOD_SHA", "").isBlank()) addPercept(Literal.parseLiteral("known_good_available"));
-            addPercept(Literal.parseLiteral("observation_limit(" + controller.observationAttempts() + ")"));
-            addPercept(Literal.parseLiteral("observation_interval(" + controller.observationIntervalSeconds() * 1000L + ")"));
             if (scenario == null || scenario.isBlank()) {
-                telemetryProject = ProjectConfig.load(projectFile);
+                if (!controller.environments().isEmpty()) telemetryProject = ProjectConfig.load(projectFile);
                 executor = new GitHubEntityExecution(controller, journal);
             } else {
                 executor = new ScenarioEntityExecution(scenario);
@@ -59,6 +58,8 @@ public final class ControllerEnvironment extends Environment {
             return switch (action.getFunctor()) {
                 case "run_job" -> runJob(action);
                 case "observe_telemetry" -> observeTelemetry(action);
+                case "reconcile_job" -> reconcileJob(action);
+                case "accept_telemetry" -> { telemetry.put(atom(action, 0), atom(action, 1)); yield true; }
                 case "finish" -> finish(action);
                 case "record_recovery" -> {
                     journal.event("bdi_recovery_decision", null, Map.of("source", atom(action, 0),
@@ -84,6 +85,9 @@ public final class ControllerEnvironment extends Environment {
         if (action.getArity() != 2) return false;
         String entity = atom(action, 0);
         int attempt = integer(action, 1);
+        attempts.put(entity, attempt);
+        observationRounds.remove(entity);
+        telemetry.remove(entity);
         if (!controller.jobNames().containsKey(entity)) throw new IllegalArgumentException("Unmapped entity " + entity);
         journal.event("bdi_decision", null, Map.of("decision", "run", "entity", entity,
             "attempt", attempt, "relevant_beliefs", controller.releaseSources().containsKey(entity)
@@ -106,6 +110,23 @@ public final class ControllerEnvironment extends Environment {
         return true;
     }
 
+    private boolean reconcileJob(Structure action) throws Exception {
+        if (action.getArity() != 3) return false;
+        String entity = atom(action, 0);
+        int attempt = integer(action, 1), round = integer(action, 2);
+        EntityExecution.Result result;
+        try { result = executor.reconcile(entity, attempt); }
+        catch (Exception error) { result = new EntityExecution.Result("unknown", 0, "unresolved", 0, ""); }
+        latest.put(entity, result);
+        removePerceptsByUnif(Literal.parseLiteral("duration(" + entity + "," + attempt + ",_)"));
+        journal.event("bdi_reconciliation", null, Map.of("entity", entity, "attempt", attempt, "round", round,
+            "execution_id", result.executionId(), "github_run_id", result.githubRunId(), "status", result.status()));
+        addPercept(Literal.parseLiteral("duration(" + entity + "," + attempt + "," + result.durationMs() + ")"));
+        addPercept(Literal.parseLiteral("reconciled(" + entity + "," + attempt + "," + round + "," + result.status() + ")"));
+        informAgsEnvironmentChanged();
+        return true;
+    }
+
     private boolean observeTelemetry(Structure action) throws Exception {
         if (action.getArity() != 1) return false;
         String entity = atom(action, 0);
@@ -113,13 +134,15 @@ public final class ControllerEnvironment extends Environment {
         String decision;
         String reason;
         int round = observationRounds.merge(entity, 1, Integer::sum);
+        ProjectTelemetryProvider.Measurement measurement;
         if (scenario != null && !scenario.isBlank()) {
             boolean recovery = controller.releaseSources().containsKey(entity);
             boolean protectedEntity = !recovery && controller.releaseSources().keySet().stream()
                 .anyMatch(r -> controller.environments().get(r).equals(controller.environments().get(entity)));
-            if (scenario.equals("rollback_unknown") && recovery) { decision = "unknown"; reason = "scenario_recovery_unavailable"; }
+            if (scenario.equals("rollback_unhealthy") && recovery) { decision = "block"; reason = "scenario_recovery_unhealthy"; }
+            else if (scenario.equals("rollback_unknown") && recovery) { decision = "unknown"; reason = "scenario_recovery_unavailable"; }
             else if (scenario.equals("production_unknown") && protectedEntity) { decision = "unknown"; reason = "scenario_production_unavailable"; }
-            else if (protectedEntity && java.util.Set.of("production_unhealthy", "rollback_failure", "rollback_unknown").contains(scenario)) {
+            else if (protectedEntity && java.util.Set.of("production_unhealthy", "rollback_failure", "rollback_unknown", "rollback_unhealthy").contains(scenario)) {
                 decision = "block"; reason = "scenario_production_unhealthy";
             }
             else if (scenario.equals("telemetry_block")) { decision = "block"; reason = "scenario_block"; }
@@ -133,18 +156,22 @@ public final class ControllerEnvironment extends Environment {
             EntityExecution.Result execution = latest.get(entity);
             String environment = controller.environments().get(entity);
             if (execution == null || environment == null) throw new IllegalStateException("No deployment identity/environment for " + entity);
-            ProjectTelemetryProvider.Assessment assessment = new ProjectTelemetryProvider(telemetryProject, environment, entity,
-                    execution.executionId()).assess();
-                journal.event("telemetry_observation", null, Map.of("entity", entity, "round", round,
-                    "execution_id", execution.executionId(), "decision", assessment.decision(),
-                    "reason", assessment.reason(), "readiness", assessment.readiness(),
-                    "error_rate", String.valueOf(assessment.errorRate()), "latency_p95_ms", String.valueOf(assessment.latencyP95Ms())));
-            decision = assessment == null ? "unknown" : assessment.decision();
-            reason = assessment == null ? "no_observation" : assessment.reason();
+            measurement = new ProjectTelemetryProvider(telemetryProject, environment, entity, execution.executionId()).measure();
+            return publishMeasurement(entity, round, measurement, execution.executionId());
         }
-        telemetry.put(entity, decision);
-        journal.event("telemetry_sample", null, Map.of("entity", entity, "round", round, "decision", decision, "reason", reason));
-        addPercept(Literal.parseLiteral("telemetry_sample(" + entity + "," + round + "," + decision + ")"));
+        measurement = decision.equals("unknown")
+            ? new ProjectTelemetryProvider.Measurement("unavailable", "unknown", 0, 0, 0)
+            : new ProjectTelemetryProvider.Measurement("fresh", "ready", decision.equals("block") ? 1 : 0, 20, 1);
+        return publishMeasurement(entity, round, measurement, latest.get(entity).executionId());
+    }
+
+    private boolean publishMeasurement(String entity, int round, ProjectTelemetryProvider.Measurement m, String executionId) {
+        int attempt = attempts.getOrDefault(entity, 0);
+        journal.event("telemetry_measurement", null, Map.of("entity", entity, "attempt", attempt, "round", round,
+            "execution_id", executionId, "data_status", m.dataStatus(), "readiness", m.readiness(),
+            "error_rate", m.errorRate(), "latency_p95_ms", m.latencyP95Ms(), "availability", m.availability()));
+        addPercept(Literal.parseLiteral("telemetry_measurement(" + entity + "," + attempt + "," + round + ","
+            + m.dataStatus() + "," + m.readiness() + "," + m.errorRate() + "," + m.latencyP95Ms() + "," + m.availability() + ")"));
         informAgsEnvironmentChanged();
         return true;
     }
@@ -155,6 +182,8 @@ public final class ControllerEnvironment extends Environment {
         String recoveryOutcome = atom(action, 1);
         Files.createDirectories(resultFile.toAbsolutePath().getParent());
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("campaign_id", value("BDI_CAMPAIGN_ID", ""));
+        result.put("generation_manifest", value("BDI_MANIFEST_FILE", ""));
         result.put("timestamp", Instant.now().toString());
         result.put("outcome", outcome);
         result.put("recovery_outcome", recoveryOutcome);
@@ -171,7 +200,7 @@ public final class ControllerEnvironment extends Environment {
         java.util.List<String> unmet = new java.util.ArrayList<>();
         for (var goal : requested) {
             String entity = goal.asText();
-            boolean healthyRequired = false;
+            boolean healthyRequired = controller.environments().containsKey(entity);
             for (var health : healthGoals) if (health.asText().equals(entity)) healthyRequired = true;
             boolean satisfied = latest.containsKey(entity) && latest.get(entity).status().equals("success")
                 && (!healthyRequired || "allow".equals(telemetry.get(entity)));

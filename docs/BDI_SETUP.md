@@ -1,6 +1,6 @@
 # One-time setup and troubleshooting
 
-Complete setup before the [eight-phase manual experiment](BDI_MANUAL_EXECUTION_GUIDE.md). Preparation does not count as a v2 deployment experiment. Commands are PowerShell at the current controller checkout unless marked Linux runner.
+Start with [Part A of the manual guide](BDI_MANUAL_EXECUTION_GUIDE.md#part-a---setup-and-separate-system-checks) for the complete beginner walkthrough. This page is a supplementary setup and troubleshooting reference. Preparation does not count as a v2 deployment experiment. Commands are PowerShell at the current controller checkout unless marked Linux runner.
 
 ## Tools and local app check
 
@@ -41,7 +41,7 @@ Expected: checkout at port 3002 works; Prometheus at 9092 shows `payment_service
 
 ## Runner and endpoints
 
-GitHub repository → Settings → Actions → Runners: use the existing Linux runner with labels `self-hosted`, `linux`, `payment-deploy`. No new repository or runner registration is needed because of a second Git worktree. If registration is absent, follow GitHub's New self-hosted runner instructions.
+GitHub repository â†’ Settings â†’ Actions â†’ Runners: use the existing Linux runner with labels `self-hosted`, `linux`, `payment-deploy`. No new repository or runner registration is needed because of a second Git worktree. If registration is absent, follow GitHub's New self-hosted runner instructions.
 
 Linux runner terminal, in its actual installation directory:
 
@@ -58,7 +58,7 @@ The controller must reach runner services: staging readiness/Prometheus 3001/909
 
 ## Credentials and publish the updated worker
 
-Use a fine-grained GitHub token for `id-nynt/260031_cicd_payment_demo` with **Actions: Read and write**. In GitHub: profile Settings → Developer settings → Personal access tokens → Fine-grained tokens. Select the owner/repository and complete any required approval. [Dispatch permissions](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
+Use a fine-grained GitHub token for `id-nynt/260031_cicd_payment_demo` with **Actions: Read and write**. In GitHub: profile Settings â†’ Developer settings â†’ Personal access tokens â†’ Fine-grained tokens. Select the owner/repository and complete any required approval. [Dispatch permissions](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
 
 ```powershell
 $dispatchToken = Read-Host 'Controller token (hidden)' -AsSecureString
@@ -104,7 +104,7 @@ Before live use, clear old endpoint/pause overrides in the controller shell:
 Remove-Item Env:BDI_READY_URL,Env:BDI_PROMETHEUS_URL,Env:BDI_PAUSE_AFTER_ENTITY,Env:BDI_PAUSE_MILLISECONDS -ErrorAction SilentlyContinue
 ```
 
-Proceed to manual phase 1 with `$env:BDI_WORKFLOW_REF`, `$env:GITHUB_REPOSITORY` and `$env:GITHUB_TOKEN` set. Keep Docker/runner running.
+Proceed to manual phase B1 with `$env:BDI_WORKFLOW_REF`, `$env:GITHUB_REPOSITORY` and `$env:GITHUB_TOKEN` set. Keep Docker/runner running.
 
 ## Troubleshooting: stop at the actual boundary
 

@@ -25,7 +25,10 @@ public final class ControllerMain {
             if (Boolean.parseBoolean(value("BDI_RECONCILE_ONLY", "false"))) {
                 var config = ControllerProjectConfig.load(Path.of(System.getenv("BDI_PROJECT_FILE")));
                 var journal = new StructuredEventLogger(Path.of(System.getenv("BDI_JOURNAL_FILE")));
-                var observation = new GitHubEntityExecution(config, journal).reconcilePending();
+                var execution = new GitHubEntityExecution(config, journal);
+                String evidence = value("BDI_REJECTED_DISPATCH_EVIDENCE", "");
+                var observation = evidence.isBlank() ? execution.reconcilePending()
+                    : execution.reconcileRejectedDispatch(Path.of(evidence), result.toAbsolutePath().getParent());
                 Files.writeString(result, JSON.writerWithDefaultPrettyPrinter().writeValueAsString(
                     java.util.Map.of("operation", "reconcile_only", "execution", observation,
                         "candidate_goal_evaluated", false)) + "\n");

@@ -305,6 +305,23 @@ $env:BDI_RELEASE_SHA = $v1Sha
 
 Use your actual repository if different. A fine-grained token must include this repository and **Actions: Read and write** for workflow dispatch and observation; see [GitHub's dispatch permissions](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event). Git push credentials and the controller's `GITHUB_TOKEN` can differ. After repairing CLI authentication, repeat the token assignment above in the controller window. Do not print or include the token in evidence.
 
+**If dispatch reports HTTP 403:** in GitHub, open your profile -> Settings -> Developer settings -> Personal access tokens -> Fine-grained tokens. Edit the token used by this controller, or generate a new one. Select resource owner `id-nynt`, repository `260031_cicd_payment_demo`, and repository permission **Actions: Read and write**. Complete any required owner approval. See [GitHub's token setup](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
+
+Load that token in the controller PowerShell window (input is hidden). This replaces the earlier `gh auth token` assignment; do not overwrite it with the old CLI token afterward:
+
+```powershell
+$dispatchToken = Read-Host 'Paste the controller token' -AsSecureString
+$env:GITHUB_TOKEN = [System.Net.NetworkCredential]::new('', $dispatchToken).Password
+Remove-Variable dispatchToken
+$env:GITHUB_REPOSITORY = 'id-nynt/260031_cicd_payment_demo'
+$workflowHeaders = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2026-03-10' }
+Invoke-RestMethod -Headers $workflowHeaders -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/entity-execution.yml" |
+    Select-Object name, state, path
+Remove-Variable workflowHeaders
+```
+
+Checkpoint: workflow state is `active`. This read-only check confirms workflow visibility, not dispatch write permission; verify that permission in the token settings. It does not deploy anything. The workflow's own `permissions:` block does not grant access to the controller token. If an earlier attempt left pending execution, follow step 17 before launching again.
+
 | Selection | Meaning |
 |---|---|
 | `BDI_WORKFLOW_REF` | Published worker definition; keep pinned while comparing v1/v2 |
@@ -535,7 +552,17 @@ py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only
 
 Keep the same repository credentials and intended project configuration. Reconciliation reads remote state; it does not resume the old campaign or declare achievement. Unknown preserves pending intent; confirmed terminal status clears it. Do not erase the marker to force deployment. Worktrees share a repository lock; independent clones do not.
 
-**Current HTTP 403 limitation:** the controller conservatively records even an explicit dispatch rejection as uncertain. It can leave `outcome=unknown`, `recovery_outcome=unresolved` and a pending marker although no run was accepted. After fixing authentication, reconciliation may still report unknown because there is no matching run. Stop retrying campaigns in that case; preserve the journal for a controller repair that handles the recorded rejection. Do not delete the marker or treat this result as a verified baseline.
+**Rejected dispatches:** the corrected controller records explicit POST rejections (HTTP 401/403/404/422) as failed actions and clears their pending intent. Jason still decides whether to retry or stop. Lost responses, server errors and failures while observing an accepted run remain uncertain and require reconciliation.
+
+**Recover an old HTTP 403 record once:** close the old MAS Console first. Use the original campaign that recorded the rejection, not the later campaign that was blocked. For the recorded experiment:
+
+```powershell
+py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only --rejected-dispatch-evidence bdi-cicd-framework/runs/manual-20260921-000908-v1
+```
+
+This command acquires the controller lock, checks the original receipt and matching journal intent/rejection against pending state, and archives the journal and pending record in a new run directory before settling the action as `failure`. It sends no dispatch and never marks v1 achieved. Mismatched, acknowledged or genuinely uncertain evidence is rejected. Check the new directory's `controller-result.json`: `operation=reconcile_only`, `execution.status=failure`, `candidate_goal_evaluated=false`. Keep the old campaign directories. If evidence validation fails or the lock is held, resolve that cause rather than deleting the marker.
+
+After token repair and successful reconciliation, keep Docker and the runner running, select a fresh `$sessionName` as in step 10, and start another baseline campaign. No tag changes or project regeneration are needed for this runtime-only correction.
 
 ## 18. Return to v1 and repeat the experiment
 

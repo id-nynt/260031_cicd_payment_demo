@@ -66,8 +66,13 @@ def main() -> int:
     parser.add_argument("--pause-after", help="scenario entity after which to pause before returning its result")
     parser.add_argument("--pause-ms", type=int, default=0)
     parser.add_argument("--reconcile-only", action="store_true", help="read remote status of durable pending execution; never dispatch or resume a campaign")
+    parser.add_argument("--rejected-dispatch-evidence", type=Path,
+                        help="with --reconcile-only: original campaign directory proving an old HTTP dispatch rejection")
     parser.add_argument("--gui", action="store_true", help="open Jason MAS Console and keep the final agent mind available until closed")
     args = parser.parse_args()
+
+    if args.rejected_dispatch_evidence and (not args.reconcile_only or args.validate_only):
+        raise ModelError("--rejected-dispatch-evidence requires --reconcile-only without --validate-only")
 
     if args.reconcile_only and (args.scenario or args.known_good or args.baseline):
         raise ModelError("--reconcile-only cannot be combined with scenario or release options")
@@ -132,6 +137,9 @@ def main() -> int:
     repository_root = ROOT.parent
     environment = os.environ.copy()
     environment["BDI_RECONCILE_ONLY"] = str(args.reconcile_only).lower()
+    environment.pop("BDI_REJECTED_DISPATCH_EVIDENCE", None)
+    if args.rejected_dispatch_evidence:
+        environment["BDI_REJECTED_DISPATCH_EVIDENCE"] = str(args.rejected_dispatch_evidence.resolve())
     environment["BDI_GUI"] = str(args.gui).lower()
     environment.pop("BDI_SCENARIO", None)
     environment["BDI_KNOWN_GOOD_SHA"] = baseline_sha

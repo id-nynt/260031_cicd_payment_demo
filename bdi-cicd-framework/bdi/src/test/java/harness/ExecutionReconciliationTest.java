@@ -104,4 +104,102 @@ class ExecutionReconciliationTest {
             assertEquals(1,posts.get());assertTrue(Files.exists(state));
         } finally {server.stop(0);}
     }
+
+    @Test void explicitDispatchRejectionsSettleFailureAndPermitNextSelectedAttempt() throws Exception {
+        for (int status : new int[]{401, 403, 404, 422}) {
+            var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+            var posts=new AtomicInteger();
+            server.createContext("/", e->{posts.incrementAndGet();respond(e,status,"rejected");});
+            server.start();
+            try {
+                Path state=directory.resolve("rejected-"+status+".json");
+                var adapter=adapter(server);adapter.useStateFile(state);
+                var result=adapter.execute("build",1);
+                assertEquals("failure",result.status());assertEquals(0,result.githubRunId());
+                assertFalse(Files.exists(state));
+                assertEquals("failure",adapter.execute("build",2).status());
+                assertEquals(2,posts.get());
+            } finally {server.stop(0);}
+        }
+    }
+
+    @Test void forbiddenPollingIsStillUncertainAfterAcknowledgement() throws Exception {
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/repos/example/repository/actions/workflows/entity-execution.yml/dispatches",
+            e->respond(e,200,"{\"workflow_run_id\":12}"));
+        server.createContext("/repos/example/repository/actions/runs/12",e->respond(e,403,"forbidden"));
+        server.start();
+        try {
+            Path state=directory.resolve("polling.json");var adapter=adapter(server);adapter.useStateFile(state);
+            assertEquals("unknown",adapter.execute("build",1).status());
+            assertEquals(12,JSON.readTree(Files.readString(state)).path("run_id").asInt());
+        } finally {server.stop(0);}
+    }
+
+    private Path legacyEvidence(Path state, String reason, boolean acknowledged) throws Exception {
+        var pending=JSON.readTree(Files.readString(state));
+        Path evidence=Files.createDirectory(directory.resolve("evidence"));
+        var receipt=JSON.createObjectNode().put("mode","github");
+        for (String key:new String[]{"campaign_id","release_sha","repository"}) receipt.set(key,pending.path(key));
+        Files.writeString(evidence.resolve("controller-result.json"),receipt.toString());
+        var intent=JSON.createObjectNode().put("event","dispatch_intent");
+        for (String key:new String[]{"campaign_id","entity","attempt","execution_id","release_sha"}) intent.set(key,pending.path(key));
+        var rejected=JSON.createObjectNode().put("event","execution_uncertain")
+            .put("execution_id",pending.path("execution_id").asText()).put("reason",reason);
+        String journal=intent+"\n"+rejected+"\n";
+        if (acknowledged) journal+=JSON.createObjectNode().put("event","dispatch_acknowledged")
+            .put("execution_id",pending.path("execution_id").asText())+"\n";
+        Files.writeString(evidence.resolve("controller-journal.jsonl"),journal);
+        return evidence;
+    }
+
+    @Test void legacyRejectionRecoveryArchivesEvidenceWithoutSendingAnotherRequest() throws Exception {
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);var calls=new AtomicInteger();
+        server.createContext("/",e->{calls.incrementAndGet();respond(e,503,"unknown");});server.start();
+        try {
+            Path state=directory.resolve("legacy.json");var adapter=adapter(server);adapter.useStateFile(state);
+            adapter.execute("build",1);
+            Path evidence=legacyEvidence(state,"GitHub dispatch returned HTTP 403: forbidden",false);
+            Path archive=directory.resolve("archive");
+            assertEquals("failure",adapter.reconcileRejectedDispatch(evidence,archive).status());
+            assertFalse(Files.exists(state));assertEquals(1,calls.get());
+            assertTrue(Files.exists(archive.resolve("rejected-dispatch-pending.json")));
+            assertEquals(Files.readString(evidence.resolve("controller-journal.jsonl")),
+                Files.readString(archive.resolve("rejected-dispatch-journal.jsonl")));
+        } finally {server.stop(0);}
+    }
+
+    @Test void legacyRecoveryRejectsUncertainMismatchedAndAcknowledgedEvidence() throws Exception {
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/",e->respond(e,503,"unknown"));server.start();
+        try {
+            Path state=directory.resolve("legacy.json");var adapter=adapter(server);adapter.useStateFile(state);
+            adapter.execute("build",1);
+            Path evidence=legacyEvidence(state,"GitHub dispatch returned HTTP 503: unknown",false);
+            Path journal=evidence.resolve("controller-journal.jsonl");
+            String original=Files.readString(journal);
+            assertThrows(IllegalStateException.class,()->adapter.reconcileRejectedDispatch(evidence,directory.resolve("archive")));
+            Files.writeString(journal,original.replace("503", "403").replace("campaign-test","wrong-campaign"));
+            assertThrows(IllegalStateException.class,()->adapter.reconcileRejectedDispatch(evidence,directory.resolve("archive")));
+            String id=JSON.readTree(Files.readString(state)).path("execution_id").asText();
+            Files.writeString(journal,original.replace("503","403")+JSON.createObjectNode()
+                .put("event","dispatch_acknowledged").put("execution_id",id)+"\n");
+            assertThrows(IllegalStateException.class,()->adapter.reconcileRejectedDispatch(evidence,directory.resolve("archive")));
+            assertTrue(Files.exists(state));
+        } finally {server.stop(0);}
+    }
+
+    @Test void persistedRejectionSettlesAfterRestartWithoutRemoteLookup() throws Exception {
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);var calls=new AtomicInteger();
+        server.createContext("/",e->{calls.incrementAndGet();respond(e,503,"unknown");});server.start();
+        try {
+            Path state=directory.resolve("restart.json");var adapter=adapter(server);adapter.useStateFile(state);
+            adapter.execute("build",1);
+            var record=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(Files.readString(state));
+            record.put("dispatch_rejected_http_status",403);Files.writeString(state,record.toString());
+            var restarted=adapter(server);restarted.useStateFile(state);
+            assertEquals("failure",restarted.reconcilePending().status());
+            assertFalse(Files.exists(state));assertEquals(1,calls.get());
+        } finally {server.stop(0);}
+    }
 }

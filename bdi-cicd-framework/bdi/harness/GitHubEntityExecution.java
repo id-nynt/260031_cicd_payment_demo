@@ -113,6 +113,13 @@ public final class GitHubEntityExecution implements EntityExecution {
             pending.put("run_id", runId); savePending();
             journal.event("dispatch_acknowledged", null, Map.of("execution_id", executionId, "github_run_id", runId));
             return settle(awaitSelectedJob(runId, expectedJob, Instant.now().plus(maxWait)));
+        } catch (DispatchRejected error) {
+            pending.put("dispatch_rejected_http_status", error.status);
+            savePending(); // A restart can settle this rejection without searching for a nonexistent run.
+            journal.event("dispatch_rejected", null, Map.of("execution_id", executionId,
+                "http_status", error.status, "reason", error.getMessage(),
+                "next_step", "Check controller GITHUB_TOKEN repository/Actions write access and workflow ref"));
+            return settle("failure");
         } catch (Exception error) {
             journal.event("execution_uncertain", null, Map.of("execution_id", executionId, "reason", String.valueOf(error.getMessage())));
             return unresolved();
@@ -132,6 +139,8 @@ public final class GitHubEntityExecution implements EntityExecution {
         if (!repository.equals(pending.path("repository").asText()) || !apiBase.toString().equals(pending.path("api_base").asText()))
             throw new IllegalStateException("Pending execution belongs to another repository/API");
         try {
+            if (pending.path("run_id").asLong() == 0 && rejectedStatus(pending.path("dispatch_rejected_http_status").asInt()))
+                return settle("failure");
             long runId = pending.path("run_id").asLong();
             if (runId == 0) {
                 String title = "bdi-" + pending.path("execution_id").asText();
@@ -157,6 +166,53 @@ public final class GitHubEntityExecution implements EntityExecution {
     private Result unresolved() {
         if (pending == null) return new Result("unknown", 0, "unresolved", 0, "");
         return result("unknown");
+    }
+
+    /** Explicit migration for old journals that recorded a rejected POST as uncertain. No network requests. */
+    Result reconcileRejectedDispatch(Path evidenceDirectory, Path archiveDirectory) throws Exception {
+        if (pending == null || pending.path("run_id").asLong() != 0)
+            throw new IllegalStateException("Requires a pending dispatch with no acknowledged run");
+        var receipt = JSON.readTree(Files.readString(evidenceDirectory.resolve("controller-result.json")));
+        if (!repository.equals(pending.path("repository").asText())
+                || !apiBase.toString().equals(pending.path("api_base").asText())
+                || !repository.equals(receipt.path("repository").asText())
+                || !pending.path("campaign_id").asText().equals(receipt.path("campaign_id").asText())
+                || !pending.path("release_sha").asText().equals(receipt.path("release_sha").asText())
+                || !"github".equals(receipt.path("mode").asText()))
+            throw new IllegalStateException("Rejection evidence does not match pending campaign/repository/release");
+        byte[] evidence = Files.readAllBytes(evidenceDirectory.resolve("controller-journal.jsonl"));
+        int intents = 0, rejections = 0;
+        for (String line : new String(evidence, java.nio.charset.StandardCharsets.UTF_8).split("\\R")) {
+            if (line.isBlank()) continue;
+            var event = JSON.readTree(line);
+            if (!pending.path("execution_id").asText().equals(event.path("execution_id").asText())) continue;
+            switch (event.path("event").asText()) {
+                case "dispatch_intent" -> {
+                    for (String field : new String[]{"campaign_id", "entity", "attempt", "release_sha"})
+                        if (!pending.path(field).asText().equals(event.path(field).asText()))
+                            throw new IllegalStateException("Dispatch intent identity mismatch: " + field);
+                    intents++;
+                }
+                case "execution_uncertain" -> {
+                    String reason = event.path("reason").asText();
+                    var match = java.util.regex.Pattern.compile("^GitHub dispatch returned HTTP (401|403|404|422): ").matcher(reason);
+                    if (intents != 1 || !match.find())
+                        throw new IllegalStateException("Evidence does not prove an explicit dispatch rejection");
+                    rejections++;
+                }
+                case "dispatch_acknowledged", "execution_reconciled", "execution_terminal" ->
+                    throw new IllegalStateException("Evidence contains an acknowledged or settled execution");
+                default -> { }
+            }
+        }
+        if (intents != 1 || rejections != 1)
+            throw new IllegalStateException("Requires exactly one matching dispatch intent and explicit rejection");
+        Files.createDirectories(archiveDirectory);
+        Files.write(archiveDirectory.resolve("rejected-dispatch-journal.jsonl"), evidence, java.nio.file.StandardOpenOption.CREATE_NEW);
+        Files.writeString(archiveDirectory.resolve("rejected-dispatch-pending.json"), pending.toString(), java.nio.file.StandardOpenOption.CREATE_NEW);
+        journal.event("dispatch_rejection_recovered", null, Map.of("execution_id", pending.path("execution_id").asText(),
+            "evidence_directory", evidenceDirectory.toAbsolutePath().toString()));
+        return settle("failure");
     }
 
     private Result result(String status) {
@@ -187,11 +243,24 @@ public final class GitHubEntityExecution implements EntityExecution {
             .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body))).build(),
             HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) {
+            if (rejectedStatus(response.statusCode())) throw new DispatchRejected(response.statusCode());
             throw new IOException("GitHub dispatch returned HTTP " + response.statusCode() + ": " + response.body());
         }
         long runId = JSON.readTree(response.body()).path("workflow_run_id").asLong(0);
         if (runId <= 0) throw new IOException("Dispatch response did not contain workflow_run_id");
         return runId;
+    }
+
+    private static boolean rejectedStatus(int status) {
+        return status == 401 || status == 403 || status == 404 || status == 422;
+    }
+
+    private static final class DispatchRejected extends IOException {
+        final int status;
+        DispatchRejected(int status) {
+            super("GitHub rejected workflow dispatch with HTTP " + status);
+            this.status = status;
+        }
     }
 
     private String awaitSelectedJob(long runId, String expectedJob, Instant deadline) throws Exception {

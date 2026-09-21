@@ -111,15 +111,27 @@ npm run traffic:experiment -- normal 6
 
 **Cleanup:** in this same window run `docker compose stop`, then close it. Keep Docker running. Ports 3000/3001 are separate deployment stacks, started or restored in Part B.
 
-### A3. Generate once and rehearse the BDI agent
+### A3. Validate the configuration and rehearse the BDI agent
 
-**Start:** Controller PowerShell. Review `bdi-cicd-framework/models/01_pipeline.yaml`, `02_goal.yaml`, `config/controller_policy.yaml` and `config/runtime_bindings.yaml`; keep normal staging/production success goals for Part C.
+**Start:** Controller PowerShell. Keep normal staging/production success goals for Part C. All paths below are inside `bdi-cicd-framework/`.
 
-**Actions:** run:
+| Source file | Review or change here |
+|---|---|
+| `models/01_pipeline.yaml` | Jobs, dependencies, worker job names, environments, recovery relationship and `max_retries` |
+| `models/02_goal.yaml` | Achievement, maintenance and avoidance goals |
+| `config/controller_policy.yaml` | Retry-safe entities, observation/reconciliation budgets, recovery rules and error/latency thresholds |
+| `config/runtime_bindings.yaml` | Readiness/Prometheus URLs, correlated metric queries and freshness limit |
+
+**Actions 1 - generation, only when needed:** the migration already generated the current artifacts. Skip this block if you have not changed any source or generator and validation below passes; run it for a new configuration revision or after reviewing a stale-artifact error. Do not copy relocated settings back into 01/02, edit generated 03/ASL, or delete the manifest.
 
 ```powershell
 py -3 -B bdi-cicd-framework/generate_project.py
 if ($LASTEXITCODE -ne 0) { throw 'Generation failed; inspect the input error' }
+```
+
+**Actions 2 - always validate, then rehearse:** run:
+
+```powershell
 py -3 -B bdi-cicd-framework/run_controller.py --validate-only
 if ($LASTEXITCODE -ne 0) { throw 'Artifact validation failed' }
 py -3 -B bdi-cicd-framework/run_controller.py --gui --scenario healthy
@@ -127,14 +139,16 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --scenario healthy
 
 **Explanation:**
 
-- `generate_project.py` validates inputs and saves the workflow model, agent and manifest.
+- `generate_project.py` validates all four sources, saves/reloads 03, and generates the agent solely from that saved contract; the manifest records source/generator hashes.
 - Each `if` stops the block if the preceding check failed.
 - `--validate-only` verifies their consistency without dispatching.
 - `--scenario healthy` runs Jason with simulated execution and telemetry.
 
 **Expected results:**
 
+- Validation prints `Project artifacts are consistent`; a missing/stale profile stops startup with an explicit regeneration instruction.
 - Persistent outputs: `models/03_workflow_model.yaml`, `models/generation-manifest.json`, `bdi/controller_agent.asl`.
+- Existing payment policy is unchanged: one execution retry for eligible retryable failures, at most 36 observations at five-second intervals within 180 seconds, and two consecutive healthy observations. These are explicit configuration values, not hidden defaults.
 - MAS Console's `controller_agent` log reaches `BDI_CONTROLLER_RESULT=achieved recovery=not_needed`.
 - No real GitHub deployment is dispatched by this simulation.
 
@@ -142,7 +156,7 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --scenario healthy
 
 ### A4. Check the saved source versions
 
-**Start:** Controller PowerShell and GitHub web. The existing experiment already has v1, a visible v2 and a worker tag; reuse them.
+**Start:** Controller PowerShell and GitHub web. The existing experiment already has v1, a visible v2 and a worker tag; reuse them for C0-C5. For C6 comparison trials, publish/select a new control revision containing the four-source migration using the linked conventional guide; the old worker tag does not gain new files when your local checkout changes.
 
 **Actions:** run:
 
@@ -659,7 +673,7 @@ node scripts/generate-experiment-traffic.mjs normal 6 --continuous
 - Error traffic produces HTTP 503; normal traffic produces HTTP 201.
 - The agent actually observes unhealthy production before you remove the cause; otherwise this is not a demonstrated fault-recovery experiment.
 - It rechecks rather than redispatching production. If health clears within the count/time budget, two consecutive healthy samples allow `achieved / not_needed`; production stays v2.
-- Default maximum: 36 observations, five seconds apart, within 180 seconds from the first observation. This is a maximum, not a mandatory wait; two healthy observations can finish quickly.
+- Current `config/controller_policy.yaml` maximum: 36 observations, five seconds apart, within 180 seconds from the first observation. This is a maximum, not a mandatory wait; two healthy observations can finish quickly.
 - If errors clear too late or another metric remains unhealthy, rollback is a valid outcome. Record it, rather than claiming temporary recovery succeeded.
 
 **Cleanup:** stop normal traffic after the final result, perform E1, then repeat B to reset. If you missed the pause and the campaign already succeeded, it cannot be faulted retrospectively: reset and start a fresh campaign.
@@ -833,6 +847,7 @@ Remove-Item Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
 **Expected results:**
 
 - `$candidateDir` contains result, journal, provenance and exact model/agent snapshots.
+- Four source snapshots are present: `01_pipeline.input.yaml`, `02_goal.input.yaml`, `controller_policy.input.yaml` and `runtime_bindings.input.yaml`. Keep them with the saved 03, agent and manifest so later configuration edits do not change this campaign's evidence.
 - `achieved / not_needed`: goals met; ordinary delivery passed required health checks.
 - `stopped / not_attempted`: stopped without recovery, commonly before production.
 - `stopped / restored`: candidate failed, verified v1 restored.
@@ -908,12 +923,13 @@ $knownGood
 | App ready but telemetry unavailable | Check that normal payment traffic continues. No recent payments can make p95 undefined; readiness alone is insufficient. If traffic continues, check current-execution queries in Prometheus, scrape/export health and sample freshness. |
 | Temporary traffic causes rollback | Errors or another unhealthy metric outlasted the fixed observation budget. Inspect measurements/timing; remove errors promptly at the first confirmed unhealthy observation on the next run. |
 | WinError 183 / campaign directory exists | Generate a new timestamp/path. Do not erase or reuse the old evidence directory. |
-| Missing/stale project artifacts | Review changed inputs/generator, run A3 generation explicitly, then validate. Do not delete the generation manifest. |
+| Missing/stale project artifacts or profiles | Check all four source files in A3, including `config/`; review changes, explicitly regenerate once, then validate. Do not delete the generation manifest or reuse an old 03 with new configuration. |
+| Unknown/conflicting fields after migration | Policy belongs in `config/controller_policy.yaml`; telemetry bindings belong in `config/runtime_bindings.yaml`. Remove duplicate inline settings from 01/02 after checking their intended values. Required policy fields must be explicit. |
 | Gradle 75% after `Campaign finished` | Campaign is complete; close MAS Console after capturing evidence. That percentage is not pipeline progress. |
 | Another controller holds lock | An earlier controller/console remains active. Resolve it first; linked worktrees share the lock. |
 | `execution_uncertain` after interruption | Follow F3. Closing local Jason does not necessarily cancel GitHub execution. |
 
-**If telemetry stays unavailable despite repeating normal HTTP 201 responses:** open production Prometheus at `http://localhost:9090`. Copy the exact `latency_p95_ms_query` from input 01, replace `{{run_id}}` with the current `/health.deploymentRunId`, and execute it. A finite p95 is required; `NaN` or an empty result is not healthy evidence. Check the error-rate, availability and sample-age queries the same way. Use port 9091 for staging. The journal currently suppresses the individual metric exception, so `unavailable` alone cannot distinguish no traffic from a scrape, query or freshness problem. Preserve the query results if this continues; do not disable correlation or freshness checks.
+**If telemetry stays unavailable despite repeating normal HTTP 201 responses:** open production Prometheus at `http://localhost:9090`. Copy the exact `latency_p95_ms_query` from `bdi-cicd-framework/config/runtime_bindings.yaml` (`telemetry.metrics`), replace `{{run_id}}` with the current `/health.deploymentRunId`, and execute it. A finite p95 is required; `NaN` or an empty result is not healthy evidence. Check the error-rate, availability and sample-age queries the same way. Use port 9091 for staging. The journal currently suppresses the individual metric exception, so `unavailable` alone cannot distinguish no traffic from a scrape, query or freshness problem. Preserve the query results if this continues; do not disable correlation or freshness checks.
 
 ### F3. Reconcile an interrupted campaign
 
@@ -944,8 +960,14 @@ Further reference: [framework customization](../bdi-cicd-framework/README.md), [
 
 No users is a normal operating condition; it does **not** mean the app is broken. Readiness can be healthy while request latency has no recent samples. The current adapter groups missing/undefined request metrics and transport failures into `unavailable`, so the agent cannot distinguish all these causes from that belief alone. The numeric zeros on such an event are placeholders.
 
-The current campaign verifies a **new release**, including its payment path. It reobserves insufficient evidence for a bounded time. Input 01 explicitly includes `telemetry_unknown` as a production recovery trigger, so an unverified candidate can be rolled back even if readiness is good. This means ?could not verify the candidate,? not ?proved the application failed.? After the campaign ends, BDI does not keep monitoring and will not roll back merely because normal user traffic later stops.
+The current campaign verifies a **new release**, including its payment path. It reobserves insufficient evidence for a bounded time. `config/controller_policy.yaml` explicitly includes `telemetry_unknown` under `recovery_policy.rollback.run_after`, so an unverified candidate can be rolled back even if readiness is good. This means "could not verify the candidate", not "proved the application failed". After the campaign ends, BDI does not keep monitoring and will not roll back merely because normal user traffic later stops.
 
 For these experiments, synthetic normal payments supply verification evidence even when no people are using the app. The `idle` profile deliberately supplies none; existing worker-generated samples may still be enough to finish before they age out, so idle does not guarantee rollback. Do not replace undefined latency with zero: that would claim unmeasured performance is good.
 
 A future idle-aware policy should distinguish `insufficient_request_samples` from `telemetry_transport_failure`, check exporter freshness/readiness separately, and request bounded synthetic probes before deciding whether verification must stop or recover. That is a contract/agent/environment policy change, not something this traffic client silently changes. The current observation and recovery policy remains intact.
+
+## Migration verification and live checkpoints
+
+The four-source migration preserved the payment contract values and generated agent. The [verification record](experiments/four-source-migration-2026-09-22/README.md) includes 35 actual Jason simulations and eight paired simulations covering successful delivery, retries, uncertain execution and verified recovery. These are offline checks; they do not prove current GitHub credentials, runner availability or Docker health.
+
+Before freezing a new experiment revision, run C6 for `healthy`, `transient-test-failure` and `production-persistent`, paired with the conventional approach using the same published control revision. Reset both environments to v1 between trials. Expect healthy delivery, successful delivery after the transient retry, and stopped candidate delivery with verified v1 restoration respectively; retain E1 evidence and the common experiment metrics. Follow the [migration record](BDI_FOUR_SOURCE_MIGRATION.md) for the remaining live pilot checklist.

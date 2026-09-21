@@ -1,149 +1,151 @@
-# Project contract, agent policy and execution environment
+# BDI project generation and runtime
 
-Use the [manual experiment](BDI_MANUAL_EXECUTION_GUIDE.md) for the eight human steps and [setup](BDI_SETUP.md) for tools, credentials and publication. This document describes the current implemented policy.
+This document explains the implementation in this repository. Use the [framework README](../bdi-cicd-framework/README.md) to customize a project and the [manual guide](BDI_MANUAL_EXECUTION_GUIDE.md) to run experiments: A is one-time setup, B prepares each run, C covers deployment scenarios, D tests a failure goal, and E/F cover evidence and recovery from mistakes.
 
-## Artifact lifecycle and executable files
+**Jason selects actions and evaluates goals. Java executes those actions and publishes observations. GitHub Actions executes only the selected entity.** The traffic client is separate: it creates test conditions, not agent decisions.
 
-| Stage | Inputs / component | Output and responsibility |
-|---|---|---|
-| 1. Engineer configuration | [01_pipeline.yaml](../bdi-cicd-framework/models/01_pipeline.yaml), [02_goal.yaml](../bdi-cicd-framework/models/02_goal.yaml) | Entities, bindings, capabilities, dependencies, budgets and goals |
-| 2. Contract compilation | [generate_project.py](../bdi-cicd-framework/generate_project.py) ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ [workflow_model.compile_inputs](../bdi-cicd-framework/parser/workflow_model.py) | Saved, validated [03_workflow_model.yaml](../bdi-cicd-framework/models/03_workflow_model.yaml) |
-| 3. Agent generation | Saved contract + [controller_generic.asl](../bdi-cicd-framework/generator/controller_generic.asl), through `generate_agent` | Persistent [controller_agent.asl](../bdi-cicd-framework/bdi/controller_agent.asl), plus generation manifest |
-| 4. Campaign launch | [run_controller.py](../bdi-cicd-framework/run_controller.py) ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ [ControllerMain.java](../bdi-cicd-framework/bdi/harness/ControllerMain.java) | Validate consistency, archive exact artifacts/provenance, acquire repository lock, load Jason |
-| 5. Agent environment | [controller.mas2j](../bdi-cicd-framework/bdi/controller.mas2j) binds `controller_agent` to [ControllerEnvironment.java](../bdi-cicd-framework/bdi/harness/ControllerEnvironment.java) | Execute selected actions and publish correlated observations |
-| 6. External execution | [GitHubEntityExecution.java](../bdi-cicd-framework/bdi/harness/GitHubEntityExecution.java) ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ [entity-execution.yml](../.github/workflows/entity-execution.yml) | Execute only the entity selected by Jason |
+## 1. Persistent project artifacts
 
-Generate once per input/generator revision. App commits, campaign IDs and fault-file contents do not regenerate the agent. Runtime rejects missing, stale or inconsistent persistent artifacts. Campaign directories contain execution evidence and archival copies, not campaign-specific generated agents. Agent generation reads the saved contract as its **sole project-specific input**; the generic template is framework policy.
-
-The compiler validates exact entity/action/observation/recovery/goal agreement. Runtime reconstructs the contract from engineer inputs, verifies hashes and checks the complete deterministic agent projection. This catches altered rules as well as missing facts; updating a hash alone cannot bless an inconsistent agent.
-
-## Read the simplified workflow model (schema 2)
-
-`03_workflow_model.yaml` is now the readable, authoritative project contract. It starts with the BDI definition; execution bindings appear once at the end. It is generated, not another input for engineers to maintain.
-
-| Section | Meaning and source |
+| Artifact | Owner and purpose |
 |---|---|
-| `workflow.entities(E)` | Normal and recovery entity names from input 01 |
-| `workflow.dependencies(D)` | Ordered prerequisite edges from input 01 `needs` |
-| `workflow.observable_properties(O)` | Framework-supported execution statuses, duration unit and health values |
-| `workflow.recovery(R)` | Source-to-recovery mapping from input 01 |
-| `goals` | Input 02 achievements, maintenance and avoidance rules, including failure goals |
-| `execution` | Retry safety, maximum retries, health observation and reconciliation limits |
-| `observation_schema` | Required attempt correlation, duration targets, and observation points before/after jobs |
-| `recovery_policy` | Triggers, verified known-good source, no recovery retry, health verification, restored/failed result |
-| `bindings` | Project name, GitHub worker/job names, environments, endpoints, metric queries and thresholds |
+| [models/01_pipeline.yaml](../bdi-cicd-framework/models/01_pipeline.yaml) | Engineer input: logical jobs, dependencies, worker mappings, retry safety, recovery, observation budgets and telemetry bindings |
+| [models/02_goal.yaml](../bdi-cicd-framework/models/02_goal.yaml) | Engineer input: achievements, maintenance/avoidance rules, error-rate and latency thresholds |
+| [models/03_workflow_model.yaml](../bdi-cicd-framework/models/03_workflow_model.yaml) | Generated schema-2 project contract; sole project-specific input to agent generation |
+| [bdi/controller_agent.asl](../bdi-cicd-framework/bdi/controller_agent.asl) | Generated AgentSpeak beliefs/goals plus the executable generic policy |
+| [models/generation-manifest.json](../bdi-cicd-framework/models/generation-manifest.json) | Required input, generator and artifact hashes; not a disposable build file |
 
-For example, the main definition reads like this (excerpt):
+Inputs 01 and 02 are the configuration sources of truth. Generate explicitly once per input/generator revision and retain the generated outputs together with that revision. Do not edit 03 or the agent manually. Starting a campaign reuses these artifacts; it does not generate a new project agent.
 
-```yaml
-workflow:
-  name: Payment service release with BDI recovery
-  entities(E): [build, test, security, staging, production, rollback]
-  dependencies(D):
-    - from: build
-      to: test
-    - from: test
-      to: security
-    - from: security
-      to: staging
-    - from: staging
-      to: production
-  recovery(R):
-    - from: production
-      to: rollback
-goals:
-  achieve(A):
-    - production.status == success
-    - staging.status == success
+The [commented templates](../bdi-cicd-framework/templates/models/01_pipeline.yaml) provide forms for another app. Template 03 is an annotated reference shape, not another engineer input. Actual shell steps, services, runner labels and deployment commands remain in the GitHub worker. Input 01 does not accept embedded `steps`, `services` or `runs-on`.
+
+## 2. From inputs to an executable campaign
+
+| Stage | Implemented component | Result |
+|---|---|---|
+| Compile configuration | [generate_project.py](../bdi-cicd-framework/generate_project.py), [project_artifacts.py](../bdi-cicd-framework/project_artifacts.py), [parser/workflow_model.py](../bdi-cicd-framework/parser/workflow_model.py) | Validate 01/02 and save 03 |
+| Generate agent | `generate_agent` reloads saved 03 and uses [controller_generic.asl](../bdi-cicd-framework/generator/controller_generic.asl) | Persistent `controller_agent.asl` and generation manifest |
+| Start campaign | [run_controller.py](../bdi-cicd-framework/run_controller.py) | Validate artifacts, create fresh evidence directory and exact snapshots, prepare Java environment |
+| Start Jason | [ControllerMain.java](../bdi-cicd-framework/bdi/harness/ControllerMain.java), [controller.mas2j](../bdi-cicd-framework/bdi/controller.mas2j) | Check campaign snapshot integrity, acquire controller lock, load the archived agent |
+| Execute agent actions | [ControllerEnvironment.java](../bdi-cicd-framework/bdi/harness/ControllerEnvironment.java) | Bind `run_job`, observations, reconciliation and final results to Java adapters |
+| Execute selected entity | [GitHubEntityExecution.java](../bdi-cicd-framework/bdi/harness/GitHubEntityExecution.java), [entity-execution.yml](../.github/workflows/entity-execution.yml) | Dispatch/poll one entity and return its correlated result |
+| Measure app health | [ProjectTelemetryProvider.java](../bdi-cicd-framework/bdi/harness/ProjectTelemetryProvider.java), [PrometheusTelemetryObserver.java](../bdi-cicd-framework/monitoring/observer/PrometheusTelemetryObserver.java) | Read readiness and raw metrics; the current controller's AgentSpeak plans apply thresholds |
+
+`parser/model_transform.py` still provides shared model/parsing functionality. Its older CLI and `generator/bdi_generic.asl` are not the canonical generation path; the latter remains covered by compatibility tests.
+
+From the repository root:
+
+```powershell
+# Explicit generation after configuration/generator changes.
+py -3 -B bdi-cicd-framework/generate_project.py
+
+# Read-only consistency check; no campaign or dispatch.
+py -3 -B bdi-cicd-framework/run_controller.py --validate-only
+
+# Optional real Jason execution with simulated jobs/telemetry.
+py -3 -B bdi-cicd-framework/run_controller.py --gui --scenario healthy
 ```
 
-The full generated file includes O and the policies/bindings described above. There are no repeated goal blocks, repeated job definitions, YAML aliases or serialized lists of every framework action. The compiler derives the internal capability dictionary from this saved contract plus predefined action/observation signatures. It validates the complete generated agent against those derived capabilities and the policy template. The agent generator still reads no project-specific file other than saved 03.
+For another project, generation accepts `--project-dir`, `--pipeline` and `--goal`; subsequent launches use that `--project-dir`. Specify both input paths when generating a separate project. Runtime rejects stale/missing/inconsistent artifacts with a regeneration message; it never silently migrates or regenerates them.
 
-`attempt_id_required` stays true: an old execution cannot satisfy a newer attempt. Execution status includes `unknown` and `dispatch_rejected` as well as normal GitHub conclusions, because those outcomes require different agent decisions. The logical entity remains `rollback` to match the existing worker. `terminal_on_success: restored` is a recovery outcome, not candidate achievement; campaign outcome remains stopped after restoration.
+App-only commits, fault-file changes and traffic-profile changes do not require regeneration. Changes to input bindings, goals, generator code or the generic policy do. A runtime-only implementation change is distinct from a project-generation change.
 
-Python `expand_workflow` validates the compact contract and derives internal settings. Java `WorkflowRuntime` translates its bindings/policy for `ControllerProjectConfig` and `ProjectConfig`; it does not choose the next job. The payment agent generated before and after this migration is identical. GitHub workflow and app behavior do not change.
+## 3. Mapping the workflow model to agent beliefs
 
-After a schema/generator update, explicitly regenerate each persistent project with its original inputs. Runtime rejects stale artifacts or schema 1 and never silently migrates them. Historical campaign snapshots remain unchanged; their JSON receipts remain usable as evidence and compatible known-good receipts. This worktree's default artifacts and both Java test fixtures have already been regenerated. For custom projects, use their `--project-dir`, `--pipeline` and `--goal` arguments as before.
+| Saved contract section | Source and meaning | Agent/runtime use |
+|---|---|---|
+| `workflow.entities(E)` | Job and recovery keys from 01 | `entity(...)`, recovery entity facts; validate action targets |
+| `workflow.dependencies(D)` | Prerequisite edges from each job's `needs` | `depends(Entity, Requirements)`; only successful prerequisites authorize successors |
+| `workflow.observable_properties(O)` | Framework-defined execution status, duration and health domains | Validate supported observations; actual values arrive during execution |
+| `workflow.recovery(R)` | Input 01 `recovery.<name>.from` | `recovery(Source, Target)` and recovery selection |
+| `goals` | Input 02 achievement, maintenance and avoidance rules | `achievement`, `max_duration`, `require_healthy`, `avoid_missing`; determine required dependency closure |
+| `execution` | Retry/observation/reconciliation budgets and retry-safe job list | Counter/limit facts; separate budgets for repeating actions and rechecking evidence |
+| `observation_schema` | Observation points and duration constraints | Attempt correlation required; observe-after and observe-before capabilities |
+| `recovery_policy` | Input triggers plus framework recovery safeguards | Known-good source, no recovery retry, mandatory health verification, restored/failed outcome |
+| `bindings` | Project, worker file/display names, environments, URLs, queries and thresholds | Java dispatch/telemetry configuration and generated threshold beliefs |
 
-
-## What comes from where?
-
-| Concept | Origin |
-|---|---|
-| Entities E | Engineer-defined jobs/recovery in input 01, mapped to real worker job names |
-| Dependencies D | `needs` in input 01; only Jason schedules successors |
-| Observations O | Predefined transport schema: status, duration, reconciliation and raw telemetry; actual values come from GitHub/app/Prometheus |
-| Recovery R | Engineer mapping from failed environment/entity to a known-good recovery action |
-| Goals and thresholds | Input 02; achievements, maintenance, avoidance, error rate and latency |
-| Retry capability | `retry_safe` on normal jobs in input 01; default false |
-| Policy budgets | Input 01 execution settings, emitted as AgentSpeak facts |
-| Reasoning plans | Generic `controller_generic.asl`, included in generated agent |
-
-`generator/bdi_generic.asl` and the old `observable_properties(O)` representation are retained only for legacy compatibility coverage; they are not the active controller policy. Job implementations remain in the worker. Embedding GitHub `steps`, `services` or `runs-on` in input 01 is not supported; the parser rejects those fields. A single-source worker generator would be a separate extension.
-
-## Agent structure: following the original reference
-
-The active template and generated agent follow the supplied reference's named goals, section layout and phase-result events. The executable progression is:
+The current payment topology is:
 
 ```text
-!master_goal
-  -> !need_achieve(Entity, Desired)
-  -> !run_pipeline
-  -> !run_entity(Entity)
-  -> run_job(Entity, Attempt)
-  -> status(Entity, Attempt, Result)
-  -> phase_result(Entity, success | fail)
-     success: !maintain -> !check_avoidance -> !run_pipeline
-     retryable failure within budget: !run_pipeline -> retry same entity
-     other/exhausted failure: !recover -> verified recovery, or stop
-  -> !check_master_goal
+build -> test -> security -> staging -> production
+production -- conditional verified recovery --> rollback
 ```
 
-This is actual AgentSpeak control flow, not a diagram layered over a differently named `!control` loop. A successful deployed phase is health-verified before progression/achievement. Unknown execution takes a reconciliation path before a phase failure can authorize retry or recovery. The generated agent is not edited by hand.
+Rollback is conditional, not a successful-path dependency. Input 01 enables health observation after staging, production and rollback, and requires accepted staging health before production. Input 02 requires staging and production success, production health, production duration <= 1,800,000 ms, and forbids production success without test/staging success.
 
-| Reference feature | Current equivalent / necessary adaptation |
+O includes execution statuses `success`, `failure`, `transient_failure`, `dispatch_rejected`, `cancelled`, `timeout`, `skipped`, `unknown`; duration is milliseconds; health values are `healthy`, `unhealthy`, `unknown`. The framework adds distinctions that GitHub job conclusions alone do not provide. These are not free-form app-defined properties.
+
+The compact YAML does not duplicate its capability dictionary. `expand_workflow` derives and validates entities, permitted action targets, observation signatures, recovery pairs and goal rules from saved 03. [WorkflowRuntime.java](../bdi-cicd-framework/bdi/harness/WorkflowRuntime.java) adapts that contract for `ControllerProjectConfig` and `ProjectConfig`; it does not schedule jobs.
+
+Validation recompiles 01/02, compares the saved contract, verifies hashes, and compares the complete generated agent against its deterministic projection plus generic policy. It detects added/missing entities, altered actions, observations, recovery or goal rules. Changing only the agent hash cannot make an inconsistent agent valid. This is consistency checking, not a cryptographic trust boundary against a deliberately replaced generator.
+
+## 4. How the agent pursues goals
+
+Static beliefs describe the project: entities, dependencies, required jobs, achievement predicates, recovery mappings, thresholds and limits. Runtime beliefs track attempts, running/terminal work, phase results, observations and workflow state. Java publishes attempt-qualified `status`, `duration`, `reconciled` and round-qualified `telemetry_measurement` percepts. The execution UUID additionally correlates GitHub and deployed-app measurements.
+
+The active generic plans use this progression:
+
+```text
+!master_goal -> !need_achieve(Entity, Desired) -> !run_pipeline
+  -> !run_entity(Entity) -> run_job(Entity, Attempt)
+  -> correlated status/duration -> phase_result(Entity, success | failure)
+  -> maintenance, avoidance and required health checks
+  -> next eligible entity, retry, reobserve, reconcile, recover or stop
+  -> !check_master_goal -> achieved / stopped / unknown
+```
+
+`phase_result(Entity, success)` alone is not verified delivery. Required health must also be accepted before progression/achievement. MAS exposes `workflow_active`, `workflow_started`, `workflow_stopped`, `workflow_completed` and `master_goal_achieved` as the corresponding plans run. The console/journal preserve decisions; the mind inspector shows current beliefs, which can change quickly.
+
+### Decision policy and current limits
+
+| Evidence | Decision under ordinary success goals |
 |---|---|
-| `!master_goal`, `!need_achieve`, `!run_pipeline`, `!run_entity` | Preserved named goals |
-| `+phase_result(Entity, success/fail)` | Preserved event-based normal/recovery handling |
-| `retry_allowed` and attempt counters | Preserved, with explicit retry safety and typed failure eligibility |
-| `!maintain`, `!check_avoidance`, `!recover`, `!check_master_goal` | Preserved named responsibilities |
-| `workflow_started/stopped/completed`, `master_goal_achieved` | Visible lifecycle beliefs; recovery ends stopped rather than achieved |
-| `run_job(Entity)` and unqualified status | `run_job(Entity, Attempt)` and attempt-qualified observations match the current Java environment and reject stale results |
-| Global `run_sequence` | Per-entity attempt count plus environment execution UUID; no redundant second attempt identity |
-| Final phase success | Every configured achievement, duration/safety condition and required health observation must pass |
-| `rollback_production` | Current configured logical name is `rollback`, matching the worker; selection still comes from `recovery(production, rollback)` |
+| Successful job | Check maintenance and required health, then continue |
+| Confirmed `transient_failure` or terminal `timeout` | Retry only if retry-safe, within budget and not recovery |
+| Ordinary failure, cancelled or skipped | Stop or select configured recovery; no blind retry |
+| Dispatch rejected | Stop with rejection evidence; no speculative deployment recovery |
+| Execution unknown | Read-only reconciliation of the same execution; no redispatch while uncertain |
+| Unhealthy or unavailable measurements | Bounded reobservation; do not advance |
+| Enough consecutive healthy samples | Accept health before the deadline and continue |
+| Persistent staging health failure/uncertainty | Stop promotion; production remains unchanged |
+| Persistent production health failure/uncertainty | Recover once from verified known-good source, then verify recovery |
 
-The reference's uncorrelated runtime `status(Entity, fail)` handler is not restored: raw telemetry remains correlated and interpreted by Jason, and the campaign is not an always-running monitoring service. Existing budgets, thresholds and immutable known-good recovery protections remain unchanged by this structural adaptation.
+Current input values: one additional execution retry with a five-second delay; up to 36 observations five seconds apart within 180 seconds; two consecutive healthy samples; three reconciliation attempts five seconds apart. A bad/unavailable measurement resets the healthy count. The observation deadline starts with the first observation request and includes measurement time. Two healthy measurements can finish early: 180 seconds is a maximum, not a compulsory wait. Overlapping two-minute metric windows are not independent statistical samples.
 
-## Decision policy
+The adapter recognizes controlled transient failure only if the exact **Controlled transient failure** step failed. A locally expired polling wait is uncertain, not a confirmed remote timeout eligible for retry. The current Java entity polling limit defaults to 20 minutes; that is separate from the 30-minute production duration maintenance limit and the three-minute health observation limit.
 
-Jason owns dependencies, retries, delays, reobservation, stop, recovery and achievement. Java transports data and performs actions; GitHub does not choose the next job.
+### Success and failure goals
 
-| Observation | Jason's decision |
-|---|---|
-| Successful normal job | Check duration, then required health before proceeding |
-| `transient_failure` or confirmed terminal `timeout` | Retry only if `retry_safe`, retry count remains and entity is not recovery |
-| Ordinary `failure`, cancelled or skipped | No blind retry; stop or use configured recovery |
-| `dispatch_rejected` | Stop with configuration/authentication evidence; no automatic recovery for an unaccepted deployment |
-| `unknown` execution | Reconcile the same execution before any redispatch; stop unresolved if budget expires |
-| Unhealthy/unavailable telemetry | Reobserve within count/time limits; do not advance |
-| Consecutive healthy samples | Accept health if required count is reached before deadline |
-| Persistent bad staging | Stop, leaving production unchanged |
-| Persistent bad production | Select verified v1 recovery once, then verify restored health |
+`achieve(A)` supports `entity.status == success` and `entity.status == failure`. A failure goal requires an actual exact `failure`; rejected dispatch, uncertainty, timeout and controlled `transient_failure` do not satisfy it. The goal does not cause fault injection. An unexpected success is not repeatedly executed to manufacture a failure.
 
-`max_retries=1` means two total executions at most. The existence of recovery no longer excludes production from retry: explicit retry safety and result classification decide. Ordinary failing tests/compilation/security results remain deterministic. The adapter recognizes a controlled transient fault only when the exact `Controlled transient failure` step actually failed, not when it is skipped or merely requested. Unclassified failures are not guessed to be transient.
+A matching failure satisfies that entity's requested outcome without normal retry/automatic recovery. Dependencies still require success, and separately declared maintenance/avoidance rules still apply. Contradictory goals can therefore finish unmet. Use [staging_failure_goal.yaml](../bdi-cicd-framework/examples/staging_failure_goal.yaml) for the isolated negative experiment in manual D1.
 
-Current payment policy: five-second retry delay; 36 observations; five seconds between observations; 180-second observation deadline; two consecutive healthy samples; three reconciliation attempts. The observation clock starts with the first request, includes measurement time and uses monotonic elapsed time. A bad/unavailable sample resets the healthy count. A healthy sample after the deadline cannot achieve delivery. These are separate budgets; observation does not increment execution attempts. Repeated Prometheus queries may overlap in their two-minute metric window and are not independent statistical samples.
+Results include `requested_goals`, `achieved_goals`, `unmet_goals` and `goal_message`. Negative-goal campaigns have `negative_goal_experiment: true` and no `verified_releases`; they cannot certify a rollback baseline. An explicitly expected production failure may happen after the app changed and finish without automatic rollback; restore manually afterward. Unmet pursuit prints **Attempted but failed to achieve goals.**
 
-The production job duration goal is 1,800,000 ms (30 minutes) instead of the old 100 seconds, allowing hosted/runner queue and deployment time. Health verification is independently bounded. Engineer-selected budgets remain fixed across experiment comparisons.
+## 5. Live dispatch, interruption and recovery
 
-Before every dispatch, intent is persisted. Explicit HTTP 401/403/404/422 responses are rejected requests; ambiguous responses, server errors, missing jobs and polling failures remain uncertain. A remote completed timed-out job differs from a local polling timeout: only the former is terminal and potentially retryable.
+For live execution set `GITHUB_REPOSITORY`, `GITHUB_TOKEN`, `BDI_WORKFLOW_REF` and `BDI_RELEASE_SHA` in the controller terminal. The token needs repository access and Actions write. The worker ref selects published workflow code; the full immutable release SHA selects published app source. An unpublished local commit cannot be checked out by GitHub. A push publishes code; launching the controller starts this campaign.
 
-Recovery uses an achieved live receipt matching repository/project/environment and an immutable release SHA. It rebuilds that source; it does not restore database contents or an attested image. Recovery itself is not retried. Verified restoration finishes `stopped/restored`, never candidate achievement. The agent ends with the campaign; no automatic v2 restart after rollback and no permanent post-campaign monitoring are implemented.
+The worker accepts entity/campaign/execution/attempt/release and experiment inputs, names runs `bdi-<execution UUID>`, and gates each job by `inputs.entity`. Build/test/security use hosted runners. Staging, production and rollback use the self-hosted Linux `payment-deploy` runner, which must remain online. Other jobs in the same dispatch are skipped. Environment approval and queue waiting are infrastructure conditions, not agent decisions.
 
-## Payment telemetry and controllable traffic
+Before POST, Java persists execution intent in `bdi-execution-pending.json` in the common Git directory. Linked worktrees share pending state and the controller lock. Explicit HTTP 401/403/404/422 dispatch responses are rejection evidence; ambiguous responses, lost acknowledgements, missing selected jobs and polling failures remain uncertain. Reconciliation checks the exact execution/run and selected job. Missing or ambiguous evidence never authorizes redispatch.
 
-The app's [config](../src/config.ts), [telemetry](../src/telemetry.ts), [Compose file](../docker-compose.yml), [collector](../otel-collector.yaml) and [Prometheus config](../prometheus.yml) define/export the endpoints and metrics. The worker supplies host ports and `CI_RUN_ID=execution_id`; input 01 describes where the controller reads them.
+After interruption, close the stopped console and use the configured controller terminal:
+
+```powershell
+py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only
+```
+
+This settles confirmed terminal execution but never resumes the campaign or claims delivery. Unknown preserves pending state. Investigate remote jobs/access/runner status instead of deleting the marker. Repository-local locks do not coordinate unrelated clones or external deployment tools.
+
+An initial successful live `--baseline` campaign has no previous recovery source. Subsequent campaigns use `--known-good <v1-controller-result.json> --confirm-compatible-rollback`. The receipt must be achieved/live and match the project, repository, source SHA and required verified recovery environment. It is trusted operator evidence, not a signed attestation.
+
+Recovery rebuilds verified source, observes the restored execution identity and verifies health. It does not restore database history or promote an immutable image digest. The compatibility flag confirms that source rollback can use retained database state. Restoration ends `stopped / restored`, never candidate achievement. Current automatic rollback restores production only; manual B4 redeploys v1 through the whole pipeline to reset both environments.
+
+<a id="payment-telemetry-and-controllable-traffic"></a>
+
+## 6. Payment telemetry and controllable traffic
+
+The [app config](../src/config.ts), [instrumentation](../src/telemetry.ts), [Compose file](../docker-compose.yml), [OTel collector](../otel-collector.yaml) and [Prometheus configuration](../prometheus.yml) define/export the actual metrics. The worker supplies host ports and `CI_RUN_ID=execution_id`. Input 01 tells the controller where and how to read them; it does not create app endpoints.
 
 | Environment | App | Prometheus | Collector metrics | Database |
 |---|---|---|---|---|
@@ -151,22 +153,68 @@ The app's [config](../src/config.ts), [telemetry](../src/telemetry.ts), [Compose
 | Production/recovery | 3000 | 9090 | 9464 | 5432 |
 | Optional local rehearsal | 3002 | 9092 | 9466 | 5434 |
 
-App HTTP metrics become `payment_http_requests_total`, `payment_http_errors_total` and `payment_http_request_duration_milliseconds_bucket`; readiness is `payment_service_ready`. Input 01 PromQL filters by execution UUID, computes the error ratio and p95 over two minutes, and checks sample age (maximum 30 seconds). Java rejects nonfinite/missing/stale data and publishes raw values. Jason applies the configured limits. Historical or unrelated traffic cannot establish candidate health.
+`/ready` reports readiness via HTTP 200/503. `/health` reports `deploymentRunId` and `experimentMode`; the ID is an execution UUID, not a source SHA. Campaign receipts map execution IDs to source revisions.
 
-`EXPERIMENT_MODE=request_faults` is an explicit fake-payment experiment capability. Only requests carrying `X-Experiment-Fault: error` return intentional HTTP 503; normal requests succeed, subject to ordinary app/database health. Normal app mode ignores that header. The traffic script's `inject_error` option sends the header and requires request-fault mode; `--continuous` sends batches until Ctrl+C. Stopping error traffic removes the injected cause, but the metric window needs time and new normal traffic to clear. Existing fixed `high_error_rate` mode remains available for deterministic persistent-fault experiments.
+Input 01 filters PromQL with `ci_run_id="{{run_id}}"`. It derives error fraction from `payment_http_errors_total` / `payment_http_requests_total`, p95 milliseconds from `payment_http_request_duration_milliseconds_bucket`, and readiness/sample age from `payment_service_ready`. Request metrics use a two-minute window. Source sample age is limited to 30 seconds. Input 02 rejects error fractions above 0.05 and p95 above 500 ms. The adapter rejects missing, stale or nonfinite measurements; Jason decides what those observations mean for the campaign.
 
-`BDI_EXECUTION_PLAN` points to a manually edited properties file, reloaded before each dispatch. Examples: `test.1.failure_mode=transient_failure`, `security.failure_mode=force_failure`, `production.experiment_mode=request_faults`. Attempt-qualified entries override entity defaults. No fault option can satisfy goals or select the next entity; it only changes the selected action's experimental behavior.
+### No traffic is not proof of a broken app
 
-The security job now blocks on high/critical production dependency advisories. Tests cover the worker/input/Compose/telemetry mappings. The reporting example remains a second topology tested through generated contracts and Jason simulation; no live reporting application is claimed.
+An idle app can be ready while recent request latency is undefined. The current `ProjectTelemetryProvider.measure()` catches measurement errors and reports `data_status: unavailable`, with numeric zero placeholders. Those zeros are not accepted healthy measurements. The journal does not identify the individual failed metric, and this observation does not distinguish insufficient request samples from every transport/query failure.
 
-## Success and failure achievement goals
+This campaign verifies a new release's payment path. If that evidence remains insufficient, input 01's `telemetry_unknown` recovery trigger permits production rollback. The meaning is **candidate not verified**, not **application proved unhealthy**. Normal synthetic requests maintain verification evidence even without real users. No continuing agent runs after campaign completion, so later user inactivity does not cause automatic rollback.
 
-`achieve(A)` accepts `entity.status == success` and `entity.status == failure`. The compiler preserves the desired value in the saved workflow contract and generates `achievement(entity, value)` facts. Jason evaluates every declared achievement, dependency and maintenance constraint. A matching failure completes that entity's goal without retry or automatic recovery; downstream jobs still require successful dependencies. Contradictory or unreachable goals therefore end unmet rather than bypassing dependencies. An unexpected success is not repeatedly dispatched merely to try to create a failure.
+An idle-aware policy could separately represent insufficient request samples, exporter/transport failure and readiness, then request bounded synthetic probes. That distinction is not implemented in the current agent contract. Do not silently replace undefined latency with zero or disable freshness/correlation checks.
 
-Only the exact observed execution status `failure` satisfies a failure goal. `dispatch_rejected`, `unknown`, `timeout`, `cancelled`, `skipped` and the experimental `transient_failure` classification do not. Existing bounded retry rules still apply to eligible transient failures/timeouts. The agent never fabricates a failure or selects fault injection from the desired goal alone.
+### Fault configuration and pause signal
 
-Java receives both entity and desired status, records `requested_goals`, `achieved_goals`, `unmet_goals` and `goal_message`, and retains attempt-correlated real GitHub execution evidence. A failure-goal campaign has `negative_goal_experiment: true` and emits no `verified_releases`, even when its experiment goals are achieved. Use a normal success-goal campaign to establish a known-good deployment. Failed goal pursuit prints **Attempted but failed to achieve goals.**; unresolved execution remains `unknown`, while a confirmed unmet outcome is `stopped`.
+[ExperimentExecutionPlan.java](../bdi-cicd-framework/bdi/harness/ExperimentExecutionPlan.java) reloads `BDI_EXECUTION_PLAN` before each dispatch. Example properties:
 
-A failure goal does not remove separately declared maintenance goals. For a staging-only failure experiment, use the provided `examples/staging_failure_goal.yaml`; retaining production success/health goals would also require production and can make the combined goals unreachable. The simplified schema 2 contract preserves these semantics and is the executable contract, not a separate summary.
+```properties
+test.1.failure_mode=transient_failure
+security.failure_mode=force_failure
+production.experiment_mode=request_faults
+```
 
-For an explicitly requested production failure, matching the goal ends the experiment without automatic rollback. The worker can fail after changing production; use the manual restoration phase afterward. Ordinary production-success campaigns retain their existing verified recovery policy.
+Attempt-qualified entries override entity defaults. These settings change the selected worker action's conditions, never its successor or the desired goal. Use one scenario's intended entries at a time. Production `force_failure` occurs after its deployment command; staging's controlled deterministic failure occurs before deployment.
+
+[request_faults](../src/experiment.ts) makes fake-payment requests carrying `X-Experiment-Fault: error` return intentional HTTP 503. Normal requests remain normal, subject to app/database health. Merely selecting the mode sends no traffic. The published controller worker supports `normal`, `high_error_rate` and `request_faults`; application support for `high_latency` does not make it a supported live controller dispatch mode.
+
+`--pause-after production --pause-ms 60000` (or staging) pauses Java after the selected GitHub job finishes, before its result reaches the agent for subsequent health observation. The signal is `controller_pause` with `after_entity` in **controller-journal.jsonl**, not the `controller_agent` log tab. It resumes automatically after 60 seconds.
+
+### Scenario-driven and manual traffic
+
+[run-traffic-scenario.mjs](../scripts/run-traffic-scenario.mjs) runs locally alongside BDI. Arm it before the controller launch using the exact new campaign directory; it can wait before that directory exists. It waits for a fresh pause, verifies the current app's execution ID, and requires request-fault mode for error profiles. It never dispatches GitHub jobs or publishes telemetry beliefs.
+
+| Profiles | Purpose |
+|---|---|
+| `healthy`, `fluctuating`, `burst` | Normal payments with steady or varied request spacing/load |
+| `temporary-errors` | 75 seconds of mixed errors, then continuing normal traffic |
+| `persistent-errors` | Mixed errors until the agent recovers/finishes or the client reaches its cap |
+| `intermittent-errors` | Two error periods separated by normal traffic |
+| `idle` | No client payments; worker-generated samples may still permit early verification |
+| `staging-temporary-errors` | Staging faults clear; promotion can proceed after verification |
+| `staging-persistent-errors` | Staging remains unhealthy; promotion should stop, leaving production unchanged |
+
+The two staging profiles default to port 3001 and reject a conflicting entity override. Default production profiles use port 3000. Profiles are [editable JSON](../scripts/traffic-scenarios/README.md): phase durations, request rates, fault fraction, jitter and seed. Rates are sequential targets, not guaranteed throughput; one request is in flight. A seed repeats random choices, not external timing or BDI outcomes. Built-in profiles last at most 600 active seconds and can end earlier with the campaign. This is an experiment client, not a capacity benchmark or a generic adapter for arbitrary apps.
+
+The runner stops on campaign completion, recovery selection, changed deployment identity, limits or error. An already in-flight request may finish as recovery begins. It saves `profile.json`, `traffic.jsonl` and `summary.json` in a unique sibling `<campaign>-traffic-*` directory. Traffic outcome is separate from the controller outcome. No publication or agent regeneration is needed to use these local scripts against the existing worker.
+
+Use manual **C0** for production profiles and **C0-S** for the two staging cases. Manual C3/C4 retain [generate-experiment-traffic.mjs](../scripts/generate-experiment-traffic.mjs): invoke it directly with `node ... inject_error 6 --continuous`, then switch to `node ... normal 6 --continuous`. Repeated batches without a returned PowerShell prompt confirm continuous operation. Normal traffic must continue while old errors leave the metric window; the earlier Windows npm invocation did not forward `--continuous`.
+
+## 7. Evidence, validation and boundaries
+
+Each new campaign directory contains journal/result, MAS configuration, exact input/contract/agent snapshots and provenance. `project-generation-manifest.json` is the copied persistent manifest; the campaign's `generation-manifest.json` records campaign provenance. Archival copies are not regenerated agents. Preserve verified v1 receipts, pending execution evidence and historical experiments; caches/build output are different from evidence.
+
+The current MAS may stay open after `Campaign finished`; Gradle at 75% then means the GUI remains open, not that more jobs will run. Close the finished console to release the foreground command. Containers remain running. Starting existing containers only resumes their existing revision; it does not establish a new verified baseline.
+
+Useful local checks (no live deployment):
+
+```powershell
+py -3 -B bdi-cicd-framework/run_controller.py --validate-only
+py -3 -B -m unittest discover -s bdi-cicd-framework/parser -p 'test_*.py'
+node --test scripts/tests/traffic-scenario.test.mjs
+```
+
+Python tests cover model/worker/artifact contracts; the traffic tests use temporary mock HTTP servers and journals. Java tests reside under `bdi/src/test/java`; [verify_controller_experiment.py](../bdi-cicd-framework/verify_controller_experiment.py) exercises generated agents through Jason scenarios. The [reporting example](../bdi-cicd-framework/examples/reporting_pipeline.yaml) preserves second-application topology coverage, but does not claim a live reporting deployment. These checks are not proof that current remote permissions, runner availability or live telemetry work; verify those with the manual guide.
+
+Security auditing blocks high/critical production dependency advisories. Source rebuilds are not immutable-image promotion; database rollback, distributed controller coordination, continuous post-campaign monitoring and automatic v2 resumption after rollback are not implemented.

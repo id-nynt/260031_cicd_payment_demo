@@ -1,0 +1,57 @@
+{
+  "healthy": {
+    "entity": "production",
+    "profile": "healthy",
+    "fault": ""
+  },
+  "build-failure": {
+    "entity": "production",
+    "profile": null,
+    "fault": "build.failure_mode=force_failure"
+  },
+  "test-failure": {
+    "entity": "production",
+    "profile": null,
+    "fault": "test.failure_mode=force_failure"
+  },
+  "transient-test-failure": {
+    "entity": "production",
+    "profile": "healthy",
+    "fault": "test.1.failure_mode=transient_failure"
+  },
+  "service-unavailable": {
+    "entity": "production",
+    "profile": null,
+    "fault": "production.failure_mode=service_unavailable"
+  },
+  "infrastructure-failure": {
+    "entity": "staging",
+    "profile": null,
+    "fault": "staging.failure_mode=infrastructure_failure"
+  },
+  "deployment-timeout": {
+    "entity": "staging",
+    "profile": null,
+    "fault": "staging.failure_mode=deployment_timeout"
+  },
+  "staging-temporary": {
+    "entity": "staging",
+    "profile": "staging-temporary-errors",
+    "fault": "staging.experiment_mode=request_faults"
+  },
+  "staging-persistent": {
+    "entity": "staging",
+    "profile": "staging-persistent-errors",
+    "fault": "staging.experiment_mode=request_faults"
+  },
+  "production-temporary": {
+    "entity": "production",
+    "profile": "temporary-errors",
+    "fault": "production.experiment_mode=request_faults"
+  },
+  "production-persistent": {
+    "entity": "production",
+    "profile": "persistent-errors",
+    "fault": "production.experiment_mode=request_faults"
+  }
+}

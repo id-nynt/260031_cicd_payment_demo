@@ -98,7 +98,7 @@ def main() -> int:
     parser.add_argument("--confirm-compatible-rollback", action="store_true", help="confirm source rollback is compatible with retained database schema/data")
     parser.add_argument("--artifacts-dir", type=Path,
                         help="new directory for this campaign's provenance, snapshots, journal and result")
-    parser.add_argument("--pause-after", help="scenario entity after which to pause before returning its result")
+    parser.add_argument("--pause-after", help="comma-separated successful entities after which to pause before returning results")
     parser.add_argument("--pause-ms", type=int, default=0)
     parser.add_argument("--reconcile-only", action="store_true", help="read remote status of durable pending execution; never dispatch or resume a campaign")
     parser.add_argument("--rejected-dispatch-evidence", type=Path,

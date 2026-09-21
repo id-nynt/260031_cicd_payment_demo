@@ -109,7 +109,7 @@ public final class ControllerEnvironment extends Environment {
         journal.event("entity_execution_finished", null, Map.of("entity", entity, "attempt", attempt,
             "execution_id", result.executionId(), "github_run_id", result.githubRunId(),
             "run_url", result.runUrl(), "status", result.status(), "duration_ms", result.durationMs()));
-        if (entity.equals(System.getenv("BDI_PAUSE_AFTER_ENTITY"))) {
+        if ("success".equals(result.status()) && java.util.Arrays.asList(value("BDI_PAUSE_AFTER_ENTITY", "").split(",")).contains(entity)) {
             long milliseconds = Long.parseLong(value("BDI_PAUSE_MILLISECONDS", "0"));
             journal.event("controller_pause", null, Map.of("after_entity", entity,
                 "milliseconds", milliseconds, "successor_dispatched", false));

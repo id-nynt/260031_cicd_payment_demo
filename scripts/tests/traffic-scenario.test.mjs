@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtemp, mkdir, writeFile, appendFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runScenario, validateProfile, seededRandom } from '../run-traffic-scenario.mjs';
+import { runScenario, validateProfile, seededRandom, stopReason } from '../run-traffic-scenario.mjs';
 
 const profile = phases => ({ name: 'test', seed: 42, jitter: 0, phases });
 const phase = (seconds, error_fraction = 0) => ({ seconds, requests_per_second: 10, error_fraction });
@@ -146,4 +146,12 @@ test('common experiment events drive traffic for the conventional mechanism too'
   const result=await runScenario({...f,profile:profile([phase(.2)])});
   assert.ok(result.successful > 0);
   assert.equal(result.execution_id,'candidate');
+});
+
+
+test('completion of staging observation does not stop the production client', () => {
+  const events = [{ event: 'health_accepted', entity: 'staging', decision: 'allow' }];
+  assert.equal(stopReason(events, 'staging'), 'campaign_finished');
+  assert.equal(stopReason(events, 'production'), null);
+  assert.equal(stopReason([...events, { event: 'bdi_recovery_decision' }], 'production'), 'recovery_started');
 });

@@ -42,7 +42,7 @@ public final class ConventionalMain {
                     catch (Exception error) { event("execution_exception", Map.of("entity", entity, "message", error.toString())); result = new EntityExecution.Result("unknown", 0, "unresolved", 0, ""); }
                     event("entity_execution_finished", Map.of("entity", entity, "attempt", attempt, "status", result.status(), "duration_ms", result.durationMs(),
                         "execution_id", result.executionId(), "github_run_id", result.githubRunId(), "run_url", result.runUrl()));
-                    if (entity.equals(env("BDI_PAUSE_AFTER_ENTITY"))) {
+                    if ("success".equals(result.status()) && java.util.Arrays.asList(env("BDI_PAUSE_AFTER_ENTITY").split(",")).contains(entity)) {
                         long ms = Long.parseLong(env("BDI_PAUSE_MILLISECONDS"));
                         event("controller_pause", Map.of("after_entity", entity, "milliseconds", ms, "successor_dispatched", false));
                         sleep(ms);

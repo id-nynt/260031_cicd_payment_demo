@@ -127,4 +127,4 @@ If interrupted, close the old console and run `python bdi-cicd-framework/run_con
 
 For the payment demo's detailed setup, traffic experiments and v1 restoration, follow the [manual guide](../docs/BDI_MANUAL_EXECUTION_GUIDE.md). For supported policy, telemetry contracts and implementation details, read [generation and runtime](../docs/BDI_GENERATION_AND_RUNTIME.md).
 
-For matched BDI versus conventional trials with automatic traffic and metric extraction, see the [comparative execution guide](../docs/BDI_COMPARATIVE_EXECUTION_GUIDE.md).
+For matched BDI versus conventional trials with automatic traffic and metrics, see the [comparative execution guide](../docs/BDI_COMPARATIVE_EXECUTION_GUIDE.md). The conventional entry is [ci-cd.yml](../.github/workflows/ci-cd.yml), activated manually; follow its [manual guide](../docs/CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md). Both approaches support the same 11 scenarios.

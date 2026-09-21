@@ -1,0 +1,296 @@
+name: Conventional Payment CI/CD
+run-name: conventional-${{ inputs.scenario }}-${{ inputs.release_sha }}
+'on':
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Full published v1 or v2 commit SHA (never overwritten)
+        type: string
+        required: true
+      scenario:
+        description: Same scenario catalog as BDI
+        type: choice
+        options:
+          - healthy
+          - build-failure
+          - test-failure
+          - transient-test-failure
+          - service-unavailable
+          - infrastructure-failure
+          - deployment-timeout
+          - staging-temporary
+          - staging-persistent
+          - production-temporary
+          - production-persistent
+        default: healthy
+        required: true
+      known_good_receipt:
+        description: Verified v1 controller-result.json contents; omitted only for first baseline
+        type: string
+        default: ''
+        required: false
+      baseline:
+        description: First healthy baseline without a recovery release
+        type: boolean
+        default: false
+      confirm_compatible_rollback:
+        description: Confirm v1 code is compatible with retained database schema/data
+        type: boolean
+        default: false
+      seed:
+        description: Traffic seed (use same for paired BDI trial)
+        type: string
+        default: '42'
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: payment-conventional-campaign
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      known_good_sha: ${{ steps.prepare.outputs.known_good_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.3
+      - id: prepare
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          SCENARIO: ${{ inputs.scenario }}
+          SEED: ${{ inputs.seed }}
+          BASELINE: ${{ inputs.baseline }}
+          CONFIRM_ROLLBACK: ${{ inputs.confirm_compatible_rollback }}
+          KNOWN_GOOD_RECEIPT: ${{ inputs.known_good_receipt }}
+        run: python scripts/native-experiment.py prepare --directory evidence/prepare
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-prepare
+          path: evidence/prepare/
+          if-no-files-found: error
+  build:
+    needs:
+      - prepare
+    uses: ./.github/workflows/conventional-entity.yml
+    with:
+      entity: build
+      release_sha: ${{ inputs.release_sha }}
+      failure_mode: ${{ inputs.scenario == 'build-failure' && 'force_failure' || 'none' }}
+      experiment_mode: normal
+  test:
+    needs:
+      - build
+    uses: ./.github/workflows/conventional-entity.yml
+    with:
+      entity: test
+      release_sha: ${{ inputs.release_sha }}
+      failure_mode: ${{ inputs.scenario == 'test-failure' && 'force_failure' || inputs.scenario == 'transient-test-failure' && 'transient_failure'
+        || 'none' }}
+      experiment_mode: normal
+    if: ${{ needs.build.outputs.status == 'success' }}
+  security:
+    needs:
+      - test
+    uses: ./.github/workflows/conventional-entity.yml
+    with:
+      entity: security
+      release_sha: ${{ inputs.release_sha }}
+      failure_mode: none
+      experiment_mode: normal
+    if: ${{ needs.test.outputs.status == 'success' }}
+  staging:
+    needs:
+      - security
+    uses: ./.github/workflows/conventional-entity.yml
+    with:
+      entity: staging
+      release_sha: ${{ inputs.release_sha }}
+      failure_mode: ${{ inputs.scenario == 'infrastructure-failure' && 'infrastructure_failure' || inputs.scenario == 'deployment-timeout' &&
+        'deployment_timeout' || 'none' }}
+      experiment_mode: ${{ (inputs.scenario == 'staging-temporary' || inputs.scenario == 'staging-persistent') && 'request_faults' || 'normal'
+        }}
+    if: ${{ needs.security.outputs.status == 'success' }}
+  staging_health:
+    needs:
+      - staging
+    if: ${{ always() && !cancelled() && needs.staging.outputs.status == 'success' }}
+    runs-on:
+      - self-hosted
+      - linux
+      - payment-deploy
+    timeout-minutes: 10
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Observe health with bounded rechecks
+        env:
+          ENTITY: staging
+          EXECUTION_ID: ${{ needs.staging.outputs.execution_id }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          SCENARIO: ${{ inputs.scenario }}
+          SEED: ${{ inputs.seed }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/native-experiment.py gate --directory "evidence/$ENTITY" --entity "$ENTITY" --execution-id "$EXECUTION_ID" --release-sha
+          "$RELEASE_SHA" --scenario "$SCENARIO" --seed "$SEED"
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-staging-health
+          path: evidence/
+          if-no-files-found: error
+  production:
+    needs:
+      - staging_health
+    uses: ./.github/workflows/conventional-entity.yml
+    with:
+      entity: production
+      release_sha: ${{ inputs.release_sha }}
+      failure_mode: ${{ inputs.scenario == 'service-unavailable' && 'service_unavailable' || 'none' }}
+      experiment_mode: ${{ (inputs.scenario == 'production-temporary' || inputs.scenario == 'production-persistent') && 'request_faults' || 'normal'
+        }}
+  production_health:
+    needs:
+      - production
+    if: ${{ always() && !cancelled() && needs.production.outputs.status == 'success' }}
+    runs-on:
+      - self-hosted
+      - linux
+      - payment-deploy
+    timeout-minutes: 10
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Observe health with bounded rechecks
+        env:
+          ENTITY: production
+          EXECUTION_ID: ${{ needs.production.outputs.execution_id }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          SCENARIO: ${{ inputs.scenario }}
+          SEED: ${{ inputs.seed }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/native-experiment.py gate --directory "evidence/$ENTITY" --entity "$ENTITY" --execution-id "$EXECUTION_ID" --release-sha
+          "$RELEASE_SHA" --scenario "$SCENARIO" --seed "$SEED"
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-production-health
+          path: evidence/
+          if-no-files-found: error
+  rollback:
+    needs:
+      - prepare
+      - production
+      - production_health
+    uses: ./.github/workflows/conventional-entity.yml
+    with:
+      entity: rollback
+      release_sha: ${{ needs.prepare.outputs.known_good_sha }}
+      failure_mode: none
+      experiment_mode: normal
+    if: ${{ always() && !cancelled() && needs.prepare.outputs.known_good_sha != '' && (needs.production.outputs.status == 'failure' || needs.production.outputs.status
+      == 'timeout' || (needs.production.outputs.status == 'success' && needs.production_health.result == 'failure')) }}
+  rollback_health:
+    needs:
+      - rollback
+      - prepare
+    if: ${{ always() && !cancelled() && needs.rollback.outputs.status == 'success' }}
+    runs-on:
+      - self-hosted
+      - linux
+      - payment-deploy
+    timeout-minutes: 10
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Observe health with bounded rechecks
+        env:
+          ENTITY: rollback
+          EXECUTION_ID: ${{ needs.rollback.outputs.execution_id }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.known_good_sha }}
+          SCENARIO: ${{ inputs.scenario }}
+          SEED: ${{ inputs.seed }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/native-experiment.py gate --directory "evidence/$ENTITY" --entity "$ENTITY" --execution-id "$EXECUTION_ID" --release-sha
+          "$RELEASE_SHA" --scenario "$SCENARIO" --seed "$SEED"
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-rollback-health
+          path: evidence/
+          if-no-files-found: error
+  result:
+    needs:
+      - prepare
+      - build
+      - test
+      - security
+      - staging
+      - staging_health
+      - production
+      - production_health
+      - rollback
+      - rollback_health
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.3
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: downloaded
+      - env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/native-experiment.py finish --directory evidence/result --downloaded downloaded
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-result
+          path: evidence/
+          if-no-files-found: error

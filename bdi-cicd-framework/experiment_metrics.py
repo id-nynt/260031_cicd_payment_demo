@@ -52,7 +52,7 @@ def extract(directory):
     mode = result.get('mode')
     if mode != 'github': reasons.append('not_live_execution')
     row = dict(campaign=str(directory.resolve()), mechanism=manifest.get('mechanism'), case=plan.get('case'), seed=plan.get('seed'),
-        comparison_key=plan.get('comparison_key'), mode=mode, outcome=result.get('outcome'), recovery_outcome=result.get('recovery_outcome'),
+        comparison_key=plan.get('comparison_key'), protocol_key=plan.get('protocol_key'), mode=mode, outcome=result.get('outcome'), recovery_outcome=result.get('recovery_outcome'),
         candidate_delivered=delivery, service_restored=bool(restored), production_dispatched=any(e.get('entity')=='production' for e in actions),
         runtime_seconds=duration(started, finished), time_to_candidate_seconds=duration(started, finished) if delivery else None,
         recovery_seconds=duration(adverse, accepted_recovery) if restored else None,
@@ -69,6 +69,11 @@ def extract(directory):
     expectations = {'healthy': delivery, 'transient-test-failure': delivery and row['retries'] == 1,
         'build-failure': not row['production_dispatched'] and result.get('outcome') == 'stopped' and result.get('executions', {}).get('build', {}).get('status') == 'failure',
         'staging-persistent': not row['production_dispatched'] and result.get('outcome') == 'stopped',
+        'test-failure': not row['production_dispatched'] and result.get('executions',{}).get('test',{}).get('status')=='failure',
+        'staging-temporary': delivery,
+        'infrastructure-failure': not row['production_dispatched'] and result.get('executions',{}).get('staging',{}).get('status')=='failure',
+        'deployment-timeout': not row['production_dispatched'] and result.get('executions',{}).get('staging',{}).get('status')=='timeout' and row['retries']==1,
+        'service-unavailable': bool(restored) and not delivery,
         'production-temporary': delivery, 'production-persistent': bool(restored) and not delivery}
     row['protocol_expectation_met'] = expectations.get(plan.get('case'))
     return row

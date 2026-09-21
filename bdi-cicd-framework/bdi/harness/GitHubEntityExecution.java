@@ -103,7 +103,7 @@ public final class GitHubEntityExecution implements EntityExecution {
         ExperimentExecutionPlan.Injection injection = experimentPlan.next(entity);
         String experimentMode = !"0".equals(injection.forceErrorRate()) ? "high_error_rate" : injection.experimentMode();
         if (!java.util.Set.of("normal", "high_error_rate", "request_faults").contains(experimentMode)
-                || !java.util.Set.of("none", "force_failure", "transient_failure").contains(injection.failureMode()))
+                || !java.util.Set.of("none", "force_failure", "transient_failure", "service_unavailable", "infrastructure_failure", "deployment_timeout").contains(injection.failureMode()))
             throw new IllegalArgumentException("Unsupported experiment mode or failure mode");
         journal.event("execution_configuration", null, Map.of("entity", entity, "attempt", attempt,
             "execution_id", executionId, "failure_mode", injection.failureMode(), "experiment_mode", experimentMode,

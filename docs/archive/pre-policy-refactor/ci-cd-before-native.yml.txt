@@ -1,0 +1,300 @@
+name: Payment Service CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      experiment_mode:
+        description: Staging-only payment behavior for the BDI gate experiment
+        type: choice
+        required: true
+        default: normal
+        options:
+          - normal
+          - high_error_rate
+      legacy_deployment:
+        description: Explicitly run the previous gate-controlled deployment baseline
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: payment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: docker build --tag payment-service:${{ github.sha }} .
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: payment
+          POSTGRES_PASSWORD: payment
+          POSTGRES_DB: payment
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U payment -d payment"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://payment:payment@localhost:5432/payment
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npm test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.2
+      - run: python -m unittest discover -s bdi-cicd-framework/parser -p 'test_*.py' -v
+
+  security:
+    name: Dependency audit (advisory)
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+
+  deploy-staging:
+    name: Deploy staging
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.legacy_deployment
+    needs: [build, test, security]
+    runs-on: self-hosted
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    environment:
+      name: staging
+    env:
+      COMPOSE_PROJECT_NAME: payment-staging
+      APP_PORT: 3001
+      POSTGRES_PORT: 5433
+      METRICS_PORT: 9465
+      PROMETHEUS_PORT: 9091
+      DEPLOYMENT_ENVIRONMENT: staging
+      NODE_ENV: production
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+      EXPERIMENT_MODE: ${{ inputs.experiment_mode || 'normal' }}
+      CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      MERCHANT_NAME: Staging Merchant
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check runner tools
+        shell: bash
+        run: |
+          docker info >/dev/null
+          docker compose version
+          curl --version
+      - name: Deploy staging Compose stack
+        shell: bash
+        run: docker compose up -d --build
+      - name: Staging smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if health=$(curl --fail --silent http://127.0.0.1:3001/health) &&
+              grep -Fq "\"deploymentRunId\":\"${CI_RUN_ID}\"" <<< "$health" &&
+              curl --fail --silent http://127.0.0.1:3001/ready; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose ps
+          docker compose logs --tail=100 app
+          exit 1
+      - name: Staging telemetry smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if metrics=$(curl --fail --silent http://127.0.0.1:9465/metrics) && [[ $metrics == *payment_http_requests_total* ]]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=100 otel-collector
+          exit 1
+      - name: Staging Prometheus scrape smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent http://127.0.0.1:9091/-/ready >/dev/null &&
+              curl --fail --silent --get --data-urlencode 'query=up{job="payment-collector"}' http://127.0.0.1:9091/api/v1/query | grep -Eq '"value":\[[^]]*,"1"\]'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=100 prometheus
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate staging payments and wait for fresh Prometheus samples
+        shell: bash
+        env:
+          PAYMENT_BASE_URL: http://127.0.0.1:3001
+          PROMETHEUS_URL: http://127.0.0.1:9091
+        run: |
+          for attempt in {1..12}; do
+            node scripts/generate-experiment-traffic.mjs "$EXPERIMENT_MODE" 6
+            if node scripts/check-gate-telemetry.mjs; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Fresh run-specific staging metrics were not available.' >&2
+          exit 1
+
+  bdi-gate:
+    name: BDI gate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.legacy_deployment
+    needs: deploy-staging
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      actions: read
+    env:
+      BDI_TARGET_ENV: staging
+      BDI_GITHUB_RUN_ID: ${{ github.run_id }}
+      BDI_TELEMETRY_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify staging is reachable from gate runner
+        shell: bash
+        run: |
+          curl --fail --silent http://127.0.0.1:3001/ready
+          curl --fail --silent http://127.0.0.1:9091/-/ready
+      - name: Test BDI framework
+        shell: bash
+        working-directory: bdi-cicd-framework/bdi
+        run: bash ./gradlew --no-daemon test
+      - name: Jason promotion decision
+        shell: bash
+        working-directory: bdi-cicd-framework/bdi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          bash ./gradlew --no-daemon gate 2>&1 | tee gate.log
+      - name: Record BDI decision
+        if: always()
+        shell: bash
+        working-directory: bdi-cicd-framework/bdi
+        run: |
+          echo '### BDI promotion decision' >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f gate.log ]]; then
+            grep -E 'BDI_GATE_INPUT|BDI_GATE_RESULT' gate.log >> "$GITHUB_STEP_SUMMARY" || true
+          else
+            echo 'Gate did not run; inspect preceding steps.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  deploy-production:
+    name: Deploy production
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.legacy_deployment
+    needs: bdi-gate
+    runs-on: self-hosted
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    environment:
+      name: production
+    env:
+      COMPOSE_PROJECT_NAME: payment-production
+      APP_PORT: 3000
+      POSTGRES_PORT: 5432
+      METRICS_PORT: 9464
+      PROMETHEUS_PORT: 9090
+      DEPLOYMENT_ENVIRONMENT: production
+      NODE_ENV: production
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+      EXPERIMENT_MODE: normal
+      CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      MERCHANT_NAME: Production Merchant
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check runner tools
+        shell: bash
+        run: |
+          docker info >/dev/null
+          docker compose version
+          curl --version
+      - name: Deploy production Compose stack
+        shell: bash
+        run: docker compose up -d --build
+      - name: Production smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if health=$(curl --fail --silent http://127.0.0.1:3000/health) &&
+              grep -Fq "\"deploymentRunId\":\"${CI_RUN_ID}\"" <<< "$health" &&
+              curl --fail --silent http://127.0.0.1:3000/ready; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose ps
+          docker compose logs --tail=100 app
+          exit 1
+      - name: Production telemetry smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if metrics=$(curl --fail --silent http://127.0.0.1:9464/metrics) && [[ $metrics == *payment_http_requests_total* ]]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=100 otel-collector
+          exit 1
+      - name: Production Prometheus scrape smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent http://127.0.0.1:9090/-/ready >/dev/null &&
+              curl --fail --silent --get --data-urlencode 'query=up{job="payment-collector"}' http://127.0.0.1:9090/api/v1/query | grep -Eq '"value":\[[^]]*,"1"\]'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=100 prometheus
+          exit 1

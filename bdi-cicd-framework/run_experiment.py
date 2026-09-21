@@ -15,15 +15,10 @@ from project_artifacts import ROOT, validate, digest, ModelError
 from run_controller import conventional_policy, known_good_sha, validate_live_environment
 from workflow_model import runtime_settings
 from experiment_metrics import extract
+from experiment_protocol import protocol_key
 
-CASES = {
-    'healthy': ('production', 'healthy', ''),
-    'build-failure': ('production', None, 'build.failure_mode=force_failure'),
-    'transient-test-failure': ('production', 'healthy', 'test.1.failure_mode=transient_failure'),
-    'staging-persistent': ('staging', 'staging-persistent-errors', 'staging.experiment_mode=request_faults'),
-    'production-temporary': ('production', 'temporary-errors', 'production.experiment_mode=request_faults'),
-    'production-persistent': ('production', 'persistent-errors', 'production.experiment_mode=request_faults'),
-}
+CATALOG = json.loads((ROOT.parent/'scripts/experiment-scenarios.json').read_text())
+CASES = {name: (case['entity'], case['profile'], case['fault']) for name, case in CATALOG.items()}
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -84,35 +79,39 @@ def main():
         traffic_required=profile is not None, fault_expected=bool(profile and 'errors' in profile),
         comparison=comparison, comparison_key=hashlib.sha256(json.dumps(comparison,sort_keys=True).encode()).hexdigest(),
         known_good_receipt=str(args.known_good.resolve()), baseline_receipt_sha256=digest(args.known_good),
-        limitations=['Reset is operator-confirmed; no database snapshot restoration', 'Imperative controller, not native GitHub DAG'])
+        limitations=['Reset is operator-confirmed; no database snapshot restoration', 'Local controller with remote selected jobs; native GitHub DAG is a separate entry point'])
+    plan['protocol_key'] = protocol_key(args.case,args.seed,args.release_sha,baseline_sha,worker_sha,comparison['contract'],policy,{'selected':comparison['profile'],'healthy':digest(ROOT.parent/'scripts/traffic-scenarios/healthy.json')})
     (companion/'plan.json').write_text(json.dumps(plan,indent=2)+'\n')
     print(f'Campaign: {campaign}\nPlan: {companion / "plan.json"}', flush=True)
     if args.prepare_only:
         print('Prepared only. No controller or traffic launched. Use a NEW path for the live launch.'); return 0
     command = [sys.executable,'-B',str(ROOT/'run_controller.py'),'--mechanism',args.mechanism,'--known-good',str(args.known_good.resolve()),
-        '--confirm-compatible-rollback','--artifacts-dir',str(campaign),'--pause-after',entity,'--pause-ms','60000']
-    traffic = None
+        '--confirm-compatible-rollback','--artifacts-dir',str(campaign),'--pause-after','staging,production','--pause-ms','60000']
+    traffic = []
     try:
-        if profile:
-            traffic = subprocess.Popen(['node', str(ROOT.parent/'scripts/run-traffic-scenario.mjs'), '--campaign',str(campaign),
-                '--scenario',profile,'--seed',str(args.seed),'--output',str(campaign)+'-traffic'],cwd=ROOT.parent)
+        for traffic_entity in ['staging','production']:
+            selected_profile = profile if traffic_entity == entity and profile else 'healthy'
+            traffic_output = str(campaign)+'-traffic' if traffic_entity == entity else str(campaign)+'-traffic-'+traffic_entity
+            traffic.append(subprocess.Popen(['node', str(ROOT.parent/'scripts/run-traffic-scenario.mjs'), '--campaign',str(campaign),
+                '--scenario',selected_profile,'--entity',traffic_entity,'--seed',str(args.seed),'--output',traffic_output],cwd=ROOT.parent))
         with (companion/'controller-console.log').open('w', encoding='utf-8') as console_log:
             process = subprocess.Popen(command,cwd=ROOT.parent,env=env,stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace')
             for line in process.stdout:
                 console_log.write(line);console_log.flush();print(line,end='',flush=True)
             process.wait()
-        if traffic:
-            try: traffic.wait(timeout=10)
+        for client in traffic:
+            try: client.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                traffic.terminate(); traffic.wait()
+                client.terminate(); client.wait()
         if campaign.exists():
             row=extract(campaign)
             (campaign/'experiment-metrics.json').write_text(json.dumps(row,indent=2)+'\n')
             print(json.dumps(row,indent=2))
         return process.returncode
     finally:
-        if traffic and traffic.poll() is None: traffic.terminate(); traffic.wait()
+        for client in traffic:
+            if client.poll() is None: client.terminate(); client.wait()
 
 if __name__ == '__main__':
     try: raise SystemExit(main())

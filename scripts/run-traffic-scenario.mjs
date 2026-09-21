@@ -38,9 +38,9 @@ async function journal(path) {
   } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
 }
 
-export function stopReason(events) {
+export function stopReason(events, entity) {
   if (events.some(e => e.event === 'bdi_recovery_decision')) return 'recovery_started';
-  if (events.some(e => e.event === 'controller_finished')) return 'campaign_finished';
+  if (events.some(e => e.event === 'controller_finished' || (['observation_finished', 'health_accepted'].includes(e.event) && e.entity === entity))) return 'campaign_finished';
   return null;
 }
 
@@ -80,7 +80,7 @@ export async function runScenario({ campaign, profile, baseUrl, entity = profile
     while (!selected) {
       if (signal?.aborted) { summary.stop_reason = 'operator_stop'; return summary; }
       const events = await journal(journalPath);
-      const stop = stopReason(events);
+      const stop = stopReason(events, entity);
       if (stop) { summary.stop_reason = `${stop}_before_traffic`; return summary; }
       const pauseIndex = events.findLastIndex(e => e.event === 'controller_pause' && e.after_entity === entity);
       if (pauseIndex >= 0) {
@@ -113,7 +113,7 @@ export async function runScenario({ campaign, profile, baseUrl, entity = profile
       let lastReport = performance.now();
       while (performance.now() < until) {
         if (signal?.aborted) { summary.stop_reason = 'operator_stop'; return summary; }
-        const stop = stopReason(await journal(journalPath));
+        const stop = stopReason(await journal(journalPath), entity);
         if (stop) { summary.stop_reason = stop; return summary; }
         if (phase.requests_per_second > 0 && performance.now() >= nextRequest) {
           if (summary.requests >= 10000) throw new Error('Request safety limit reached');
@@ -123,7 +123,7 @@ export async function runScenario({ campaign, profile, baseUrl, entity = profile
           const inject = random() < phase.error_fraction;
           if (inject && health.experimentMode !== 'request_faults') throw new Error('Fault capability disappeared');
           // Recheck after health fetch, since recovery can begin while it is in flight.
-          const stopAfterHealth = stopReason(await journal(journalPath));
+          const stopAfterHealth = stopReason(await journal(journalPath), entity);
           if (stopAfterHealth) { summary.stop_reason = stopAfterHealth; return summary; }
           const requestStarted = performance.now();
           summary.requests++;

@@ -135,7 +135,7 @@ class ModelTransformTest(unittest.TestCase):
     def test_dispatch_workflow_contains_independent_exactly_selected_entities(self):
         workflow = yaml.load((ROOT.parent / ".github" / "workflows" / "entity-execution.yml")
                              .read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
-        jobs = workflow["jobs"]
+        jobs = {name: job for name,job in workflow["jobs"].items() if name != "report"}
         self.assertEqual(set(jobs), {"build", "test", "security", "staging", "production", "rollback"})
         for entity, job in jobs.items():
             self.assertNotIn("needs", job)
@@ -146,7 +146,8 @@ class ModelTransformTest(unittest.TestCase):
         self.assertEqual(jobs["production"]["concurrency"]["group"], "payment-deployment-control")
         self.assertEqual(jobs["rollback"]["environment"], "production")
         self.assertEqual(jobs["rollback"]["concurrency"]["group"], "payment-deployment-control")
-        self.assertFalse((ROOT.parent / ".github/workflows/ci-cd.yml").exists())
+        conventional = yaml.load((ROOT.parent / ".github/workflows/ci-cd.yml").read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual({"workflow_dispatch"}, set(conventional["on"]))
 
     def test_recovery_cannot_be_a_normal_goal_or_dependency(self):
         pipeline, goals = self.write_inputs(self.directory, goals=self.goals.replace("production.status == success", "rollback.status == success"))

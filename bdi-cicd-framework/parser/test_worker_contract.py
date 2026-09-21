@@ -19,14 +19,18 @@ class WorkerContractTest(unittest.TestCase):
     def test_selected_entity_is_the_only_executable_job(self):
         worker=read(ROOT/'.github/workflows/entity-execution.yml')
         self.assertEqual('bdi-${{ inputs.execution_id }}',worker['run-name'])
-        self.assertEqual({'workflow_dispatch'},set(worker.get('on',worker.get(True))))
+        self.assertEqual({'workflow_dispatch','workflow_call'},set(worker.get('on',worker.get(True))))
         self.assertFalse((ROOT/'.github/workflows/rollback-production.yml').exists())
         pipeline=read(ROOT/'bdi-cicd-framework/models/01_pipeline.yaml')
         for name, job in (pipeline['jobs']|pipeline['recovery']).items():
             self.assertEqual(job['job_name'], worker['jobs'][name]['name'])
             self.assertEqual("inputs.entity == '"+name+"'", worker['jobs'][name]['if'])
             self.assertNotIn('needs',worker['jobs'][name])
-        self.assertEqual(set(worker['jobs']),set(pipeline['jobs'])|set(pipeline['recovery']))
+        self.assertEqual(set(worker['jobs'])-{'report'},set(pipeline['jobs'])|set(pipeline['recovery']))
+        self.assertEqual('${{ always() && inputs.report_only == true }}',worker['jobs']['report']['if'])
+        self.assertNotIn('report_only',worker['on']['workflow_dispatch']['inputs'])
+        for name in pipeline['jobs']:
+            self.assertEqual('${{ inputs.report_only == true }}',worker['jobs'][name]['continue-on-error'])
 
     def test_java_fixtures_match_canonical_compiler(self):
         framework=ROOT/'bdi-cicd-framework'

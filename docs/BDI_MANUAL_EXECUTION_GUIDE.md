@@ -1,8 +1,8 @@
 # Manual experiment: deploy v1 to v2 with BDI
 
-Run commands yourself, one step at a time. There is no end-to-end automation script. This guide uses the existing payment repository, published worker/v2 tags and verified v1 receipt. Replace those selections only when intentionally starting a different experiment.
+Run commands yourself, one step at a time. C0-C5 retain manual execution/injection; C6 manually launches one comparative trial with automatic fault timing, traffic and evidence. This guide uses the existing payment repository, published worker/v2 tags and verified v1 receipt. Replace those selections only when intentionally starting a different experiment.
 
-For the research comparison, use the [comparative execution guide](BDI_COMPARATIVE_EXECUTION_GUIDE.md): one manually launched trial with automatic fault setup, traffic timing and metric extraction, supporting BDI and the conventional scripted controller. The steps below remain available for individual/manual experiments.
+For the research comparison, use the [comparative execution guide](BDI_COMPARATIVE_EXECUTION_GUIDE.md): one manually launched trial with automatic fault setup, traffic timing and metric extraction, supporting BDI and the native GitHub Actions pipeline. Both approaches have the same 11-case catalog; use C6 below for paired trials. The conventional activation walkthrough is [here](CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md). The steps below remain available for individual/manual experiments.
 
 ## Choose your route
 
@@ -10,6 +10,7 @@ For the research comparison, use the [comparative execution guide](BDI_COMPARATI
 |---|---|
 | First time on this computer | A1 tools/login; A2 local app check; A3 generate and simulate; A4 select published versions |
 | Before **every** experiment, including after reopening PowerShell | B1 Docker/runner; B2 restore session settings; B3 check deployed version; B4 restore v1 if needed |
+| Matched BDI versus native GitHub comparison (all 11 cases) | C6 and the comparison guide |
 | Healthy deployment | C1, then E1 |
 | Build/test/security failure or bounded retry | C2, then E1 |
 | Scripted traffic: healthy, fluctuating, burst, temporary/persistent/intermittent errors, idle | C0, then E1 |
@@ -730,6 +731,39 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --
 **Cleanup:** E1, then repeat B for the next experiment. Remove the fault environment setting before restoring v1.
 
 <a id="optional-experiment-require-staging-to-fail"></a>
+
+### C6. Matched comparison: all 11 scenarios
+
+**Start:** complete A1-A3 and B1-B4. Publish/select the new worker revision using [conventional guide steps 1-2](CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md). Existing worker tags support the older manual examples but do not contain the new service/database/timeout controls.
+
+**Actions ? Controller PowerShell:** retain the verified `$knownGood` path and `$v2Sha` from B2; explicitly replace B2's old worker selection. This launches one BDI trial, with automatic fault timing and traffic:
+
+```powershell
+$env:GITHUB_REPOSITORY = 'id-nynt/260031_cicd_payment_demo'
+$workerRef = 'comparison-worker-20260921'
+$env:BDI_WORKFLOW_REF = $workerRef
+Remove-Item Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
+Remove-Item Env:BDI_PAUSE_AFTER_ENTITY -ErrorAction SilentlyContinue
+Remove-Item Env:BDI_PAUSE_MILLISECONDS -ErrorAction SilentlyContinue
+$env:GITHUB_TOKEN = (gh auth token --hostname github.com)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) { throw 'Load a valid controller token first' }
+if ([string]::IsNullOrWhiteSpace($knownGood) -or -not (Test-Path $knownGood)) { throw 'Restore the verified v1 receipt path using B2' }
+if ([string]::IsNullOrWhiteSpace($v2Sha)) { throw 'Resolve the existing v2 tag using B2' }
+$case = 'healthy'
+py -3 -B bdi-cicd-framework/run_controller.py --validate-only
+if ($LASTEXITCODE -ne 0) { throw 'Resolve artifact consistency before launching' }
+py -3 -B bdi-cicd-framework/run_experiment.py --mechanism bdi --case $case --release-sha "$v2Sha" --known-good "$knownGood" --confirm-compatible-rollback --seed 42
+```
+
+- Select the same newly published worker tag used by the conventional trial; adjust the example tag if you chose another name.
+- Clear leftover manual fault/pause values. The wrapper creates fresh trial-specific settings, a new campaign and automatic traffic.
+- Load the controller token without printing it; GitHub Actions needs Actions-write access for BDI dispatch.
+- Select any case from the [shared 11-scenario table](BDI_COMPARATIVE_EXECUTION_GUIDE.md#shared-scenarios): `healthy`, `build-failure`, `test-failure`, `transient-test-failure`, `service-unavailable`, `infrastructure-failure`, `deployment-timeout`, `staging-temporary`, `staging-persistent`, `production-temporary`, `production-persistent`.
+- This research route uses terminal output rather than the keep-open MAS GUI. For interactive MAS inspection and manual injection, C0-C5 remain available.
+
+**Expected results:** `Master goal started` and `BDI_DECISION` output; selected-entity runs on GitHub; traffic `STARTED`/`PHASE` messages for traffic scenarios; a campaign directory, its experiment plan directory, and separate target/background traffic directories (clients exit without payments if their stage is never reached). Read `controller-result.json` and `experiment-metrics.json`. Use the shared scenario table for expected v2 delivery, v1 restoration or safe stopping. Missing fault evidence invalidates a claimed fault trial.
+
+**Reverse/cleanup:** wait for terminal remote execution, stop any residual traffic, then restore both environments to v1 using B4. Reselect the new worker tag after B2/B4. Launch the conventional counterpart with the same case/seed/v2/receipt. Do not edit or recreate the v2 tag between trials.
 
 ## D. Optional goal experiment
 

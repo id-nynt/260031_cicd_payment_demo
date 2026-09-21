@@ -1,116 +1,87 @@
-# Comparative CI/CD experiments: BDI and conventional control
+# Compare BDI with conventional GitHub Actions
 
-The current comparator is an **imperative scripted controller**, implemented in `ConventionalMain` / `ConventionalPolicy`, over GitHub Actions jobs. It does not start Jason or execute agent plans. It is not an independent native GitHub Actions `needs` workflow: both mechanisms deliberately share the same selected-entity worker and adapters to control for dispatch, queue and execution differences. A separately engineered native workflow remains an optional external-validity comparator.
+Use one payment app/repository, the same immutable v1/v2 sources and one shared deployment environment. **Conventional entry:** [ci-cd.yml](../.github/workflows/ci-cd.yml). **BDI entry:** `run_experiment.py --mechanism bdi`. Both use [entity-execution.yml](../.github/workflows/entity-execution.yml); conventional uses `needs`/conditions and a bounded telemetry script, while BDI uses Jason beliefs/plans.
 
-## What is shared, and what differs?
+Follow the [conventional manual](CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md) for publication/setup and GitHub activation; follow [BDI manual C6](BDI_MANUAL_EXECUTION_GUIDE.md#c6-matched-comparison-all-11-scenarios) for agent activation. Complete common setup/reset before **each** trial. Do not run both mechanisms simultaneously.
 
-| Shared | Different |
-|---|---|
-| Published candidate SHA and worker ref | Jason beliefs/plans versus a fixed imperative loop |
-| Build/test/security/deployment/recovery commands | BDI console decisions versus conventional terminal decisions |
-| Raw telemetry, retry safety, budgets, thresholds and verified rollback source | Agent can use its supported project models/goals; the comparator deliberately supports only the payment success-goal contract |
-| GitHub dispatch/polling, correlation, pending-state reconciliation and repository lock | Mechanism label in provenance, results and common events |
-| Identical 60-second pause and scenario traffic for each pair | No claimed superiority before repeated live trials |
+The earlier `--mechanism conventional` Java implementation remains an optional **scripted controller** for controlled policy tests. It is not the native GitHub baseline described here. Its old walkthrough is [archived](archive/manual-guides/COMPARISON-before-native-workflow.md).
 
-The conventional controller validates its supported topology, achievements, maintenance and observation settings before launch; it rejects unsupported negative goals or custom topology rather than silently ignoring them. Both mechanisms retain the persistent contract/agent artifacts for consistency checks. The conventional executable reads a validated `conventional-policy.json` snapshot, not AgentSpeak. Neither mechanism repairs a broken app, runner or infrastructure automatically.
+## Shared scenarios
 
-## 1. Prepare the environment and baseline
+Both entry points use the same 11 names in [experiment-scenarios.json](../scripts/experiment-scenarios.json). This table defines the fault, exposure and expected safe response for **both** approaches.
 
-Complete manual guide **B1-B4**: Docker and runner online, credentials loaded, published v2 selected, verified v1 receipt available, and both environments restored to v1. Keep your current worker tag: these changes are local control/traffic tools using its existing dispatch interface. No worker publication is needed unless you change the worker itself.
-
-Use ordinary success goals for comparisons. Use the same database starting conditions (or document retained state), candidate, worker, thresholds, fault profile and seed for each pair. Do not run mechanisms concurrently against the shared environments. Alternate their order across repetitions.
-
-The existing baseline source receipt can be reused. The wrappers do not certify your starting container state: check the app identity and restoration result before each trial. Do not assume `--known-good` itself restores v1.
-
-## 2. Optionally inspect the plan without deploying
-
-Controller PowerShell, after manual B2:
-
-```powershell
-py -3 -B bdi-cicd-framework/run_experiment.py --mechanism conventional --case production-temporary --release-sha "$v2Sha" --known-good "$knownGood" --confirm-compatible-rollback --seed 42 --prepare-only
-```
-
-Expected: a new sibling `*-experiment/plan.json` and `faults.properties` containing the configuration to review. No controller or traffic runs. A live invocation gets a new directory; a prepared directory is not reused automatically. The explicit SHA must be the published candidate, not a new unpublished local commit. Prepare-only plans do not query GitHub; live startup checks candidate publication and records the worker ref's remote commit before dispatch. Use a fixed published worker tag and do not move it during the study.
-
-## 3. Manually launch ONE trial
-
-Choose one case:
-
-| Case | Automatic fault/traffic setup | Expected healthy-policy response |
+| Case | Automatic injection / timing | Expected result |
 |---|---|---|
-| `healthy` | Normal production traffic | Verify and deliver v2 |
-| `build-failure` | Controlled build failure; no traffic client needed | Stop before deployment |
-| `transient-test-failure` | Test attempt 1 fails transiently; normal production traffic | Retry once, then deliver if checks pass |
-| `staging-persistent` | Staging request-fault mode; persistent staging errors | Block promotion; production stays v1 |
-| `production-temporary` | Production request-fault mode; 75s mixed errors, then normal traffic | Reobserve and continue if health recovers within budget |
-| `production-persistent` | Persistent production errors | Reobserve, restore verified v1 and verify recovery |
+| `healthy` | Normal production traffic | Deliver and verify v2 |
+| `build-failure` | Build job exits before compilation/deployment | Stop; production remains v1 |
+| `test-failure` | Test job exits with persistent failure | Stop; production remains v1 |
+| `transient-test-failure` | First test attempt exits as a typed transient failure; second executes tests | Retry once; deliver if checks pass |
+| `service-unavailable` | After production Compose deployment, stop only its app container | Readiness check fails; restore verified v1 and verify health |
+| `infrastructure-failure` | After staging deployment, stop only its PostgreSQL container | Readiness check fails; block promotion; production remains v1 |
+| `deployment-timeout` | Staging job sleeps 90s before deployment, with a 1-minute job deadline; repeat fault on retry | Confirm timeout, retry once, stop before production |
+| `staging-temporary` | Stage request-fault mode; 75s mixed errors, then normal traffic | Recheck; promote if health recovers within budget |
+| `staging-persistent` | Stage request-fault mode; persistent mixed errors | Exhaust bounded observations; block promotion |
+| `production-temporary` | Production request-fault mode; 75s mixed errors, then normal traffic | Recheck; accept v2 if health recovers within budget |
+| `production-persistent` | Production request-fault mode; persistent mixed errors | Exhaust observations; restore and verify v1 |
 
-Run the selected mechanism. For example:
+**Scope:** build/test failures are controlled job failures, not yet independent commits with compiler/test defects. “Service unavailable” means the deployed payment service; “infrastructure failure” means its staging database, not the entire host/cloud. The timeout is a controlled pre-deployment hang. A host loss, runner loss, deployment API outage and real network partition remain additional experiments; do not report these scoped faults as proving resilience to those broader failures.
 
-```powershell
-py -3 -B bdi-cicd-framework/run_experiment.py --mechanism bdi --case production-temporary --release-sha "$v2Sha" --known-good "$knownGood" --confirm-compatible-rollback --seed 42
-```
+Traffic profiles use a fixed seed, bounded rates/jitter and the same request-fault headers. Temporary faults transition automatically to normal traffic; persistent faults stop when containment/recovery starts. Both approaches keep normal traffic running during each staging/production observation window, replacing it with the selected fault profile at the target stage. Each client stops when that entity's health decision is accepted or the campaign ends/recovery begins. Traffic metrics summarize the selected scenario target; retain the other stage's traffic artifact as background-load evidence.
 
-The wrapper starts a traffic client automatically, launches one controller, waits for completion and extracts metrics. No second traffic terminal or manual injection timing is required. It does not run the next experiment or reset the environment. For comparisons it uses terminal output, without the MAS GUI's keep-open delay.
+## Common setup and execution order
 
-Expected: traffic WAITING -> STARTED at the shared deployment pause -> phase transitions -> stop on recovery/completion. Both mechanisms use `experiment-events.jsonl`; the traffic client still supports old controller journals for historical/manual compatibility. Do not manually inject additional traffic into a scripted trial.
+1. Publish one new workflow/control revision, then freeze its tag. Existing v1/v2 commits remain unchanged.
+2. Start Docker Desktop and the same self-hosted Linux runner. Verify both environments are reachable.
+3. Restore both environments to verified v1. Stop old traffic, settle previous remote jobs and retain database state consistently (or use a separately documented reset).
+4. Pick one table case, candidate SHA, verified v1 receipt and seed 42.
+5. Manually launch ONE approach. Fault setup, traffic transitions and evidence collection are automatic.
+6. Save results, including unsuccessful/incomplete runs. Record interventions and verify visible app version/identity independently.
+7. Restore v1; run the same case with the other approach. Alternate order in later repetitions.
 
-After recording this trial, stop any residual client, restore both environments using manual B4, and rerun B2. Then launch its paired comparator:
+Shared policy: one additional execution retry for confirmed transient failure/timeout on retry-safe jobs; no blind retry of uncertain execution; 5-second retry delay; 60-second warmup at each successful staging/production deployment; at most 36 observations/180 seconds with 5-second intervals; two consecutive healthy observations; error rate <=5%, p95 <=500ms, readiness/availability and sample freshness required. Production restoration uses the verified known-good receipt and must pass its own health gate.
 
-```powershell
-py -3 -B bdi-cicd-framework/run_experiment.py --mechanism conventional --case production-temporary --release-sha "$v2Sha" --known-good "$knownGood" --confirm-compatible-rollback --seed 42
-```
+The native retry DAG currently supports the payment topology, one retry and a five-second retry delay. Startup rejects incompatible contract revisions. BDI remains the configurable generated agent. Both read the same saved contract for observation budgets/thresholds. No per-campaign generation occurs.
 
-Expected: conventional decision events instead of MAS beliefs, the same configured fault schedule and safeguards, and its own new evidence directories. A stopped campaign returns exit code 1; unknown/startup failure returns 2. An expected fault containment result is not a successful deployment, even when it meets the experimental expectation. Equivalent outcomes are valid. Do not weaken the baseline to manufacture a BDI advantage.
+Native reuse uses an explicit status output: failed execution steps may have a tolerated job conclusion so the retry DAG can run. The report job reads actual step failures/timeouts; downstream stages require `status=success`. The final result job fails when candidate delivery is not achieved. A green intermediate wrapper is not proof of candidate delivery.
 
-If interrupted, stop the residual traffic process if any, inspect remote execution and use the shared `run_controller.py --reconcile-only` procedure before restarting. Terminating the local process does not cancel GitHub jobs. A crashed/missing traffic client marks the evidence unsuitable rather than silently proving a successful fault experiment.
+## Evidence and metrics
 
-## 4. Inspect automatically recorded evidence
-
-Each trial prints its campaign path. Three sibling locations are retained:
-
-| Location | Contents |
+| BDI | Native GitHub Actions |
 |---|---|
-| `<campaign>/` | Controller journal/result, `experiment-events.jsonl`, snapshots/provenance, `experiment-metrics.json`; conventional trials also have `conventional-policy.json` |
-| `<campaign>-experiment/` | `plan.json` with case, seed, candidate/baseline, worker, source/contract/profile hashes and comparison key; exact fault configuration and `controller-console.log` |
-| `<campaign>-traffic/` | Exact traffic profile, per-request timing/outcomes, phase events and summary; omitted for build failure |
+| Printed local campaign directory | Run artifacts: `native-prepare`, `native-*-health`, `native-result` |
+| Controller result/journal and common events | Same result/common-event schema plus GitHub job records |
+| Sibling `*-experiment/plan.json` | Preparation plan and persistent input/contract/manifest snapshots |
+| Sibling `*-traffic/` plus `*-traffic-<other-stage>/` | Gate artifact contains profile, requests/transitions and traffic summary |
+| Automatic `experiment-metrics.json` | Automatic `native-result/result/experiment-metrics.json` |
 
-Common events include `campaign_started`, `action_started`, `action_finished`, `decision`, `observation`, `health_accepted`, `reconciliation`, `deployment_ready`, `recovery_started`, `campaign_finished`. They retain entity/attempt/execution IDs where applicable and label the mechanism. Common logging observes decisions; it does not choose actions for either controller.
+Record candidate-delivery rate separately from restoration rate, containment, retries, observations, human interventions, elapsed time and recovery time. `eligible_for_comparison` flags missing/failed traffic, incomplete evidence and non-live runs. It is a screening flag, not independent proof of fault exposure or safety. A controlled execution fault must also appear in the relevant job logs. `protocol_expectation_met` is the case expectation, not an oracle proving correctness.
 
-`experiment-metrics.json` reports candidate delivery, restoration, production dispatch, action attempts/retries, rollback attempts, observations, reconciliation, runtime, recovery timing and traffic counts. Recovery is not candidate delivery. Retry counts come from all action-start events, not just the last result for an entity.
+`protocol_key` compares case, seed, candidate, baseline, worker commit, contract, policy and traffic profile. Match it across the native/BDI pair. The older `comparison_key` belongs to the scripted-controller comparison; do not use it to pair native trials. A matching key cannot certify database state, queue load or actual timing.
 
-Timing definitions:
-
-- Runtime: `campaign_started` to `campaign_finished`, excluding Gradle startup; includes configured pauses and execution waits.
-- Candidate time: that runtime only for accepted candidate delivery.
-- Recovery time: first observed production failure/unhealthy/unavailable evidence to accepted rollback health. This is not exact outage duration or latency from the external fault's start.
-- Decision latency: first adverse production evidence to recovery selection.
-- Summed entity duration includes adapter-observed wait/execution time; it is **not billed runner time**. Use GitHub job timestamps/billing data for actual execution cost.
-
-Missing evidence and simulated runs are excluded by `eligible_for_comparison`. Traffic faults must actually be observed by the traffic client; unexpected traffic/transport errors are flagged. `protocol_expectation_met` evaluates the stated scenario expectation; it is not an independent proof of safety or an oracle that rules out every incorrect decision.
-
-Human intervention is unknown by default. After each trial, optionally create `<campaign>-experiment/interventions.json` as a JSON array of your interventions (timestamps/action/reason). Use `[]` only if you confirm none occurred. Extraction then reports the count. Do not infer zero interventions merely because automation ran.
-
-## 5. Export paired data
-
-After both trials, substitute their printed campaign paths:
+After downloading native artifacts, use the existing extractor for a combined CSV:
 
 ```powershell
-py -3 -B bdi-cicd-framework/experiment_metrics.py "bdi-cicd-framework/runs/BDI-TRIAL" "bdi-cicd-framework/runs/CONVENTIONAL-TRIAL" --csv "bdi-cicd-framework/runs/comparison.csv"
+py -3 -B bdi-cicd-framework/experiment_metrics.py "bdi-cicd-framework/runs/BDI-TRIAL" "bdi-cicd-framework/runs/native-RUN-ID/native-result/result" --csv "bdi-cicd-framework/runs/comparison.csv"
 ```
 
-This refreshes per-trial metrics and writes a CSV. Pair rows only when their `comparison_key` matches; keys deliberately exclude mechanism but include case, seed, candidate/baseline, worker, configuration, profile and local control/adapter source hashes. A key match does not prove equal database state, queue conditions or real fault exposure: inspect those separately.
+Replace the two trial paths. Native result artifacts include the sibling plan/traffic summary directories required by extraction. Keep the other artifacts too; they contain raw evidence. Add `interventions.json` as an array beside each plan; use `[]` only after confirming no interventions, otherwise the count remains unknown.
 
-Report success/restoration/containment per scenario, with repetitions and failures, rather than pooling unlike faults into a single success percentage. Build defects should be contained, not delivered. Keep live trials separate from simulation, pilot mistakes and setup incidents. Current automated metrics expose whether production was dispatched, but independent service observations are still needed to validate stronger safety claims.
+Timing limitations: BDI action duration includes adapter-observed dispatch/poll waits; native job duration comes from GitHub job start/end. These are not identical execution-cost measures. Native recovery timing includes GitHub job scheduling. Report whole-trial elapsed time plus raw GitHub timestamps separately; do not present summed entity duration as billed runner cost. The native gate is scheduled as a separate self-hosted job, whereas BDI observes locally: measure this scheduling overhead, and retain actual traffic/observation timestamps.
 
-## Local verification before live pilots
+## What can BDI do better?
 
-```powershell
-py -3 -B bdi-cicd-framework/run_controller.py --mechanism conventional --validate-only
-py -3 -B bdi-cicd-framework/verify_comparison.py
-node --test scripts/tests/traffic-scenario.test.mjs
-```
+**For the implemented matched policy, equivalent outcomes are the honest expectation.** Conventional CI/CD can retry, wait for telemetry recovery, block promotion and roll back. These capabilities are not exclusive to BDI.
 
-`verify_comparison.py` runs eight simulated pairs through actual Jason and the imperative controller with a separate, explicitly generated short-budget project. It checks outcomes, recovery, action attempts, accepted health and terminal events. It never contacts GitHub or deploys. The test fixture's short waits are not the live experimental budgets.
+- **Potential advantage:** changing goals, dependencies or available recovery capabilities may be easier to express and inspect through agent beliefs/plans. Current BDI also journals uncertain dispatch intent and reconciles it before redispatch. Test interruption/reconciliation separately before claiming a reliability advantage over the native workflow.
+- **Temporary test or telemetry failure:** BDI should improve over a fail-fast pipeline with no retry/recheck. Our conventional baseline includes those protections, so expect a tie unless observations demonstrate a difference.
+- **Persistent production degradation or failed deployment:** both should restore verified v1. This improves service recovery, not v2 delivery.
+- **Compiler defect, consistently failing test, persistent staging failure:** neither should deliver a broken v2. Correct stopping is the desired result.
+- **Host/runner/database loss with no available repair capability:** reasoning alone cannot repair it. Neither approach can promise completion without an executable recovery path.
 
-Next live work: pilot healthy and temporary-production cases in both modes; inspect all evidence; then freeze the tested revision and begin repeated paired trials. Controlled service unavailability, infrastructure outage and deployment timeout need additional fault mechanisms and are not claimed as implemented live scenarios here.
+The research conclusion must follow repeated paired results. If rates match, report that result and compare decision traceability, policy adaptation effort and overhead. Do not remove safeguards from the conventional baseline to manufacture a BDI advantage.
+
+## Verification before live experiments
+
+Offline checks cover workflow syntax, shared scenario/worker contracts, bounded telemetry, malformed/stale samples, pairing keys, existing Java policies/adapters and traffic scheduling. They do **not** validate real GitHub scheduling, reusable-workflow failure propagation or actual Docker recovery.
+
+Next pilot: healthy pair, transient-test pair, timeout pair, then temporary/persistent production pairs; inspect status outputs, retry counts, traffic evidence and restoration before collecting the full repeated 11-case dataset. No new live comparative trials have been run as part of this implementation.

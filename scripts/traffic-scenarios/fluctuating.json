@@ -1,0 +1,28 @@
+{
+  "name": "fluctuating",
+  "description": "Normal traffic with quiet periods and peaks; rate changes are not guaranteed faults.",
+  "seed": 42,
+  "jitter": 0.25,
+  "phases": [
+    {
+      "seconds": 30,
+      "requests_per_second": 1,
+      "error_fraction": 0
+    },
+    {
+      "seconds": 30,
+      "requests_per_second": 6,
+      "error_fraction": 0
+    },
+    {
+      "seconds": 30,
+      "requests_per_second": 2,
+      "error_fraction": 0
+    },
+    {
+      "seconds": 510,
+      "requests_per_second": 4,
+      "error_fraction": 0
+    }
+  ]
+}

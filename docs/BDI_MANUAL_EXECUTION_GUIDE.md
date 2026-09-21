@@ -10,7 +10,8 @@ Run commands yourself, one step at a time. There is no end-to-end automation scr
 | Before **every** experiment, including after reopening PowerShell | B1 Docker/runner; B2 restore session settings; B3 check deployed version; B4 restore v1 if needed |
 | Healthy deployment | C1, then E1 |
 | Build/test/security failure or bounded retry | C2, then E1 |
-| Temporary production error traffic, then continue v2 | C3, then E1 |
+| Scripted traffic: healthy, fluctuating, burst, temporary/persistent/intermittent errors, idle | C0, then E1 |
+| Manual temporary production error traffic, then continue v2 | C3, then E1 |
 | Persistent production error traffic, then rollback | C4, then E1 |
 | Deterministic production failure, then rollback | C5, then E1 |
 | Optional: engineer explicitly wants a failure goal | D1, then E1 |
@@ -354,6 +355,82 @@ $env:BDI_RELEASE_SHA = $v2Sha
 
 Before each scenario, finish B1-B4. Use the same worker, v2 SHA, goals and thresholds when comparing outcomes. The following launches assume B2 variables exist in **Controller PowerShell**. Do not run two controllers together.
 
+### C0. Scenario-driven traffic (recommended for repeatable timing)
+
+**Start:** finish B1-B4. Use this instead of the C1/C3/C4 launch commands for a scripted-traffic run. BDI still owns deployment and recovery; this separate client only sends fake-payment requests and observes the journal. Manual injection remains available in C3/C4.
+
+Choose one profile:
+
+| `$trafficScenario` | Traffic after the selected deployment pause | What to assess |
+|---|---|---|
+| `healthy` | About 3 normal payments/second | Healthy delivery |
+| `fluctuating` | 1, 6, 2, then 4 normal requests/second | Verification under varying load |
+| `burst` | 2 requests/second for 15s, 10 for 30s, then 3 | Short traffic peak; errors are not guaranteed |
+| `temporary-errors` | 70% fault headers at 4 requests/second for 75s, then all normal | Reobserve, then continue if health recovers within budget |
+| `persistent-errors` | 70% fault headers at 4 requests/second | Reobserve, then recover if health remains bad |
+| `intermittent-errors` | Faults 75s, normal 20s, faults 20s, then normal | Whether the rolling metric window clears before the deadline |
+| `idle` | No payments from this client | Lack of request evidence is not proof of application failure |
+
+Rates are targets, with seeded +/-25% spacing variation and a single request in flight. Request latency reduces achieved throughput. Fault fractions are sampled probabilities, not exact quotas. Profiles last at most 600 seconds of active traffic and stop earlier on campaign completion/recovery. The client waits up to 30 minutes for the pause. A seed repeats choices; real scheduling and responses still vary.
+
+**Actions 1 - prepare, do not launch yet:** Controller PowerShell:
+
+```powershell
+$trafficScenario = 'temporary-errors'
+$env:BDI_RELEASE_SHA = $v2Sha
+$candidateDir = 'bdi-cicd-framework/runs/' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '-' + $trafficScenario
+Remove-Item Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
+if ($trafficScenario -in @('temporary-errors','persistent-errors','intermittent-errors')) {
+    $faultFile = [System.IO.Path]::GetFullPath("$candidateDir-faults.properties")
+    Set-Content -LiteralPath $faultFile -Value 'production.experiment_mode=request_faults' -Encoding ascii
+    $env:BDI_EXECUTION_PLAN = $faultFile
+}
+$candidateDir
+```
+
+- `$trafficScenario` selects the profile; `BDI_RELEASE_SHA` selects published v2.
+- `$candidateDir` assigns fresh evidence; do not create this directory yourself.
+- `Remove-Item` clears old faults. The conditional block writes/selects request-fault configuration only for error profiles.
+- The last command prints the exact path to copy to the traffic terminal.
+
+**Actions 2 - arm the traffic client:** in Traffic PowerShell, choose the same profile as above and paste the printed directory:
+
+```powershell
+Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
+$trafficScenario = 'temporary-errors'
+$trafficCampaign = Read-Host 'Paste the campaign directory from Actions 1'
+node scripts/run-traffic-scenario.mjs --campaign "$trafficCampaign" --scenario "$trafficScenario" --seed 42
+```
+
+- `Set-Location` selects the local client; it does not need publication to run on your computer.
+- `$trafficScenario` must match the controller setup; `Read-Host` transfers the campaign path between terminals.
+- `node` prints **WAITING** and an evidence path. It waits for this campaign's fresh production pause, then verifies `/health.deploymentRunId` against its execution ID. Error profiles also require `request_faults` mode.
+- Keep this terminal running. It can start before the campaign directory exists; it does not create that directory or dispatch GitHub work.
+
+**Actions 3 - deploy:** back in Controller PowerShell:
+
+```powershell
+py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --confirm-compatible-rollback --pause-after production --pause-ms 60000 --artifacts-dir "$candidateDir"
+```
+
+- This starts BDI with the same 60-second pause used by manual injection. The traffic client notices the journal event automatically; you do not need to race it.
+
+**Expected results:**
+
+- Traffic terminal: **WAITING -> STARTED -> PHASE**, then **ACTIVE** counters every five seconds. Fault requests count as `injected503`; normal requests count as `HTTP201`.
+- `temporary-errors` automatically switches to normal traffic after 75 seconds from traffic start, spanning the pause and initial observation. Do not stop it manually at that transition.
+- BDI continues making its own decisions from real app/Prometheus measurements. A traffic profile name does not guarantee a BDI outcome.
+- On rollback selection, the client stops sending candidate traffic; the rollback worker provides its own verification traffic. A request already in flight may finish. Identity changes also stop the client.
+- Evidence appears next to the campaign in a unique `*-traffic-*` directory: `profile.json`, per-request/phase `traffic.jsonl`, and final `summary.json`. The summary's `stopped` refers to the traffic client, not the BDI outcome; inspect E1 separately.
+- `profile_duration_limit` means the client stopped on its own time cap; if BDI is still active, inspect it rather than treating this as a completed experiment.
+- Attaching after the pause expired, to an old completed campaign, or to the wrong deployment produces a refusal/early stop, not uncorrelated injection. Reset and use a new campaign when appropriate.
+
+**Cleanup:** after BDI finishes, inspect E1 and the traffic evidence. Ctrl+C stops the client early and saves a summary; it does not stop BDI. Repeat B before another comparison. Keep the manual client off while the scenario client runs, unless intentionally testing combined load.
+
+**Staging variant:** replace `production.experiment_mode` with `staging.experiment_mode`, launch with `--pause-after staging`, and add `--entity staging` to the client command (it defaults to port 3001). The client follows that staging execution; a production recovery or any campaign completion stops it.
+
+**Customization:** profiles are in `scripts/traffic-scenarios/`. Copy a JSON profile, adjust phase seconds, target rate (0..10), error fraction (0..1), jitter and seed, then use `--profile path/to/profile.json` instead of `--scenario`. These are payment-app profiles: another app needs its own request body/endpoints and identity/fault integration. This is not a high-concurrency capacity benchmark. True server-latency injection is not available through the current published worker's request-fault interface; normal load fluctuations measure actual response latency but do not manufacture delay.
+
 ### C1. Successful v2 deployment
 
 **Start:** v1 is running in staging and production. Open GitHub **Actions > BDI Entity Execution** and both checkout pages.
@@ -431,7 +508,7 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --
 
 **Start:** v1 running. Prepare Observation and Traffic PowerShell windows **before launching**. Read all of this step first. Enabling `request_faults` does not itself create errors.
 
-**Why traffic must continue:** this script is the client sending payment requests. Without `--continuous`, it sends six requests and exits; the app itself can remain ready. The two-minute latency query needs recent payment samples. Once requests stop, the histogram rate can become zero and p95 undefined, so the controller cannot confirm healthy telemetry. Stopping errors must therefore be followed immediately by **normal traffic**, not silence.
+**Why traffic must continue during this release-verification experiment:** this script is the client sending payment requests. Without `--continuous`, it sends six requests and exits; the app itself can remain ready. The two-minute latency query needs recent payment samples. Once requests stop, the histogram rate can become zero and p95 undefined, so the controller cannot confirm healthy telemetry. Stopping errors must therefore be followed immediately by **normal traffic**, not silence.
 
 Use the direct `node` commands below. In the observed Windows invocation, the npm wrapper did not forward `--continuous`. Direct invocation removes that argument-forwarding dependency. Do not change missing metrics to zero or extend the observation budget just to conceal missing traffic.
 
@@ -763,3 +840,14 @@ py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only
 **Cleanup:** once resolved, check the app in B3, restore v1 with B4 if needed, and use a new campaign directory. Never manually delete pending state to force progress.
 
 Further reference: [framework customization](../bdi-cicd-framework/README.md), [generation and runtime policy](BDI_GENERATION_AND_RUNTIME.md), [setup details](BDI_SETUP.md). The previous manual is retained in [the manual archive](archive/manual-guides/BDI_MANUAL_EXECUTION_GUIDE-before-session-rewrite.md) for history; use this guide's current steps.
+
+
+### F4. Idle application versus insufficient telemetry
+
+No users is a normal operating condition; it does **not** mean the app is broken. Readiness can be healthy while request latency has no recent samples. The current adapter groups missing/undefined request metrics and transport failures into `unavailable`, so the agent cannot distinguish all these causes from that belief alone. The numeric zeros on such an event are placeholders.
+
+The current campaign verifies a **new release**, including its payment path. It reobserves insufficient evidence for a bounded time. Input 01 explicitly includes `telemetry_unknown` as a production recovery trigger, so an unverified candidate can be rolled back even if readiness is good. This means ?could not verify the candidate,? not ?proved the application failed.? After the campaign ends, BDI does not keep monitoring and will not roll back merely because normal user traffic later stops.
+
+For these experiments, synthetic normal payments supply verification evidence even when no people are using the app. The `idle` profile deliberately supplies none; existing worker-generated samples may still be enough to finish before they age out, so idle does not guarantee rollback. Do not replace undefined latency with zero: that would claim unmeasured performance is good.
+
+A future idle-aware policy should distinguish `insufficient_request_samples` from `telemetry_transport_failure`, check exporter freshness/readiness separately, and request bounded synthetic probes before deciding whether verification must stop or recover. That is a contract/agent/environment policy change, not something this traffic client silently changes. The current observation and recovery policy remains intact.

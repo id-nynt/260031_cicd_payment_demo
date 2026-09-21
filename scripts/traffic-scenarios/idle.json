@@ -1,0 +1,13 @@
+{
+  "name": "idle",
+  "description": "No payment traffic: tests insufficient verification evidence, not proof of an unhealthy app.",
+  "seed": 42,
+  "jitter": 0.25,
+  "phases": [
+    {
+      "seconds": 600,
+      "requests_per_second": 0,
+      "error_fraction": 0
+    }
+  ]
+}

@@ -218,3 +218,12 @@ node --test scripts/tests/traffic-scenario.test.mjs
 Python tests cover model/worker/artifact contracts; the traffic tests use temporary mock HTTP servers and journals. Java tests reside under `bdi/src/test/java`; [verify_controller_experiment.py](../bdi-cicd-framework/verify_controller_experiment.py) exercises generated agents through Jason scenarios. The [reporting example](../bdi-cicd-framework/examples/reporting_pipeline.yaml) preserves second-application topology coverage, but does not claim a live reporting deployment. These checks are not proof that current remote permissions, runner availability or live telemetry work; verify those with the manual guide.
 
 Security auditing blocks high/critical production dependency advisories. Source rebuilds are not immutable-image promotion; database rollback, distributed controller coordination, continuous post-campaign monitoring and automatic v2 resumption after rollback are not implemented.
+
+
+## Comparative execution extension
+
+The [comparative guide](BDI_COMPARATIVE_EXECUTION_GUIDE.md) introduces `run_controller.py --mechanism conventional`: an imperative payment pipeline in `ConventionalPolicy` / `ConventionalMain`, using the same execution and raw telemetry adapters without starting Jason. It validates the supported success-goal contract and retains a hashed conventional policy snapshot. This is a scripted control-plane comparator, not a separate native GitHub Actions DAG.
+
+Both mechanisms publish the same `experiment-events.jsonl` schema through `StructuredEventLogger`. `run_experiment.py` launches one operator-selected trial, coordinates the matching traffic profile and fault file, retains a comparison plan and calls `experiment_metrics.py` at completion. Shared deployment-ready, observation, recovery and completion events align traffic timing without depending on AgentSpeak log messages. Normal manual launches still work and the old journal remains available.
+
+These are runtime/instrumentation additions: engineer inputs and the persistent agent are unchanged. Local paired simulation checks validate parity for matched policy cases; they do not establish superiority in live reliability/resilience. Live paired pilots and a frozen experimental revision remain necessary.

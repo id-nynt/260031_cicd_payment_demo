@@ -46,3 +46,11 @@ tasks.register('runController', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     workingDir System.getenv('BDI_RUN_DIR') ?: projectDir
 }
+
+// Procedural comparison baseline; never launches the Jason MAS.
+tasks.register('runConventional', JavaExec) {
+    dependsOn classes
+    mainClass = 'harness.ConventionalMain'
+    classpath = sourceSets.main.runtimeClasspath
+    workingDir System.getenv('BDI_RUN_DIR') ?: projectDir
+}

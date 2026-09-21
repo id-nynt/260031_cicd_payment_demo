@@ -53,6 +53,11 @@ public final class ControllerMain {
     static void verifyCampaign(Path manifest) throws Exception {
         var record = JSON.readTree(Files.readString(manifest));
         Path directory = manifest.toAbsolutePath().getParent();
+        if (record.has("conventional_policy_sha256")) {
+            String actual = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(Files.readAllBytes(directory.resolve("conventional-policy.json"))));
+            if (!actual.equals(record.path("conventional_policy_sha256").asText())) throw new IllegalStateException("Conventional policy snapshot changed");
+        }
         for (var entry : java.util.Map.of("03_workflow_model.yaml", "workflow_sha256",
                 "controller_agent.asl", "generated_agent_sha256", "controller.mas2j", "mas_sha256").entrySet()) {
             String actual = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")

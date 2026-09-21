@@ -135,3 +135,15 @@ test('persistent staging traffic stops when the campaign stops promotion', async
   assert.equal(result.stop_reason, 'campaign_finished');
   assert.equal(result.requests, 1);
 });
+
+test('common experiment events drive traffic for the conventional mechanism too', async t => {
+  const f = await fixture(t);
+  const source=(await readFile(f.journal,'utf8')).trim().split('\n').map(JSON.parse);
+  source[1].event='deployment_ready';
+  for (const e of source) { e.mechanism='conventional'; e.schema_version=1; }
+  await writeFile(join(f.campaign,'experiment-events.jsonl'),source.map(e=>JSON.stringify(e)).join('\n')+'\n');
+  await rm(f.journal);
+  const result=await runScenario({...f,profile:profile([phase(.2)])});
+  assert.ok(result.successful > 0);
+  assert.equal(result.execution_id,'candidate');
+});

@@ -61,6 +61,30 @@ def validate_live_environment(environment):
         raise ModelError('GITHUB_TOKEN is missing or contains whitespace/control characters. Re-enter the token in this window; its value is never printed')
 
 
+def conventional_policy(document):
+    """Reject unsupported contracts rather than silently comparing a different policy."""
+    w, g = document['workflow'], document['goals']
+    normal = ['build', 'test', 'security', 'staging', 'production']
+    expected_edges = [{'from': a, 'to': b} for a, b in zip(normal, normal[1:])]
+    if (w['entities(E)'] != normal + ['rollback'] or w['dependencies(D)'] != expected_edges or
+        w['recovery(R)'] != [{'from': 'production', 'to': 'rollback'}] or
+        set(g['achieve(A)']) != {'production.status == success', 'staging.status == success'} or
+        g.get('duration_unit') != 'milliseconds' or
+        document['observation_schema']['before'] != {'production': 'staging'} or
+        set(document['observation_schema']['after']) != {'staging', 'production', 'rollback'}):
+        raise ModelError('Conventional baseline supports only the payment success-goal topology/observation contract')
+    import re
+    constraints = g.get('maintain(M)', [])
+    duration = [re.fullmatch(r'production.duration <= ([0-9]+)', rule) for rule in constraints]
+    duration = [m for m in duration if m]
+    expected_avoid = [{'condition': 'production.status == success', 'when': f'{e}.status != success'} for e in ('test', 'staging')]
+    if len(constraints) != 2 or 'production.health == healthy' not in constraints or len(duration) != 1 or g.get('avoid(V)') != expected_avoid:
+        raise ModelError('Conventional baseline requires the payment maintenance/avoidance rules')
+    return {'execution': document['execution'], 'max_production_ms': int(duration[0][1]),
+            'thresholds': document['bindings']['thresholds'],
+            'recovery_triggers': document['recovery_policy']['rollback']['run_after']}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-dir", type=Path, default=ROOT, help="persistent generated project directory")
@@ -80,7 +104,10 @@ def main() -> int:
     parser.add_argument("--rejected-dispatch-evidence", type=Path,
                         help="with --reconcile-only: original campaign directory proving an old HTTP rejection or invalid Authorization header")
     parser.add_argument("--gui", action="store_true", help="open Jason MAS Console and keep the final agent mind available until closed")
+    parser.add_argument('--mechanism', choices=['bdi', 'conventional'], default='bdi')
     args = parser.parse_args()
+    if args.mechanism == 'conventional' and (args.gui or args.reconcile_only):
+        raise ModelError('Conventional mode has no MAS GUI; use the shared default --reconcile-only command for interrupted execution')
 
     if args.rejected_dispatch_evidence and (not args.reconcile_only or args.validate_only):
         raise ModelError("--rejected-dispatch-evidence requires --reconcile-only without --validate-only")
@@ -89,6 +116,12 @@ def main() -> int:
         raise ModelError("--reconcile-only cannot be combined with scenario or release options")
     document, model, generation, inputs = validate(args.project_dir)
     project = runtime_settings(document)
+    baseline_policy = conventional_policy(document) if args.mechanism == 'conventional' else None
+    conventional_scenarios = {'healthy', 'transient_test_failure', 'exhausted_test_failure', 'deterministic_test_failure',
+        'staging_failure', 'production_failure', 'dispatch_rejected', 'execution_uncertain', 'reconciled_success',
+        'reconciled_failure', 'production_retry', 'production_unhealthy', 'telemetry_block', 'telemetry_transient', 'production_transient'}
+    if baseline_policy and args.scenario and args.scenario not in conventional_scenarios:
+        raise ModelError('This simulated scenario is not implemented by the conventional adapter')
     if args.validate_only:
         print(f"Project artifacts are consistent: {args.project_dir.resolve()}")
         return 0
@@ -154,6 +187,12 @@ def main() -> int:
 
     repository_root = ROOT.parent
     environment = os.environ.copy()
+    environment['EXPERIMENT_MECHANISM'] = args.mechanism
+    environment['EXPERIMENT_EVENTS_FILE'] = str(artifacts / 'experiment-events.jsonl')
+    if baseline_policy:
+        policy_path = artifacts / 'conventional-policy.json'
+        policy_path.write_text(json.dumps(baseline_policy, indent=2) + '\n', encoding='utf-8')
+        environment['BDI_CONVENTIONAL_POLICY'] = str(policy_path)
     environment["BDI_RECONCILE_ONLY"] = str(args.reconcile_only).lower()
     environment.pop("BDI_REJECTED_DISPATCH_EVIDENCE", None)
     if args.rejected_dispatch_evidence:
@@ -171,7 +210,9 @@ def main() -> int:
     environment["BDI_CAMPAIGN_ID"] = campaign
     environment.setdefault("BDI_RELEASE_SHA", git_sha(repository_root))
     record = json.loads(manifest.read_text(encoding="utf-8"))
-    record.update({"release_sha": environment["BDI_RELEASE_SHA"], "known_good_sha": baseline_sha,
+    if baseline_policy:
+        record['conventional_policy_sha256'] = hashlib.sha256(policy_path.read_bytes()).hexdigest()
+    record.update({"mechanism": args.mechanism, "release_sha": environment["BDI_RELEASE_SHA"], "known_good_sha": baseline_sha,
                    "controller_source_sha": git_sha(repository_root),
                    "workflow_ref": environment.get("BDI_WORKFLOW_REF", "main"),
                    "generated_agent_sha256": hashlib.sha256(agent.read_bytes()).hexdigest(),
@@ -189,7 +230,7 @@ def main() -> int:
         environment["BDI_PAUSE_MILLISECONDS"] = str(args.pause_ms)
     wrapper = ROOT / "bdi" / ("gradlew.bat" if os.name == "nt" else "gradlew")
     # The repository wrapper may be checked out without an executable bit.
-    command = ([str(wrapper)] if os.name == "nt" else ["bash", str(wrapper)]) + ["--no-daemon", "runController"]
+    command = ([str(wrapper)] if os.name == "nt" else ["bash", str(wrapper)]) + ["--no-daemon", "runConventional" if args.mechanism == "conventional" else "runController"]
     process = subprocess.run(command, cwd=ROOT / "bdi", env=environment)
     result_path = Path(environment["BDI_RESULT_FILE"])
     if not result_path.exists():

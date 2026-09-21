@@ -1,0 +1,20 @@
+{
+  "java": {
+    "tests": 40,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "python_tests": 46,
+  "traffic_tests": 13,
+  "simulated_pairs": 8,
+  "live_trials_executed": 0,
+  "source_sha256": {
+    "bdi-cicd-framework\\run_controller.py": "aae1bd6116bfd9521ef3ac73db7e23f3e80ed324edee7ed4803e28b4270a68d6",
+    "bdi-cicd-framework\\run_experiment.py": "734cac0b9b3e068cc01fde23bb95d6699f70a3b5aed5a417163a918b65355423",
+    "bdi-cicd-framework\\experiment_metrics.py": "573d49767f5f6c8d36ce499f7bb426dffa121bd8e9ef07e583b6781de6cb7e91",
+    "bdi-cicd-framework\\bdi\\harness\\ConventionalPolicy.java": "5bbc75ed8e098cbb513145d3f1b7395796005419be25fa79d63aacd46a757584",
+    "bdi-cicd-framework\\bdi\\harness\\ConventionalMain.java": "48b9099cb80ec5625acee64b1826e95f734f0da4cecd7f78cded05d4a05f43ce",
+    "bdi-cicd-framework\\bdi\\harness\\StructuredEventLogger.java": "23a6967cab6df1df1fa5db48549259652f1d4e750331d679720cbc254562ef49"
+  }
+}

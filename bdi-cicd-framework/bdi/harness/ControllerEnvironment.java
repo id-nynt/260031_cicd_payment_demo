@@ -65,7 +65,11 @@ public final class ControllerEnvironment extends Environment {
                 case "run_job" -> runJob(action);
                 case "observe_telemetry" -> observeTelemetry(action);
                 case "reconcile_job" -> reconcileJob(action);
-                case "accept_telemetry" -> { telemetry.put(atom(action, 0), atom(action, 1)); yield true; }
+                case "accept_telemetry" -> {
+                    telemetry.put(atom(action, 0), atom(action, 1));
+                    journal.event("health_accepted", null, Map.of("entity", atom(action, 0), "decision", atom(action, 1)));
+                    yield true;
+                }
                 case "finish" -> finish(action);
                 case "record_recovery" -> {
                     journal.event("bdi_recovery_decision", null, Map.of("source", atom(action, 0),
@@ -197,6 +201,7 @@ public final class ControllerEnvironment extends Environment {
         String recoveryOutcome = atom(action, 1);
         Files.createDirectories(resultFile.toAbsolutePath().getParent());
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("mechanism", "bdi");
         result.put("campaign_id", value("BDI_CAMPAIGN_ID", ""));
         result.put("generation_manifest", value("BDI_MANIFEST_FILE", ""));
         result.put("timestamp", Instant.now().toString());

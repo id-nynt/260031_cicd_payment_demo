@@ -126,3 +126,5 @@ Only confirm compatible rollback when the retained database is compatible with t
 If interrupted, close the old console and run `python bdi-cicd-framework/run_controller.py --reconcile-only` with the same project and GitHub configuration. It checks the old remote execution, without resuming or dispatching. Do not delete pending records or start overlapping campaigns to bypass uncertainty.
 
 For the payment demo's detailed setup, traffic experiments and v1 restoration, follow the [manual guide](../docs/BDI_MANUAL_EXECUTION_GUIDE.md). For supported policy, telemetry contracts and implementation details, read [generation and runtime](../docs/BDI_GENERATION_AND_RUNTIME.md).
+
+For matched BDI versus conventional trials with automatic traffic and metric extraction, see the [comparative execution guide](../docs/BDI_COMPARATIVE_EXECUTION_GUIDE.md).

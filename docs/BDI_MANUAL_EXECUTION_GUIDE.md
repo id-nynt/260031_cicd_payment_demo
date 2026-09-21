@@ -2,6 +2,8 @@
 
 Run commands yourself, one step at a time. There is no end-to-end automation script. This guide uses the existing payment repository, published worker/v2 tags and verified v1 receipt. Replace those selections only when intentionally starting a different experiment.
 
+For the research comparison, use the [comparative execution guide](BDI_COMPARATIVE_EXECUTION_GUIDE.md): one manually launched trial with automatic fault setup, traffic timing and metric extraction, supporting BDI and the conventional scripted controller. The steps below remain available for individual/manual experiments.
+
 ## Choose your route
 
 | When | Steps |

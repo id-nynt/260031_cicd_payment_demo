@@ -28,9 +28,13 @@ export function seededRandom(seed) {
 
 async function journal(path) {
   try {
-    const text = await readFile(path, 'utf8');
+    let text;
+    try { text = await readFile(join(dirname(path), 'experiment-events.jsonl'), 'utf8'); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; text = await readFile(path, 'utf8'); }
     // A concurrent writer may not have finished the last JSONL record yet.
-    return text.split('\n').slice(0, -1).filter(line => line.trim()).map(line => JSON.parse(line));
+    return text.split('\n').slice(0, -1).filter(line => line.trim()).map(line => { const e = JSON.parse(line);
+      e.event = ({ deployment_ready: 'controller_pause', recovery_started: 'bdi_recovery_decision', campaign_finished: 'controller_finished' })[e.event] ?? e.event;
+      return e; });
   } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
 }
 

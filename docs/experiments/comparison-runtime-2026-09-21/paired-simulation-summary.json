@@ -1,0 +1,522 @@
+[
+  {
+    "case": "healthy",
+    "mechanism": "bdi",
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "exit_code": 0
+  },
+  {
+    "case": "healthy",
+    "mechanism": "conventional",
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "exit_code": 0
+  },
+  {
+    "case": "transient_test_failure",
+    "mechanism": "bdi",
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "test",
+        2
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "exit_code": 0
+  },
+  {
+    "case": "transient_test_failure",
+    "mechanism": "conventional",
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "test",
+        2
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "exit_code": 0
+  },
+  {
+    "case": "exhausted_test_failure",
+    "mechanism": "bdi",
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "test",
+        2
+      ]
+    ],
+    "health": {},
+    "exit_code": 1
+  },
+  {
+    "case": "exhausted_test_failure",
+    "mechanism": "conventional",
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "test",
+        2
+      ]
+    ],
+    "health": {},
+    "exit_code": 1
+  },
+  {
+    "case": "production_failure",
+    "mechanism": "bdi",
+    "outcome": "stopped",
+    "recovery": "restored",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ],
+      [
+        "rollback",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow",
+      "rollback": "allow"
+    },
+    "exit_code": 1
+  },
+  {
+    "case": "production_failure",
+    "mechanism": "conventional",
+    "outcome": "stopped",
+    "recovery": "restored",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ],
+      [
+        "rollback",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow",
+      "rollback": "allow"
+    },
+    "exit_code": 1
+  },
+  {
+    "case": "execution_uncertain",
+    "mechanism": "bdi",
+    "outcome": "unknown",
+    "recovery": "unresolved",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow"
+    },
+    "exit_code": 2
+  },
+  {
+    "case": "execution_uncertain",
+    "mechanism": "conventional",
+    "outcome": "unknown",
+    "recovery": "unresolved",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow"
+    },
+    "exit_code": 2
+  },
+  {
+    "case": "telemetry_block",
+    "mechanism": "bdi",
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "block"
+    },
+    "exit_code": 1
+  },
+  {
+    "case": "telemetry_block",
+    "mechanism": "conventional",
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "block"
+    },
+    "exit_code": 1
+  },
+  {
+    "case": "production_transient",
+    "mechanism": "bdi",
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "exit_code": 0
+  },
+  {
+    "case": "production_transient",
+    "mechanism": "conventional",
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "exit_code": 0
+  },
+  {
+    "case": "production_unhealthy",
+    "mechanism": "bdi",
+    "outcome": "stopped",
+    "recovery": "restored",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ],
+      [
+        "rollback",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow",
+      "production": "block",
+      "rollback": "allow"
+    },
+    "exit_code": 1
+  },
+  {
+    "case": "production_unhealthy",
+    "mechanism": "conventional",
+    "outcome": "stopped",
+    "recovery": "restored",
+    "actions": [
+      [
+        "build",
+        1
+      ],
+      [
+        "test",
+        1
+      ],
+      [
+        "security",
+        1
+      ],
+      [
+        "staging",
+        1
+      ],
+      [
+        "production",
+        1
+      ],
+      [
+        "rollback",
+        1
+      ]
+    ],
+    "health": {
+      "staging": "allow",
+      "production": "block",
+      "rollback": "allow"
+    },
+    "exit_code": 1
+  }
+]

@@ -8,13 +8,15 @@ This document explains the implementation in this repository. Use the [framework
 
 | Artifact | Owner and purpose |
 |---|---|
-| [models/01_pipeline.yaml](../bdi-cicd-framework/models/01_pipeline.yaml) | Engineer input: logical jobs, dependencies, worker mappings, retry safety, recovery, observation budgets and telemetry bindings |
-| [models/02_goal.yaml](../bdi-cicd-framework/models/02_goal.yaml) | Engineer input: achievements, maintenance/avoidance rules, error-rate and latency thresholds |
+| [models/01_pipeline.yaml](../bdi-cicd-framework/models/01_pipeline.yaml) | Engineer input: logical jobs, dependencies, worker/environment mappings, recovery relationships and max_retries |
+| [models/02_goal.yaml](../bdi-cicd-framework/models/02_goal.yaml) | Engineer input: achievements and maintenance/avoidance rules |
+| [config/controller_policy.yaml](../bdi-cicd-framework/config/controller_policy.yaml) | Explicit timing, retry safety, observation placement, recovery safeguards and thresholds |
+| [config/runtime_bindings.yaml](../bdi-cicd-framework/config/runtime_bindings.yaml) | App readiness/Prometheus URLs, correlated queries and freshness |
 | [models/03_workflow_model.yaml](../bdi-cicd-framework/models/03_workflow_model.yaml) | Generated schema-2 project contract; sole project-specific input to agent generation |
 | [bdi/controller_agent.asl](../bdi-cicd-framework/bdi/controller_agent.asl) | Generated AgentSpeak beliefs/goals plus the executable generic policy |
 | [models/generation-manifest.json](../bdi-cicd-framework/models/generation-manifest.json) | Required input, generator and artifact hashes; not a disposable build file |
 
-Inputs 01 and 02 are the configuration sources of truth. Generate explicitly once per input/generator revision and retain the generated outputs together with that revision. Do not edit 03 or the agent manually. Starting a campaign reuses these artifacts; it does not generate a new project agent.
+Inputs 01, 02, `config/controller_policy.yaml` and `config/runtime_bindings.yaml` are the four configuration sources of truth. Policy owns explicit observation/retry/reconciliation budgets, retry safety, observation placement, recovery safeguards and thresholds; bindings own URLs, metric queries and freshness. Missing required settings fail validation; no silent 18-observation or omitted-retry-safe defaults remain. Generate explicitly once per input/generator revision and retain the generated outputs together with that revision. Do not edit 03 or the agent manually. Starting a campaign reuses these artifacts; it does not generate a new project agent.
 
 The [commented templates](../bdi-cicd-framework/templates/models/01_pipeline.yaml) provide forms for another app. Template 03 is an annotated reference shape, not another engineer input. Actual shell steps, services, runner labels and deployment commands remain in the GitHub worker. Input 01 does not accept embedded `steps`, `services` or `runs-on`.
 
@@ -22,7 +24,7 @@ The [commented templates](../bdi-cicd-framework/templates/models/01_pipeline.yam
 
 | Stage | Implemented component | Result |
 |---|---|---|
-| Compile configuration | [generate_project.py](../bdi-cicd-framework/generate_project.py), [project_artifacts.py](../bdi-cicd-framework/project_artifacts.py), [parser/workflow_model.py](../bdi-cicd-framework/parser/workflow_model.py) | Validate 01/02 and save 03 |
+| Compile configuration | [generate_project.py](../bdi-cicd-framework/generate_project.py), [project_artifacts.py](../bdi-cicd-framework/project_artifacts.py), [parser/workflow_model.py](../bdi-cicd-framework/parser/workflow_model.py) | Resolve and validate all four sources, then save 03 |
 | Generate agent | `generate_agent` reloads saved 03 and uses [controller_generic.asl](../bdi-cicd-framework/generator/controller_generic.asl) | Persistent `controller_agent.asl` and generation manifest |
 | Start campaign | [run_controller.py](../bdi-cicd-framework/run_controller.py) | Validate artifacts, create fresh evidence directory and exact snapshots, prepare Java environment |
 | Start Jason | [ControllerMain.java](../bdi-cicd-framework/bdi/harness/ControllerMain.java), [controller.mas2j](../bdi-cicd-framework/bdi/controller.mas2j) | Check campaign snapshot integrity, acquire controller lock, load the archived agent |
@@ -45,9 +47,9 @@ py -3 -B bdi-cicd-framework/run_controller.py --validate-only
 py -3 -B bdi-cicd-framework/run_controller.py --gui --scenario healthy
 ```
 
-For another project, generation accepts `--project-dir`, `--pipeline` and `--goal`; subsequent launches use that `--project-dir`. Specify both input paths when generating a separate project. Runtime rejects stale/missing/inconsistent artifacts with a regeneration message; it never silently migrates or regenerates them.
+For another project, generation accepts `--project-dir`, `--pipeline`, `--goal`, `--policy` and `--bindings`; subsequent launches use that `--project-dir`. By default, model/config paths resolve under the chosen project directory. Custom source locations must be supplied explicitly. Generation manifest schema 2 hashes all four inputs; the workflow contract remains schema 2, with all settings resolved and no runtime profile overrides. Runtime rejects stale/missing/inconsistent artifacts with a regeneration message; it never silently migrates or regenerates them.
 
-App-only commits, fault-file changes and traffic-profile changes do not require regeneration. Changes to input bindings, goals, generator code or the generic policy do. A runtime-only implementation change is distinct from a project-generation change.
+App-only commits, fault-file changes and traffic-profile changes do not require regeneration. Changes to either model, either configuration file, generator code or the generic policy do. BDI snapshots all four inputs; native preparation snapshots the same validated sources. Pairing keys include their hashes as well as the resolved contract/policy. A runtime-only implementation change is distinct from a project-generation change.
 
 ## 3. Mapping the workflow model to agent beliefs
 
@@ -70,13 +72,13 @@ build -> test -> security -> staging -> production
 production -- conditional verified recovery --> rollback
 ```
 
-Rollback is conditional, not a successful-path dependency. Input 01 enables health observation after staging, production and rollback, and requires accepted staging health before production. Input 02 requires staging and production success, production health, production duration <= 1,800,000 ms, and forbids production success without test/staging success.
+Rollback is conditional, not a successful-path dependency. The controller policy enables health observation after staging, production and rollback, and requires accepted staging health before production. Input 02 requires staging and production success, production health, production duration <= 1,800,000 ms, and forbids production success without test/staging success.
 
 O includes execution statuses `success`, `failure`, `transient_failure`, `dispatch_rejected`, `cancelled`, `timeout`, `skipped`, `unknown`; duration is milliseconds; health values are `healthy`, `unhealthy`, `unknown`. The framework adds distinctions that GitHub job conclusions alone do not provide. These are not free-form app-defined properties.
 
 The compact YAML does not duplicate its capability dictionary. `expand_workflow` derives and validates entities, permitted action targets, observation signatures, recovery pairs and goal rules from saved 03. [WorkflowRuntime.java](../bdi-cicd-framework/bdi/harness/WorkflowRuntime.java) adapts that contract for `ControllerProjectConfig` and `ProjectConfig`; it does not schedule jobs.
 
-Validation recompiles 01/02, compares the saved contract, verifies hashes, and compares the complete generated agent against its deterministic projection plus generic policy. It detects added/missing entities, altered actions, observations, recovery or goal rules. Changing only the agent hash cannot make an inconsistent agent valid. This is consistency checking, not a cryptographic trust boundary against a deliberately replaced generator.
+Validation resolves and recompiles all four sources, compares the saved contract, verifies hashes, and compares the complete generated agent against its deterministic projection plus generic policy. It detects added/missing entities, altered actions, observations, recovery or goal rules. Changing only the agent hash cannot make an inconsistent agent valid. This is consistency checking, not a cryptographic trust boundary against a deliberately replaced generator.
 
 ## 4. How the agent pursues goals
 
@@ -145,7 +147,7 @@ Recovery rebuilds verified source, observes the restored execution identity and 
 
 ## 6. Payment telemetry and controllable traffic
 
-The [app config](../src/config.ts), [instrumentation](../src/telemetry.ts), [Compose file](../docker-compose.yml), [OTel collector](../otel-collector.yaml) and [Prometheus configuration](../prometheus.yml) define/export the actual metrics. The worker supplies host ports and `CI_RUN_ID=execution_id`. Input 01 tells the controller where and how to read them; it does not create app endpoints.
+The [app config](../src/config.ts), [instrumentation](../src/telemetry.ts), [Compose file](../docker-compose.yml), [OTel collector](../otel-collector.yaml) and [Prometheus configuration](../prometheus.yml) define/export the actual metrics. The worker supplies host ports and `CI_RUN_ID=execution_id`. Runtime bindings tell the controller where and how to read them; it does not create app endpoints.
 
 | Environment | App | Prometheus | Collector metrics | Database |
 |---|---|---|---|---|
@@ -155,13 +157,13 @@ The [app config](../src/config.ts), [instrumentation](../src/telemetry.ts), [Com
 
 `/ready` reports readiness via HTTP 200/503. `/health` reports `deploymentRunId` and `experimentMode`; the ID is an execution UUID, not a source SHA. Campaign receipts map execution IDs to source revisions.
 
-Input 01 filters PromQL with `ci_run_id="{{run_id}}"`. It derives error fraction from `payment_http_errors_total` / `payment_http_requests_total`, p95 milliseconds from `payment_http_request_duration_milliseconds_bucket`, and readiness/sample age from `payment_service_ready`. Request metrics use a two-minute window. Source sample age is limited to 30 seconds. Input 02 rejects error fractions above 0.05 and p95 above 500 ms. The adapter rejects missing, stale or nonfinite measurements; Jason decides what those observations mean for the campaign.
+`config/runtime_bindings.yaml` filters PromQL with `ci_run_id="{{run_id}}"`. It derives error fraction from `payment_http_errors_total` / `payment_http_requests_total`, p95 milliseconds from `payment_http_request_duration_milliseconds_bucket`, and readiness/sample age from `payment_service_ready`. Request metrics use a two-minute window. Source sample age is limited to 30 seconds. `config/controller_policy.yaml` rejects error fractions above 0.05 and p95 above 500 ms. The adapter rejects missing, stale or nonfinite measurements; Jason decides what those observations mean for the campaign.
 
 ### No traffic is not proof of a broken app
 
 An idle app can be ready while recent request latency is undefined. The current `ProjectTelemetryProvider.measure()` catches measurement errors and reports `data_status: unavailable`, with numeric zero placeholders. Those zeros are not accepted healthy measurements. The journal does not identify the individual failed metric, and this observation does not distinguish insufficient request samples from every transport/query failure.
 
-This campaign verifies a new release's payment path. If that evidence remains insufficient, input 01's `telemetry_unknown` recovery trigger permits production rollback. The meaning is **candidate not verified**, not **application proved unhealthy**. Normal synthetic requests maintain verification evidence even without real users. No continuing agent runs after campaign completion, so later user inactivity does not cause automatic rollback.
+This campaign verifies a new release's payment path. If that evidence remains insufficient, the controller policy's `telemetry_unknown` recovery trigger permits production rollback. The meaning is **candidate not verified**, not **application proved unhealthy**. Normal synthetic requests maintain verification evidence even without real users. No continuing agent runs after campaign completion, so later user inactivity does not cause automatic rollback.
 
 An idle-aware policy could separately represent insufficient request samples, exporter/transport failure and readiness, then request bounded synthetic probes. That distinction is not implemented in the current agent contract. Do not silently replace undefined latency with zero or disable freshness/correlation checks.
 

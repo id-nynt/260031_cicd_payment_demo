@@ -94,6 +94,24 @@ class NativeWorkflowTest(unittest.TestCase):
                 events=[json.loads(line) for line in (root/'result/experiment-events.jsonl').read_text().splitlines()]
                 self.assertTrue(any(e.get('status')=='transient_failure' for e in events))
 
+    def test_native_preparation_preserves_four_sources_and_pairing_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            env=dict(RELEASE_SHA='a'*40,SCENARIO='healthy',SEED='42',BASELINE='true',
+                GITHUB_REPOSITORY='o/r',GITHUB_SHA='b'*40,GITHUB_OUTPUT=str(root/'outputs'))
+            with patch.dict(native.os.environ,env),patch.object(native,'api',return_value={'sha':'a'*40}):
+                native.prepare(root/'evidence')
+            plan=json.loads((root/'evidence/plan.json').read_text())
+            self.assertEqual({'pipeline','goal','policy','bindings'},set(plan['configuration_inputs']))
+            for name,entry in plan['configuration_inputs'].items():
+                self.assertEqual(entry['sha256'],native.digest(root/'evidence'/(name+'.input.yaml')))
+            from experiment_protocol import protocol_key
+            hashes={k:v['sha256'] for k,v in plan['configuration_inputs'].items()}
+            profile=native.digest(ROOT/'scripts/traffic-scenarios/healthy.json')
+            self.assertEqual(plan['protocol_key'],protocol_key('healthy',42,'a'*40,'','b'*40,
+                native.digest(ROOT/'bdi-cicd-framework/models/03_workflow_model.yaml'),self.policy,
+                {'selected':profile,'healthy':profile},hashes))
+
     def test_preparation_rejects_unverified_rollback_receipt(self):
         env=dict(RELEASE_SHA='a'*40,SCENARIO='healthy',SEED='42',BASELINE='false',CONFIRM_ROLLBACK='true',KNOWN_GOOD_RECEIPT='{}',GITHUB_REPOSITORY='o/r')
         with tempfile.TemporaryDirectory() as tmp,patch.dict(native.os.environ,env),patch.object(native,'api',return_value={'sha':'a'*40}):

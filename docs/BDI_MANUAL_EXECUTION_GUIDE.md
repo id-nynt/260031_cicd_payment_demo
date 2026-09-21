@@ -1,5 +1,7 @@
 # Manual experiment: deploy v1 to v2 with BDI
 
+**Configuration lifecycle:** edit the two models plus `bdi-cicd-framework/config/controller_policy.yaml` and `runtime_bindings.yaml`; regenerate explicitly after changing any of them. Missing policy fields fail validation. Campaign startup reuses the saved schema-2 contract and agent; neither approach regenerates them. Publish the complete migrated control revision for native trials and select the same revision for BDI; existing application v1/v2 tags and verified release receipts remain usable.
+
 Run commands yourself, one step at a time. C0-C5 retain manual execution/injection; C6 manually launches one comparative trial with automatic fault timing, traffic and evidence. This guide uses the existing payment repository, published worker/v2 tags and verified v1 receipt. Replace those selections only when intentionally starting a different experiment.
 
 For the research comparison, use the [comparative execution guide](BDI_COMPARATIVE_EXECUTION_GUIDE.md): one manually launched trial with automatic fault setup, traffic timing and metric extraction, supporting BDI and the native GitHub Actions pipeline. Both approaches have the same 11-case catalog; use C6 below for paired trials. The conventional activation walkthrough is [here](CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md). The steps below remain available for individual/manual experiments.
@@ -111,7 +113,7 @@ npm run traffic:experiment -- normal 6
 
 ### A3. Generate once and rehearse the BDI agent
 
-**Start:** Controller PowerShell. Review `bdi-cicd-framework/models/01_pipeline.yaml` and `02_goal.yaml`; keep normal staging/production success goals for Part C.
+**Start:** Controller PowerShell. Review `bdi-cicd-framework/models/01_pipeline.yaml`, `02_goal.yaml`, `config/controller_policy.yaml` and `config/runtime_bindings.yaml`; keep normal staging/production success goals for Part C.
 
 **Actions:** run:
 
@@ -775,7 +777,7 @@ py -3 -B bdi-cicd-framework/run_experiment.py --mechanism bdi --case $case --rel
 
 ```powershell
 $negativeProject = 'bdi-cicd-framework/projects/staging-failure'
-py -3 -B bdi-cicd-framework/generate_project.py --project-dir "$negativeProject" --pipeline bdi-cicd-framework/models/01_pipeline.yaml --goal bdi-cicd-framework/examples/staging_failure_goal.yaml
+py -3 -B bdi-cicd-framework/generate_project.py --project-dir "$negativeProject" --pipeline bdi-cicd-framework/models/01_pipeline.yaml --goal bdi-cicd-framework/examples/staging_failure_goal.yaml --policy bdi-cicd-framework/config/controller_policy.yaml --bindings bdi-cicd-framework/config/runtime_bindings.yaml
 if ($LASTEXITCODE -ne 0) { throw 'Negative-goal generation failed' }
 $env:BDI_RELEASE_SHA = $v2Sha
 $candidateDir = 'bdi-cicd-framework/runs/' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '-expected-staging-failure'

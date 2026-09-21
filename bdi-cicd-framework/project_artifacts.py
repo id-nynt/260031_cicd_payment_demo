@@ -24,17 +24,20 @@ def paths(project):
     return project / 'models/03_workflow_model.yaml', project / 'bdi/controller_agent.asl', project / 'models/generation-manifest.json'
 
 
-def generate(project, pipeline, goal):
+def generate(project, pipeline, goal, policy=None, bindings=None):
     project = Path(project).resolve()
     workflow, agent, manifest = paths(project)
-    document, _ = compile_inputs(pipeline, goal)
+    policy = Path(policy) if policy is not None else project / 'config/controller_policy.yaml'
+    bindings = Path(bindings) if bindings is not None else project / 'config/runtime_bindings.yaml'
+    sources = dict(pipeline=pipeline, goal=goal, policy=policy, bindings=bindings)
+    document, _ = compile_inputs(**dict(pipeline=pipeline, goals=goal, policy=policy, bindings=bindings))
     workflow.parent.mkdir(parents=True, exist_ok=True)
     agent.parent.mkdir(parents=True, exist_ok=True)
-    workflow.write_text('# Generated from 01_pipeline.yaml and 02_goal.yaml; do not edit.\n' + yaml.safe_dump(document, sort_keys=False), encoding='utf-8', newline='\n')
+    workflow.write_text('# Generated from 01_pipeline.yaml, 02_goal.yaml, controller_policy.yaml and runtime_bindings.yaml; do not edit.\n' + yaml.safe_dump(document, sort_keys=False), encoding='utf-8', newline='\n')
     generate_agent(workflow, ROOT / 'generator/controller_generic.asl', agent)
-    record = {'schema_version': 1,
+    record = {'schema_version': 2,
               'inputs': {name: {'path': os.path.relpath(Path(path).resolve(), project).replace('\\', '/'),
-                                'sha256': digest(path)} for name, path in [('pipeline', pipeline), ('goal', goal)]},
+                                'sha256': digest(path)} for name, path in sources.items()},
               'generator_sha256': {name: digest(ROOT / name) for name in GENERATOR_FILES},
               'workflow_sha256': digest(workflow), 'generated_agent_sha256': digest(agent)}
     # Written last: partial/interrupted generation will fail consistency validation.
@@ -48,10 +51,12 @@ def validate(project):
     workflow, agent, manifest = paths(project)
     try:
         record = json.loads(manifest.read_text(encoding='utf-8'))
-        if record['schema_version'] != 1:
+        if record['schema_version'] != 2:
             raise ModelError('unsupported generation manifest')
         inputs = {}
-        for name in ('pipeline', 'goal'):
+        if set(record['inputs']) != {'pipeline','goal','policy','bindings'}:
+            raise ModelError('Four source inputs are required in generation provenance')
+        for name in ('pipeline', 'goal', 'policy', 'bindings'):
             entry = record['inputs'][name]
             inputs[name] = project / entry['path']
             if digest(inputs[name]) != entry['sha256']:
@@ -62,11 +67,11 @@ def validate(project):
             if digest(path) != record[key]:
                 raise ModelError(f'{path.name} changed')
         document, model = load_workflow(workflow)
-        if document != compile_inputs(inputs['pipeline'], inputs['goal'])[0]:
+        if document != compile_inputs(inputs['pipeline'], inputs['goal'], inputs['policy'], inputs['bindings'])[0]:
             raise ModelError('workflow disagrees with engineer inputs')
         validate_agent(workflow, ROOT / 'generator/controller_generic.asl', agent)
         return document, model, record, inputs
     except (OSError, ValueError, KeyError, TypeError, ModelError) as error:
         raise ModelError(f'Missing, stale or inconsistent project artifacts: {error}. '
                          'Run python bdi-cicd-framework/generate_project.py with the intended '
-                         '--project-dir, --pipeline and --goal before starting a campaign.') from error
+                         '--project-dir, --pipeline, --goal, --policy and --bindings before starting a campaign.') from error

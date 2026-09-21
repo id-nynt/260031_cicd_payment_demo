@@ -1,4 +1,4 @@
-"""Canonical two-input compiler and self-contained, validated workflow IR.
+"""Canonical four-source compiler and self-contained, validated workflow IR.
 
 Agent generation reads only the serialized IR plus the framework policy template.
 No source input or project manifest is consulted by generate_agent().
@@ -70,11 +70,11 @@ def _compile_expanded(pipeline, goals):
             raise ModelError(f"Missing {field}")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+\.ya?ml",p['workflow_file']):
         raise ModelError("workflow_file must be a workflow filename")
-    defaults = {'max_retries':0,'observation_attempts':18,'observation_interval_seconds':5,
-                'reconciliation_attempts':3,'reconciliation_interval_seconds':5,
-                'retry_interval_seconds':5,'observation_timeout_seconds':180,'healthy_observations':2}
-    keys(p['execution'], defaults, {'max_retries'})
-    execution = defaults | p['execution']
+    execution_fields = {'max_retries','observation_attempts','observation_interval_seconds',
+                        'reconciliation_attempts','reconciliation_interval_seconds',
+                        'retry_interval_seconds','observation_timeout_seconds','healthy_observations'}
+    keys(p['execution'], execution_fields, execution_fields)
+    execution = deepcopy(p['execution'])
     for key, value in execution.items():
         integer(value, 1 if key.endswith('attempts') or key in ('observation_timeout_seconds','healthy_observations') else 0,
                 3600 if key == 'observation_timeout_seconds' else 120 if key.endswith('attempts') or key == 'healthy_observations' else 60)
@@ -86,8 +86,7 @@ def _compile_expanded(pipeline, goals):
     normalized = {}; aliases = {}; environments = {}; sources = {}
     for name, job in jobs.items():
         atom(name)
-        keys(job, {'needs','job_name','environment','observe_before','observe_after','retry_safe'}, {'job_name'})
-        job.setdefault('retry_safe', False)
+        keys(job, {'needs','job_name','environment','observe_before','observe_after','retry_safe'}, {'job_name','retry_safe'})
         if type(job['retry_safe']) is not bool: raise ModelError('retry_safe must be boolean')
         needs = job.get('needs', [])
         if isinstance(needs, str): needs = [needs]
@@ -213,8 +212,75 @@ def compile_documents(pipeline, goals):
     return compact_workflow(expanded, model), model
 
 
-def compile_inputs(pipeline, goals):
-    return compile_documents(read(pipeline), read(goals))
+def resolve_documents(pipeline, goals, policy, bindings):
+    """Resolve explicit source ownership; never silently fill policy values."""
+    p, g, policy, bindings = map(deepcopy, (pipeline, goals, policy, bindings))
+    keys(p, {'name','project','workflow_file','execution','jobs','recovery'},
+         {'name','project','workflow_file','execution','jobs','recovery'})
+    keys(g, {'goal'}, {'goal'})
+    keys(p['execution'], {'max_retries'}, {'max_retries'})
+    keys(policy, {'execution','observation','recovery_policy','telemetry_constraints'},
+         {'execution','observation','recovery_policy'})
+    fields = {'observation_attempts','observation_interval_seconds','observation_timeout_seconds',
+              'healthy_observations','retry_interval_seconds','reconciliation_attempts',
+              'reconciliation_interval_seconds','retry_safe'}
+    keys(policy['execution'], fields, fields)
+    keys(bindings, {'telemetry'})
+    jobs, recoveries = p['jobs'], p['recovery']
+    if not isinstance(jobs,dict) or not isinstance(recoveries,dict) or set(jobs)&set(recoveries):
+        raise ModelError('Normal and recovery entities must be disjoint mappings')
+    entities = set(jobs)|set(recoveries)
+    def entity_list(value, allowed, label):
+        if (not isinstance(value,list) or any(not isinstance(x,str) or x not in allowed for x in value)
+                or len(value)!=len(set(value))):
+            raise ModelError(f'{label} must be an explicit unique list of known allowed entities')
+        return value
+    safe = entity_list(policy['execution'].pop('retry_safe'), set(jobs), 'retry_safe')
+    observation=policy['observation']
+    keys(observation, {'before','after'}, {'before','after'})
+    after=entity_list(observation['after'], entities, 'observation.after')
+    before=observation['before']
+    if (not isinstance(before,dict) or any(target not in jobs or not isinstance(source,str)
+            or source not in jobs for target,source in before.items())):
+        raise ModelError('observation.before must map known normal entities')
+    rp=policy['recovery_policy']
+    if not isinstance(rp,dict) or set(rp)!=set(recoveries):
+        raise ModelError('Recovery policy must exactly match pipeline recovery entities')
+    for name,job in jobs.items():
+        keys(job, {'needs','job_name','environment'}, {'job_name'})
+        job['retry_safe']=name in safe
+        if name in after: job['observe_after']=True
+        if name in before: job['observe_before']=before[name]
+    for name,recovery in recoveries.items():
+        keys(recovery, {'from','job_name','environment'}, {'from','job_name','environment'})
+        fields={'run_after','release_source','retryable','verify_health','terminal_on_success','terminal_on_failure'}
+        keys(rp[name],fields,fields)
+        rule=rp[name]
+        if (rule['release_source']!='known_good' or rule['retryable'] is not False
+                or rule['verify_health'] is not True or rule['terminal_on_success']!='restored'
+                or rule['terminal_on_failure']!='failed' or name not in after):
+            raise ModelError('Recovery requires verified known_good, no retry, post-observation and restored/failed outcomes')
+        recovery.update({'on':rule['run_after'],'release_source':rule['release_source'],'observe_after':True})
+    p['execution'].update(policy['execution'])
+    if 'telemetry' in bindings: p['telemetry']=bindings['telemetry']
+    if 'telemetry_constraints' in policy: g['telemetry_constraints']=policy['telemetry_constraints']
+    return p,g
+
+
+def compile_sources(pipeline, goals, policy, bindings):
+    return compile_documents(*resolve_documents(pipeline,goals,policy,bindings))
+
+
+def configuration_paths(pipeline, policy=None, bindings=None):
+    parent=Path(pipeline).resolve().parent
+    project=parent.parent if parent.name=='models' else parent
+    return (Path(policy) if policy is not None else project/'config/controller_policy.yaml',
+            Path(bindings) if bindings is not None else project/'config/runtime_bindings.yaml')
+
+
+def compile_inputs(pipeline, goals, policy=None, bindings=None):
+    policy,bindings=configuration_paths(pipeline,policy,bindings)
+    return compile_sources(read(pipeline),read(goals),read(policy),read(bindings))
 
 
 def expand_workflow(doc):

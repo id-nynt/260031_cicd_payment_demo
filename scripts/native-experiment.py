@@ -18,7 +18,7 @@ import urllib.parse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'bdi-cicd-framework'))
-from project_artifacts import validate
+from project_artifacts import validate, digest
 from run_controller import conventional_policy, known_good_sha
 from workflow_model import runtime_settings
 from experiment_metrics import extract
@@ -46,6 +46,8 @@ def configuration():
 
 def prepare(directory):
     doc, model, policy = configuration()
+    checked, _, generation, sources = validate(ROOT/'bdi-cicd-framework')
+    if checked != doc: raise ValueError('Project changed during preparation')
     sha, case = os.environ['RELEASE_SHA'], os.environ['SCENARIO']
     if not re.fullmatch('[0-9a-f]{40}', sha): raise ValueError('release_sha must be a full published commit SHA')
     if case not in CATALOG: raise ValueError('Unknown scenario')
@@ -65,15 +67,26 @@ def prepare(directory):
     # Native DAG currently has one explicit retry node. Reject changed retry contracts.
     if policy['execution']['max_retries'] != 1 or policy['execution']['retry_interval_seconds'] != 5 or set(policy['execution']['retry_safe']) != {'build','test','security','staging','production'}: raise ValueError('Native workflow requires max_retries=1')
     comparison = dict(case=case, seed=seed, candidate=sha, baseline=good, policy=policy,
-        worker_sha=os.environ['GITHUB_SHA'], contract_sha256=hashlib.sha256((ROOT/'bdi-cicd-framework/models/03_workflow_model.yaml').read_bytes()).hexdigest())
+        worker_sha=os.environ['GITHUB_SHA'], contract_sha256=digest(ROOT/'bdi-cicd-framework/models/03_workflow_model.yaml'))
     write(directory/'plan.json', dict(case=case, seed=seed, mechanism='github-actions', comparison=comparison,
         thresholds=policy['thresholds'], traffic_required=bool(CATALOG[case]['profile']),
         fault_expected=bool(CATALOG[case]['profile'] and 'errors' in CATALOG[case]['profile']),
-        comparison_key=None, native_workflow=True, protocol_key=protocol_key(case,seed,sha,good,os.environ['GITHUB_SHA'],comparison['contract_sha256'],policy,
-            {'selected':hashlib.sha256((ROOT/'scripts/traffic-scenarios'/f"{CATALOG[case]['profile']}.json").read_bytes()).hexdigest() if CATALOG[case]['profile'] else None,
-             'healthy':hashlib.sha256((ROOT/'scripts/traffic-scenarios/healthy.json').read_bytes()).hexdigest()})))
-    for name in ['01_pipeline.yaml','02_goal.yaml','03_workflow_model.yaml','generation-manifest.json']:
+        comparison_key=None, native_workflow=True, configuration_inputs=generation['inputs'], protocol_key=protocol_key(case,seed,sha,good,os.environ['GITHUB_SHA'],comparison['contract_sha256'],policy,
+            {'selected':digest(ROOT/'scripts/traffic-scenarios'/f"{CATALOG[case]['profile']}.json") if CATALOG[case]['profile'] else None,
+             'healthy':digest(ROOT/'scripts/traffic-scenarios/healthy.json')},{k:v['sha256'] for k,v in generation['inputs'].items()})))
+    # Copy all validated sources, including external paths recorded in the manifest.
+    for name in ['03_workflow_model.yaml','generation-manifest.json']:
         (directory/name).write_bytes((ROOT/'bdi-cicd-framework/models'/name).read_bytes())
+    if (digest(directory/'03_workflow_model.yaml') != generation['workflow_sha256']
+            or json.loads((directory/'generation-manifest.json').read_text(encoding='utf-8')) != generation):
+        raise ValueError('Generated artifacts changed while snapshotting; regenerate and restart')
+    for name, source in sources.items():
+        target=directory/(name+'.input.yaml')
+        target.write_bytes(source.read_bytes())
+        if digest(target) != generation['inputs'][name]['sha256']:
+            raise ValueError('Source changed while snapshotting; regenerate and restart')
+    if validate(ROOT/'bdi-cicd-framework')[2] != generation:
+        raise ValueError('Project changed while snapshotting; regenerate and restart')
     emit(directory/'experiment-events.jsonl','campaign_started', release_sha=sha, scenario=case)
     output('known_good_sha', good)
 

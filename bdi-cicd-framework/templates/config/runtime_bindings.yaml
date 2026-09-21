@@ -1,0 +1,19 @@
+# Replace YOUR_* hosts, /YOUR_ROUTE and your_app_* metrics with actual instrumentation.
+# URLs must be reachable from the observer; retain {{run_id}} correlation.
+# Review freshness against exporter/scrape intervals. No credentials in this file.
+telemetry:
+  environments:
+    staging:
+      ready_url: http://YOUR_STAGING_HOST:3001/ready
+      prometheus_url: http://YOUR_STAGING_HOST:9091
+    production:
+      ready_url: http://YOUR_PRODUCTION_HOST:3000/ready
+      prometheus_url: http://YOUR_PRODUCTION_HOST:9090
+  metrics:
+    error_rate_query: (sum(rate(your_app_http_errors_total{ci_run_id="{{run_id}}",route="/YOUR_ROUTE",status_code=~"5.."}[2m]))
+      or vector(0)) / clamp_min(sum(rate(your_app_http_requests_total{ci_run_id="{{run_id}}",route="/YOUR_ROUTE"}[2m])),
+      0.001)
+    latency_p95_ms_query: histogram_quantile(0.95, sum by (le) (rate(your_app_http_request_duration_milliseconds_bucket{ci_run_id="{{run_id}}",route="/YOUR_ROUTE"}[2m])))
+    availability_query: min(your_app_ready{ci_run_id="{{run_id}}"})
+    sample_age_seconds_query: time() - max(timestamp(your_app_ready{ci_run_id="{{run_id}}"}))
+  max_age_seconds: 30

@@ -159,6 +159,8 @@ def main() -> int:
                            (generation_manifest, artifacts / "project-generation-manifest.json"),
                            (inputs['pipeline'], artifacts / "01_pipeline.input.yaml"),
                            (inputs['goal'], artifacts / "02_goal.input.yaml"),
+                           (inputs['policy'], artifacts / "controller_policy.input.yaml"),
+                           (inputs['bindings'], artifacts / "runtime_bindings.input.yaml"),
                            (ROOT / "bdi/controller.mas2j", mas)]:
         shutil.copyfile(source, target)
     # Detect concurrent edits during snapshot creation, before Jason/Java can dispatch.
@@ -168,7 +170,9 @@ def main() -> int:
     for source, target in [(persistent_workflow, workflow), (persistent_agent, agent),
                            (generation_manifest, artifacts / "project-generation-manifest.json"),
                            (inputs['pipeline'], artifacts / "01_pipeline.input.yaml"),
-                           (inputs['goal'], artifacts / "02_goal.input.yaml")]:
+                           (inputs['goal'], artifacts / "02_goal.input.yaml"),
+                           (inputs['policy'], artifacts / "controller_policy.input.yaml"),
+                           (inputs['bindings'], artifacts / "runtime_bindings.input.yaml")]:
         if digest(source) != digest(target):
             raise ModelError("Project artifacts changed while snapshotting; restart after generation finishes")
     record = {"schema_version": 1, "campaign_id": campaign, "inputs": generation['inputs'],

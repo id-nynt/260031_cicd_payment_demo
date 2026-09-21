@@ -1,5 +1,7 @@
 # Compare BDI with conventional GitHub Actions
 
+**Configuration lifecycle:** edit the two models plus `bdi-cicd-framework/config/controller_policy.yaml` and `runtime_bindings.yaml`; regenerate explicitly after changing any of them. Missing policy fields fail validation. Campaign startup reuses the saved schema-2 contract and agent; neither approach regenerates them. Publish the complete migrated control revision for native trials and select the same revision for BDI; existing application v1/v2 tags and verified release receipts remain usable.
+
 Use one payment app/repository, the same immutable v1/v2 sources and one shared deployment environment. **Conventional entry:** [ci-cd.yml](../.github/workflows/ci-cd.yml). **BDI entry:** `run_experiment.py --mechanism bdi`. Both use [entity-execution.yml](../.github/workflows/entity-execution.yml); conventional uses `needs`/conditions and a bounded telemetry script, while BDI uses Jason beliefs/plans.
 
 Follow the [conventional manual](CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md) for publication/setup and GitHub activation; follow [BDI manual C6](BDI_MANUAL_EXECUTION_GUIDE.md#c6-matched-comparison-all-11-scenarios) for agent activation. Complete common setup/reset before **each** trial. Do not run both mechanisms simultaneously.
@@ -56,7 +58,7 @@ Native reuse uses an explicit status output: failed execution steps may have a t
 
 Record candidate-delivery rate separately from restoration rate, containment, retries, observations, human interventions, elapsed time and recovery time. `eligible_for_comparison` flags missing/failed traffic, incomplete evidence and non-live runs. It is a screening flag, not independent proof of fault exposure or safety. A controlled execution fault must also appear in the relevant job logs. `protocol_expectation_met` is the case expectation, not an oracle proving correctness.
 
-`protocol_key` compares case, seed, candidate, baseline, worker commit, contract, policy and traffic profile. Match it across the native/BDI pair. The older `comparison_key` belongs to the scripted-controller comparison; do not use it to pair native trials. A matching key cannot certify database state, queue load or actual timing.
+`protocol_key` compares case, seed, candidate, baseline, worker commit, contract, policy, all four input hashes and traffic profile. Match it across the native/BDI pair. The older `comparison_key` belongs to the scripted-controller comparison; do not use it to pair native trials. A matching key cannot certify database state, queue load or actual timing.
 
 After downloading native artifacts, use the existing extractor for a combined CSV:
 

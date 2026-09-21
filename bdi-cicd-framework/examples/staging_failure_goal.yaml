@@ -1,6 +1,3 @@
 goal:
   achieve(A):
-    - staging.status == failure
-telemetry_constraints:
-  error_rate_high_gt: 0.05
-  latency_p95_ms_high_gt: 500
+  - staging.status == failure

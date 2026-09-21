@@ -3,6 +3,10 @@ project: reporting-service
 workflow_file: reporting-entity.yml
 execution:
   max_retries: 1
+  observation_attempts: 3
+  observation_interval_seconds: 0
+  reconciliation_attempts: 2
+  reconciliation_interval_seconds: 0
 jobs:
   package:
     job_name: Package report

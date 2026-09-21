@@ -46,7 +46,7 @@ class WorkerContractTest(unittest.TestCase):
             job=worker['jobs'][entity]
             self.assertEqual(binding['environment'], job['environment'])
             self.assertEqual('${{ inputs.execution_id }}', job['env']['CI_RUN_ID'])
-            endpoint=pipeline['telemetry']['environments'][binding['environment']]
+            endpoint=read(ROOT/'bdi-cicd-framework/config/runtime_bindings.yaml')['telemetry']['environments'][binding['environment']]
             self.assertEqual(f"http://127.0.0.1:{job['env']['APP_PORT']}/ready", endpoint['ready_url'])
             self.assertEqual(f"http://127.0.0.1:{job['env']['PROMETHEUS_PORT']}", endpoint['prometheus_url'])
         service=(ROOT/'src/telemetry.ts').read_text()

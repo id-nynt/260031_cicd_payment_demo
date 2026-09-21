@@ -80,7 +80,8 @@ def main():
         comparison=comparison, comparison_key=hashlib.sha256(json.dumps(comparison,sort_keys=True).encode()).hexdigest(),
         known_good_receipt=str(args.known_good.resolve()), baseline_receipt_sha256=digest(args.known_good),
         limitations=['Reset is operator-confirmed; no database snapshot restoration', 'Local controller with remote selected jobs; native GitHub DAG is a separate entry point'])
-    plan['protocol_key'] = protocol_key(args.case,args.seed,args.release_sha,baseline_sha,worker_sha,comparison['contract'],policy,{'selected':comparison['profile'],'healthy':digest(ROOT.parent/'scripts/traffic-scenarios/healthy.json')})
+    plan['configuration_inputs'] = manifest['inputs']
+    plan['protocol_key'] = protocol_key(args.case,args.seed,args.release_sha,baseline_sha,worker_sha,comparison['contract'],policy,{'selected':comparison['profile'],'healthy':digest(ROOT.parent/'scripts/traffic-scenarios/healthy.json')},{k:v['sha256'] for k,v in manifest['inputs'].items()})
     (companion/'plan.json').write_text(json.dumps(plan,indent=2)+'\n')
     print(f'Campaign: {campaign}\nPlan: {companion / "plan.json"}', flush=True)
     if args.prepare_only:

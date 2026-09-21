@@ -1,0 +1,1171 @@
+[
+  {
+    "case": "unreachable_goals",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_needed",
+    "telemetry": {},
+    "execution_ids": [
+      "scenario-bb34e9be-3845-4d65-ad5a-43f1f1dc85b5",
+      "scenario-e26cb0ba-5514-4d1e-954b-8b9764828d75",
+      "scenario-66719dc1-9133-45e9-8aad-0d65c6cfa046",
+      "scenario-4cd03b11-c177-4913-853a-75e6553d7e2f"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "negative_execution_uncertain",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "unknown",
+    "recovery": "unresolved",
+    "telemetry": {
+      "staging": "allow"
+    },
+    "execution_ids": [
+      "scenario-4adba0c3-3e40-44ab-905c-8e03d30c93eb",
+      "scenario-45e5e286-6e36-47bf-bfbe-2e033fd8199f",
+      "scenario-74c147f3-fee5-48f9-b218-de1924f27248",
+      "scenario-a18d2ea9-8b34-46e6-9dbd-aac9ad829b78",
+      "scenario-528f19f1-f532-4edb-aef9-f31a1ab49cc4"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "negative_retry_unmet",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "production"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "execution_ids": [
+      "scenario-f8b35922-e508-4548-91df-e58aa22d2f1d",
+      "scenario-6f7aff30-7883-4b1e-bda4-c01874401159",
+      "scenario-8bf3026d-dc60-49cd-b636-5b161626bd5b",
+      "scenario-63ccba3f-a9b7-4e34-80fe-1387ed53ad61",
+      "scenario-bfc60739-142a-4741-a859-535ddea02b85",
+      "scenario-8784c5dc-21f9-4cba-9cdd-90c07f6b65d5"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "expected_staging_failure",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {},
+    "execution_ids": [
+      "scenario-f145a716-ceb2-4a4e-aa3a-a7539b898d6f",
+      "scenario-b2054757-ddce-446f-8c72-801741d22829",
+      "scenario-ed730429-328a-45ef-8111-093519c4779d",
+      "scenario-47f1b444-abab-480a-b1f7-e36284ba5ebf"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "unmet_staging_failure",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow"
+    },
+    "execution_ids": [
+      "scenario-f4772584-ab27-4463-9634-89fc2f076041",
+      "scenario-bfdb91b2-f78d-4638-9889-b7a3285edf5d",
+      "scenario-44a67385-02f9-4bfd-a4eb-8e89d0262023",
+      "scenario-59340d11-40f0-4181-91a3-0df2948503e7"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "staging"
+    ]
+  },
+  {
+    "case": "negative_dispatch_rejected",
+    "expected": [
+      "build"
+    ],
+    "actual": [
+      "build"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "telemetry": {},
+    "execution_ids": [
+      "scenario-026b8d8d-2fe6-417b-b96e-424735c6d4ad"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "staging"
+    ]
+  },
+  {
+    "case": "expected_production_failure",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow"
+    },
+    "execution_ids": [
+      "scenario-49a58f16-7dff-4503-ad00-3d35365e05b0",
+      "scenario-5d5960da-7859-4e61-97dd-f0892906dcaf",
+      "scenario-886d7d2a-aad4-42ce-aa7b-8edf58d2eaf6",
+      "scenario-07e8b288-fe62-4ed3-8199-55fa5334b3e1",
+      "scenario-181414d2-bc22-47f1-a2e2-df236b95e551"
+    ],
+    "achieved_goals": [
+      "production"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "temporary_fault",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "execution_ids": [
+      "scenario-a300be71-0d75-4b70-89c7-7e62a20cdc04",
+      "scenario-9fbbdb8c-5613-4c0a-b8cd-c1aa06c468ac",
+      "scenario-4168c765-6453-49d5-8f61-70054979cda2",
+      "scenario-6f3aa26c-c5fe-4644-9871-9867f8ed91ab",
+      "scenario-3ae7727c-a50b-4c07-9fbc-7528a51635f8"
+    ],
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "production_temporary_fault",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "execution_ids": [
+      "scenario-01f5aeb3-cae0-4a09-853c-5a7466326f61",
+      "scenario-014d7de5-14e9-4143-abc4-5b6eb7c49e7c",
+      "scenario-97fe37dd-cfef-4791-88db-2bb5f993a2de",
+      "scenario-632272ca-d66e-4cbb-8af0-b409def54ccc",
+      "scenario-9f4542b7-925c-4601-abdf-de7989b7493c"
+    ],
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "flapping",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "unknown",
+    "recovery": "not_attempted",
+    "telemetry": {
+      "staging": "unknown"
+    },
+    "execution_ids": [
+      "scenario-340d85b8-9a78-419e-91bf-bacb69d8acf6",
+      "scenario-2ea6383f-1d1f-4fd1-a9e8-1054ced082b1",
+      "scenario-fd4b8103-fd86-4bec-b0dc-bd3ff1bdf091",
+      "scenario-6ab04350-e285-4e94-9950-66a6f28d1a64"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "deadline",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "unknown",
+    "recovery": "not_attempted",
+    "telemetry": {
+      "staging": "unknown"
+    },
+    "execution_ids": [
+      "scenario-90e2031a-718d-45fa-807e-7c21807e5d45",
+      "scenario-294b6ecf-c848-4f51-a887-240c49260e75",
+      "scenario-6671367e-c676-450a-a812-177e1c14f58b",
+      "scenario-e2052470-57ed-47ed-bb11-f936e6d06d78"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "deterministic_failure",
+    "expected": [
+      "build",
+      "test"
+    ],
+    "actual": [
+      "build",
+      "test"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "telemetry": {},
+    "execution_ids": [
+      "scenario-ce312d57-f067-4a10-b8ac-096447e42c7d",
+      "scenario-81d355ef-5c7b-4544-85cd-b1a1293a5dc4"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "dispatch_rejected",
+    "expected": [
+      "build"
+    ],
+    "actual": [
+      "build"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "telemetry": {},
+    "execution_ids": [
+      "scenario-58fe24c3-4515-4a83-8b03-5f2427a6165e"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "production_retry",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "execution_ids": [
+      "scenario-f10dc217-b46c-416a-9fd8-0f834f0c1e46",
+      "scenario-11ad7197-4c23-48f5-ba7c-87578c09c59e",
+      "scenario-18e0239e-878e-4936-92ed-49e05262ef46",
+      "scenario-f2ca84ec-6c81-48fe-b1de-a7f5b835f149",
+      "scenario-ef2c89f8-7f6a-40c4-9967-3824d54d7267",
+      "scenario-d6a28d67-141e-4cf0-a99d-31524fc6ce95"
+    ],
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "production_retry_unsafe",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "restored",
+    "telemetry": {
+      "staging": "allow",
+      "rollback": "allow"
+    },
+    "execution_ids": [
+      "scenario-eb0bbc17-3c8b-401b-9f2d-1048818cacd9",
+      "scenario-d11e1803-5e73-4943-85b3-d7a05bfdb8e5",
+      "scenario-3aa2a667-e4c1-4f87-90e0-c92cf57b66a1",
+      "scenario-fc8f5f55-bb58-4ff4-a252-ad3b0e507138",
+      "scenario-7e94a1b8-c5ad-4650-97e7-4d5466497a2f",
+      "scenario-4fc29f05-e6ac-48d7-ac54-fb09e832f46b"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "healthy",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "execution_ids": [
+      "scenario-a815e6c7-35e8-4bd2-a8e1-d2e331d1f38a",
+      "scenario-06a4f83b-fcfa-4fd9-9ff1-bb7b9f9be65d",
+      "scenario-9d6b55db-2c1a-410c-a185-5c88737e337e",
+      "scenario-33850eff-e50d-4804-818c-71b1ec854275",
+      "scenario-1c84735a-43f5-4c09-96d9-607f293ae3a3"
+    ],
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "staging_only",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow"
+    },
+    "execution_ids": [
+      "scenario-d02df179-68f1-4599-98de-37749d02d2dc",
+      "scenario-3ef330e3-37dd-465b-959f-de302d0634c2",
+      "scenario-b7199c4d-bc2e-4ebf-aa57-885140a29ef7",
+      "scenario-66756713-b864-48ea-a927-448c23491586"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "retry",
+    "expected": [
+      "build",
+      "test",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "execution_ids": [
+      "scenario-7d0baaa3-019f-4418-9b00-d51869d7d1f7",
+      "scenario-ef47a5c6-ee4d-4587-826a-ecc252a473fa",
+      "scenario-f4b18b0b-5296-4c46-8694-7569660e379b",
+      "scenario-62673d51-3940-4065-8f84-926d0d713381",
+      "scenario-ce2c495d-97fa-4b2a-b524-b6b9b29a524d",
+      "scenario-10a6ffc6-06c0-45f7-a3de-ff363db120b6"
+    ],
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "exhaustion",
+    "expected": [
+      "build",
+      "test",
+      "test"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "test"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "telemetry": {},
+    "execution_ids": [
+      "scenario-0e798d44-8007-4328-bb0f-dd8cbf464616",
+      "scenario-3ed73bc0-4292-4dd6-b51f-5c77c75c030c",
+      "scenario-8d70b365-8756-4871-b74d-bcfc02420c8b"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "staging_block",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "telemetry": {
+      "staging": "block"
+    },
+    "execution_ids": [
+      "scenario-4894d363-2820-4319-90ba-029afead16b1",
+      "scenario-bd97a448-6fcf-4f20-8d1f-541ac8ed4e5f",
+      "scenario-9992c0d3-c42a-4fd6-aa0f-75ebe1ddbe31",
+      "scenario-6500cc8c-eb18-4e9b-8e6c-7e660b638822"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "delayed",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "execution_ids": [
+      "scenario-128f8144-a0fe-4c70-a16a-9f2947fe91b7",
+      "scenario-8873ab71-1eb2-4d18-bff2-d12de8392e24",
+      "scenario-45441d7f-3a11-4a89-8fb6-1404ac4e541c",
+      "scenario-2d9790b3-201b-44be-acb6-8ea508e45be5",
+      "scenario-e3e35d0f-68d5-4794-9f12-7fdf47bdc828"
+    ],
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "staging_unknown",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "unknown",
+    "recovery": "not_attempted",
+    "telemetry": {
+      "staging": "unknown"
+    },
+    "execution_ids": [
+      "scenario-1b0cadf7-aa70-4806-915b-e07040e07d57",
+      "scenario-124af2cc-4035-40d1-9b5d-de1ceb66af6d",
+      "scenario-bad55418-20c8-4dfd-8b21-f96c00593f33",
+      "scenario-fec1496e-15b7-4964-bd4a-60dd0641b45b"
+    ],
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production",
+      "staging"
+    ]
+  },
+  {
+    "case": "production_failure",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "restored",
+    "telemetry": {
+      "staging": "allow",
+      "rollback": "allow"
+    },
+    "execution_ids": [
+      "scenario-d5ebbdb2-2be5-4b48-9975-d14bca3b5d6b",
+      "scenario-6fb17da7-abe9-452a-a7de-a95cb9a0fc6d",
+      "scenario-6a33764c-fadb-4cbc-9ef2-70e3227ad58a",
+      "scenario-7468fa2c-f8e3-4bae-9277-b201c4ce7c8b",
+      "scenario-6adf2c92-1b21-406a-bc8b-b662a908a6b1",
+      "scenario-f73aa30a-fc87-425a-bade-ec4085ac520d"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "production_unhealthy",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "restored",
+    "telemetry": {
+      "staging": "allow",
+      "production": "block",
+      "rollback": "allow"
+    },
+    "execution_ids": [
+      "scenario-6cc8dafe-e644-46ab-8097-e68d9bdc0632",
+      "scenario-5f879bd1-86ab-4fb0-861f-72b51dab202c",
+      "scenario-d5e01572-b655-42d0-a761-eaadb7ea1d7a",
+      "scenario-0ff230a9-ec7b-4211-85fb-4b2aa795e942",
+      "scenario-f7c4887a-2d38-4f2e-bf17-379be21ab253",
+      "scenario-629f5c9b-d536-484b-9274-26d25a0f15ed"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "production_unknown",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "restored",
+    "telemetry": {
+      "staging": "allow",
+      "production": "unknown",
+      "rollback": "allow"
+    },
+    "execution_ids": [
+      "scenario-1fc9b3df-6e57-4d04-84f3-1f6921240e21",
+      "scenario-1ecb5958-7bfc-4e3a-b942-5aaf73fc0bc7",
+      "scenario-f0801e62-6eee-431b-b68c-68888bcd746d",
+      "scenario-5419b80e-b85c-4ca2-84b1-3794905629e2",
+      "scenario-98250e4a-c223-4540-885a-7f2f11256171",
+      "scenario-94ddcf66-9047-49db-a96e-a75a28cf5aad"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "rollback_failure",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "failed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "block"
+    },
+    "execution_ids": [
+      "scenario-604c086a-7a4a-413f-924f-9a806b56d835",
+      "scenario-bb71f47a-4837-4e74-b181-bfb54a016298",
+      "scenario-646adb6e-6747-4b5e-962d-56901d41aac8",
+      "scenario-b1ffe3b2-5f86-40a6-a7d3-0603e3ebab95",
+      "scenario-37d0c4ec-add5-4585-a757-29d47b547529",
+      "scenario-677df5d7-ec84-4e9a-822a-61aaae19b4ca"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "rollback_unhealthy",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "failed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "block",
+      "rollback": "block"
+    },
+    "execution_ids": [
+      "scenario-964cbca0-63a4-430a-ace1-738d0f745a7d",
+      "scenario-e224c1eb-63e4-4c15-98ad-4c41feca2940",
+      "scenario-4b5a8758-8c7c-4f83-9330-6c2512d42ad6",
+      "scenario-e8e33ba1-2709-4896-8162-f47f9eb89a78",
+      "scenario-337ecc3a-0923-4e6d-a0c9-9b06bfa98364",
+      "scenario-003813bc-7c39-41fd-ada1-becd3049dab6"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "maintenance_violation",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "stopped",
+    "recovery": "restored",
+    "telemetry": {
+      "staging": "allow",
+      "rollback": "allow"
+    },
+    "execution_ids": [
+      "scenario-e88235c8-dca2-49f4-8e05-487af1eeae78",
+      "scenario-023f1413-6b99-4c8a-b269-a96a5d21c232",
+      "scenario-3749dc6c-2637-4d6e-a0b5-7cbf558b6b14",
+      "scenario-9652658b-e9d1-44ac-a7ef-e0b7a3fc6778",
+      "scenario-e9b2b8b7-859a-448a-9f23-6194d168db50",
+      "scenario-ab703c32-45c9-484e-9ed9-83f3c29a37f0"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "rollback_unknown",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "rollback"
+    ],
+    "outcome": "unknown",
+    "recovery": "unverified",
+    "telemetry": {
+      "staging": "allow",
+      "production": "block",
+      "rollback": "unknown"
+    },
+    "execution_ids": [
+      "scenario-0187b83e-1c49-4d82-bcf2-38bd4ea543b5",
+      "scenario-c8a8261e-0410-4e01-b469-07843de9f881",
+      "scenario-55ca712a-c4b5-401e-8dab-1a4b510ba15c",
+      "scenario-35e1c7e3-b132-4d74-b63d-21d59d5c736c",
+      "scenario-a82169df-e412-4d4a-911c-e5f5c349303a",
+      "scenario-14e0c3b3-498e-4b73-8b82-b6d4548de957"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "reconciled_success",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "execution_ids": [
+      "scenario-de490873-5b51-450a-848b-3004d965f836",
+      "scenario-1a5359a0-9b0a-43b7-983c-3eb6dc097c3d",
+      "scenario-b90cd244-a7cc-48cd-9ab1-f09e1832f6bb",
+      "scenario-563249cc-3696-4637-a96a-8c705400ad06",
+      "scenario-b58780a3-a8c4-4eb3-a98a-372432c718ba"
+    ],
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "reconciled_failure",
+    "expected": [
+      "build",
+      "test",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "execution_ids": [
+      "scenario-0fe72642-ba02-4a8d-a1f2-46bda17f6b50",
+      "scenario-3b72aa3d-7f6b-4f67-837e-3271d12f9de7",
+      "scenario-a8ec9aee-2564-4553-bf8f-e75215a22c24",
+      "scenario-9d9b0824-9e01-456d-ba52-ec685177613f",
+      "scenario-1bbd6171-ab57-4340-b10e-c72bd8979764",
+      "scenario-5b9ed1c2-c244-4d4b-bc0a-0a77549754bb"
+    ],
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "execution_uncertain",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "unknown",
+    "recovery": "unresolved",
+    "telemetry": {
+      "staging": "allow"
+    },
+    "execution_ids": [
+      "scenario-cbf269f2-1cad-4d86-b045-ec22286e11d1",
+      "scenario-470d8f35-9492-450e-987e-a9c36b3e5ce1",
+      "scenario-84af8982-0bb9-4a2d-8bad-4d2c09c987a9",
+      "scenario-04542cf0-b66c-4b63-82f3-0f9e8cba328e",
+      "scenario-65e0550e-7015-4236-b98b-8cd001e1ff54"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "baseline_no_recovery",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_attempted",
+    "telemetry": {
+      "staging": "allow",
+      "production": "block"
+    },
+    "execution_ids": [
+      "scenario-67dea07f-36a2-4c01-bffa-88e9bcfb673b",
+      "scenario-2508f1fa-5b4b-437e-8a77-c3aa0a240545",
+      "scenario-6f230403-038b-41db-b8f3-ea80d06e6b98",
+      "scenario-c2d48e26-e525-451c-9bda-740720af3273",
+      "scenario-95d1d8bd-cc35-459b-8b87-65f2fdb67cab"
+    ],
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "pause",
+    "expected": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {
+      "staging": "allow",
+      "production": "allow"
+    },
+    "execution_ids": [
+      "scenario-7b4884f7-c58c-4eac-8e56-926a0a62523a",
+      "scenario-b0e6b192-a8f0-441c-bb05-3d04beeda1cf",
+      "scenario-e86d4106-e105-45e8-b9ae-068968a8226a",
+      "scenario-94e9c3de-ebbc-46f7-a926-b618be360b2b",
+      "scenario-0578e0d6-f4b7-48cc-a636-906b71fe06f9"
+    ],
+    "achieved_goals": [
+      "production",
+      "staging"
+    ],
+    "unmet_goals": []
+  },
+  {
+    "case": "second_project",
+    "expected": [
+      "package",
+      "verify",
+      "preview"
+    ],
+    "actual": [
+      "package",
+      "verify",
+      "preview"
+    ],
+    "outcome": "achieved",
+    "recovery": "not_needed",
+    "telemetry": {},
+    "execution_ids": [
+      "scenario-199c5787-3f29-41e3-ba85-afb35fc72e1c",
+      "scenario-e174d4ad-d6b3-47be-bc75-4f88085090e3",
+      "scenario-b7f132dc-5a25-4123-8b0d-be61ba0f45de"
+    ],
+    "achieved_goals": [
+      "preview"
+    ],
+    "unmet_goals": []
+  }
+]

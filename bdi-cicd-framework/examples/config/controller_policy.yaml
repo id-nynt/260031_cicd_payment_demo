@@ -1,0 +1,13 @@
+execution:
+  observation_attempts: 3
+  observation_interval_seconds: 0
+  reconciliation_attempts: 2
+  reconciliation_interval_seconds: 0
+  retry_interval_seconds: 5
+  observation_timeout_seconds: 180
+  healthy_observations: 2
+  retry_safe: []
+observation:
+  before: {}
+  after: []
+recovery_policy: {}

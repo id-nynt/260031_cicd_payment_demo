@@ -14,10 +14,10 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,default=ROOT/'bdi/build'/('comparison-'+uuid.uuid4().hex[:8]))
     args=parser.parse_args();args.output.mkdir(parents=True,exist_ok=False)
-    pipeline=yaml.safe_load((ROOT/'models/01_pipeline.yaml').read_text())
+    pipeline=yaml.safe_load((ROOT/'config/controller_policy.yaml').read_text())
     pipeline['execution'].update(observation_attempts=3,observation_interval_seconds=0,retry_interval_seconds=0,reconciliation_interval_seconds=0)
     p=args.output/'pipeline.yaml';p.write_text(yaml.safe_dump(pipeline,sort_keys=False))
-    project=args.output/'project';generate(project,p,ROOT/'models/02_goal.yaml')
+    project=args.output/'project';generate(project,ROOT/'models/01_pipeline.yaml',ROOT/'models/02_goal.yaml',p,ROOT/'config/runtime_bindings.yaml')
     env={k:v for k,v in os.environ.items() if not k.startswith('BDI_') and k not in ('GITHUB_TOKEN','GH_TOKEN','EXPERIMENT_EVENTS_FILE','EXPERIMENT_MECHANISM')}
     rows=[]
     for case in CASES:

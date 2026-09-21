@@ -8,13 +8,15 @@ This framework uses a Jason BDI agent to pursue deployment goals. You describe t
 
 | File | Role | Who edits it? |
 |---|---|---|
-| [models/01_pipeline.yaml](models/01_pipeline.yaml) | Available entities, dependencies, GitHub job mappings, telemetry and execution budgets | Engineer |
-| [models/02_goal.yaml](models/02_goal.yaml) | Desired results, maintenance/avoidance constraints and health thresholds | Engineer |
+| [models/01_pipeline.yaml](models/01_pipeline.yaml) | Entities, dependencies, worker/environment mappings, recovery relationship and max_retries | Engineer |
+| [models/02_goal.yaml](models/02_goal.yaml) | Desired results and maintenance/avoidance constraints | Engineer |
+| [config/controller_policy.yaml](config/controller_policy.yaml) | Explicit observation/retry/reconciliation policy, recovery safeguards and health thresholds | Engineer |
+| [config/runtime_bindings.yaml](config/runtime_bindings.yaml) | Application endpoints, metric queries and freshness | Engineer |
 | [models/03_workflow_model.yaml](models/03_workflow_model.yaml) | Validated project contract and runtime bindings | Generator |
 | [bdi/controller_agent.asl](bdi/controller_agent.asl) | Executable project agent: generated beliefs/goals plus generic reasoning plans | Generator |
 | `models/generation-manifest.json` | Input, generator and artifact hashes | Generator |
 
-Inputs **01 and 02 are the configuration sources of truth**. The saved 03 is the agent generator's sole project-specific input. Generate once per configuration or generator revision, then reuse the persistent artifacts for campaigns. Commit inputs, generated contract, agent and manifest together. Campaign startup rejects missing, stale or inconsistent artifacts; it never regenerates them.
+Inputs **01, 02, controller_policy and runtime_bindings are the four configuration sources of truth**. The first two describe structure and goals; the configuration files hold advanced policy and app integration. Required policy values are explicit: missing settings fail instead of selecting hidden defaults. An explicit empty `retry_safe` list disables execution retries. The saved 03 is the agent generator's sole project-specific input. Generate once per configuration or generator revision, then reuse the persistent artifacts for campaigns. Commit inputs, generated contract, agent and manifest together. Campaign startup rejects missing, stale or inconsistent artifacts; it never regenerates them.
 
 ### How the model becomes an agent
 
@@ -29,7 +31,7 @@ Inputs **01 and 02 are the configuration sources of truth**. The saved 03 is the
 The generator emits static beliefs for entities, dependencies, capabilities, budgets and goal predicates. During execution the agent receives attempt-correlated status, duration and telemetry beliefs, and tracks attempts and workflow state. Its `!master_goal` pursues the declared achievements through the plans in [generator/controller_generic.asl](generator/controller_generic.asl). The older `bdi_generic.asl` is not the active policy.
 
 ```text
-01 + 02 -> generate_project.py / parser/workflow_model.py -> saved 03
+01 + 02 + controller_policy + runtime_bindings -> generate_project.py / parser/workflow_model.py -> saved 03
 saved 03 + controller_generic.asl -> bdi/controller_agent.asl + manifest
 run_controller.py -> ControllerMain -> ControllerEnvironment -> Jason
 Jason action -> Java GitHub adapter -> selected worker job -> correlated observations
@@ -39,17 +41,18 @@ The current policy retries only eligible transient failures/timeouts on retry-sa
 
 `entity.status == failure` is supported for negative experiments. It requires an actual matching failure, does not manufacture one, and produces no known-good release receipt. Goals remain subject to dependencies and constraints; impossible goals end unmet.
 
-## 2. Fill the two inputs
+## 2. Fill the two models and two configuration files
 
-Use the commented [01 template](templates/models/01_pipeline.yaml) and [02 template](templates/models/02_goal.yaml). The [03 reference shape](templates/models/03_workflow_model.yaml) explains generated sections; **do not fill or copy it as an input**. These are YAML forms checked against the existing parser, not a separate JSON Schema implementation.
+Use the commented [01](templates/models/01_pipeline.yaml), [02](templates/models/02_goal.yaml), [policy](templates/config/controller_policy.yaml) and [bindings](templates/config/runtime_bindings.yaml) templates. The [03 reference shape](templates/models/03_workflow_model.yaml) explains generated sections; **do not fill or copy it as an input**. These are YAML forms checked against the existing parser, not a separate JSON Schema implementation.
 
-From the repository root, copy only 01 and 02 to `bdi-cicd-framework/models/` when replacing the payment example, then edit them. Keep a separate project directory if you need to retain both configurations.
+From the repository root, copy 01 and 02 to `bdi-cicd-framework/models/` and the two configuration templates to `bdi-cicd-framework/config/` when replacing the payment example, then edit them. Keep a separate project directory if you need to retain both configurations.
 
-- **01:** replace project/name placeholders; rename/add/remove jobs; map exact GitHub job display names; set dependencies, environments, observation points, recovery and retry safety.
-- **01 telemetry:** replace hosts, ports, metric names and route filters with values your app actually exports. Addresses must be reachable from the controller. Keep `{{run_id}}` in queries so previous releases cannot satisfy current health checks.
-- **02:** select achievements and constraints using the same entity names. Choose meaningful duration limits, error fractions and p95 latency limits. The template values are examples.
+- **01:** replace project/name placeholders; rename/add/remove jobs; map exact GitHub job display names; set dependencies, environments and recovery relationships.
+- **Runtime bindings:** replace hosts, ports, metric names and route filters with values your app actually exports. Addresses must be reachable from the controller. Keep `{{run_id}}` in queries so previous releases cannot satisfy current health checks.
+- **02:** select achievements and constraints using the same entity names. Choose meaningful duration limits.
+- **Controller policy:** review timing, observation placement, safe-to-retry jobs and recovery triggers, plus error fractions and p95 latency limits. Template values are examples; the retry allowlist starts empty.
 
-**Expected:** your two inputs describe your app, with no remaining `YOUR_*`, `your-app` or `your_app_*` placeholders. Unknown fields and unsupported goals are rejected during generation.
+**Expected:** your four source files describe your app, with no remaining `YOUR_*`, `your-app` or `your_app_*` placeholders. Unknown fields and unsupported goals are rejected during generation.
 
 ### Connect your actual worker and application
 
@@ -74,14 +77,14 @@ python bdi-cicd-framework/run_controller.py --validate-only
 
 **Expected:** generation prints the contract, agent and manifest paths; validation prints `Project artifacts are consistent`. No GitHub jobs or deployments run.
 
-For a separate configuration, always supply both input paths during generation:
+For a separate configuration, place all four files under its `models/` and `config/` folders. Defaults resolve relative to `--project-dir`; explicit paths are also supported:
 
 ```sh
-python bdi-cicd-framework/generate_project.py --project-dir projects/my-app --pipeline projects/my-app/models/01_pipeline.yaml --goal projects/my-app/models/02_goal.yaml
+python bdi-cicd-framework/generate_project.py --project-dir projects/my-app --pipeline projects/my-app/models/01_pipeline.yaml --goal projects/my-app/models/02_goal.yaml --policy projects/my-app/config/controller_policy.yaml --bindings projects/my-app/config/runtime_bindings.yaml
 python bdi-cicd-framework/run_controller.py --project-dir projects/my-app --validate-only
 ```
 
-Use the same `--project-dir` on subsequent commands for that configuration.
+Use the same `--project-dir` on subsequent commands for that configuration. Changing any of the four sources requires explicit regeneration; the manifest records all four hashes. Workflow schema 2 and the sole-saved-03 agent input contract remain unchanged.
 
 ## 4. Optionally test without deployment
 

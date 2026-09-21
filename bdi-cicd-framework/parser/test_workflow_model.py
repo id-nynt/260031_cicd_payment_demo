@@ -3,14 +3,14 @@ from pathlib import Path
 import tempfile
 import unittest
 import yaml
-from workflow_model import ModelError, compile_documents, compile_inputs, generate_agent, load_workflow, read, expand_workflow
+from workflow_model import ModelError, compile_documents, compile_inputs, generate_agent, load_workflow, read, expand_workflow, resolve_documents
 
 ROOT = Path(__file__).resolve().parents[1]
 
 class CanonicalModelTest(unittest.TestCase):
     def setUp(self):
-        self.pipeline = read(ROOT/'models/01_pipeline.yaml')
-        self.goals = read(ROOT/'models/02_goal.yaml')
+        self.pipeline,self.goals = resolve_documents(read(ROOT/'models/01_pipeline.yaml'),read(ROOT/'models/02_goal.yaml'),
+            read(ROOT/'config/controller_policy.yaml'),read(ROOT/'config/runtime_bindings.yaml'))
 
     def test_normal_chain_and_separate_recovery(self):
         doc, model = compile_documents(self.pipeline,self.goals)
@@ -59,6 +59,8 @@ class CanonicalModelTest(unittest.TestCase):
 
     def test_retry_safety_is_explicit_and_contract_preserves_budgets(self):
         self.pipeline['jobs']['production'].pop('retry_safe')
+        with self.assertRaises(ModelError):compile_documents(self.pipeline,self.goals)
+        self.pipeline['jobs']['production']['retry_safe']=False
         doc,_=compile_documents(self.pipeline,self.goals)
         self.assertNotIn('production',doc['execution']['retry_safe'])
         self.assertIn('test',doc['execution']['retry_safe'])

@@ -23,10 +23,13 @@ class ProjectArtifactsTest(unittest.TestCase):
         self.goal = self.root / 'goal.yaml'
         shutil.copyfile(ROOT / 'models/01_pipeline.yaml', self.pipeline)
         shutil.copyfile(ROOT / 'models/02_goal.yaml', self.goal)
+        shutil.copytree(ROOT/'config',self.root/'config')
+        self.policy=self.root/'config/controller_policy.yaml'
+        self.bindings=self.root/'config/runtime_bindings.yaml'
         self.workflow, self.agent, self.manifest = artifacts.generate(self.root, self.pipeline, self.goal)
 
     def test_missing_stale_and_modified_artifacts_fail_with_regeneration_command(self):
-        for path in [self.workflow, self.agent, self.manifest, self.pipeline, self.goal]:
+        for path in [self.workflow, self.agent, self.manifest, self.pipeline, self.goal, self.policy, self.bindings]:
             original = path.read_bytes()
             for content in [None, original + b'\n# changed\n']:
                 with self.subTest(path=path, missing=content is None):
@@ -84,6 +87,9 @@ class ProjectArtifactsTest(unittest.TestCase):
             self.assertEqual(self.workflow.read_bytes(), (directory / '03_workflow_model.yaml').read_bytes())
             record = json.loads((directory / 'generation-manifest.json').read_text())
             self.assertEqual(str(self.agent), record['persistent_artifacts']['agent'])
+            self.assertEqual({'pipeline','goal','policy','bindings'},set(record['inputs']))
+            self.assertEqual(self.policy.read_bytes(),(directory/'controller_policy.input.yaml').read_bytes())
+            self.assertEqual(self.bindings.read_bytes(),(directory/'runtime_bindings.input.yaml').read_bytes())
         self.assertEqual(before, {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in before})
 
     def test_runtime_rejects_before_creating_campaign_or_starting_java(self):
@@ -100,6 +106,8 @@ class ProjectArtifactsTest(unittest.TestCase):
         original = self.agent.read_bytes()
         self.pipeline.unlink()
         self.goal.unlink()
+        self.policy.unlink()
+        self.bindings.unlink()
         artifacts.generate_agent(self.workflow, ROOT / 'generator/controller_generic.asl', self.agent)
         self.assertEqual(original, self.agent.read_bytes())
 

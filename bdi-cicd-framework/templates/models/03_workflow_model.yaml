@@ -1,8 +1,6 @@
-# REFERENCE SHAPE ONLY: do not copy this file into live models or edit generated 03.
-# Placeholders mirror templates 01/02. Generate the actual contract from your filled inputs.
-# Generated from 01_pipeline.yaml and 02_goal.yaml; do not edit.
+# REFERENCE ONLY: do not copy as an input or edit the generated contract.
+# Generated from 01, 02, controller_policy and runtime_bindings; all values are resolved.
 schema_version: 2
-# E/D/R derive from input 01; O is the predefined adapter observation vocabulary.
 workflow:
   name: YOUR_APP release pipeline
   entities(E):
@@ -42,7 +40,6 @@ workflow:
   recovery(R):
   - from: production
     to: rollback
-# Copied/validated from input 02, then emitted as agent goal facts.
 goals:
   achieve(A):
   - production.status == success
@@ -56,23 +53,16 @@ goals:
     when: test.status != success
   - condition: production.status == success
     when: staging.status != success
-# Budgets and retry-safe entities derive from input 01.
 execution:
   max_retries: 1
   observation_attempts: 36
   observation_interval_seconds: 5
-  reconciliation_attempts: 3
-  reconciliation_interval_seconds: 5
-  retry_interval_seconds: 5
   observation_timeout_seconds: 180
   healthy_observations: 2
-  retry_safe:
-  - build
-  - test
-  - security
-  - staging
-  - production
-# Derived observation points and duration targets; correlation stays required.
+  retry_interval_seconds: 5
+  reconciliation_attempts: 3
+  reconciliation_interval_seconds: 5
+  retry_safe: []
 observation_schema:
   attempt_id_required: true
   duration_required_for:
@@ -83,7 +73,6 @@ observation_schema:
   - staging
   - production
   - rollback
-# Recovery triggers from 01 plus framework safeguards: verify, never count restoration as delivery.
 recovery_policy:
   rollback:
     run_after:
@@ -96,7 +85,6 @@ recovery_policy:
     verify_health: true
     terminal_on_success: restored
     terminal_on_failure: failed
-# Runtime dictionary: worker names/endpoints/queries from 01; thresholds from 02.
 bindings:
   project: your-app
   controller:

@@ -61,7 +61,7 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     # Shortened waits only for this local matrix. The normal live manifest stays unchanged.
-    project = yaml.safe_load((ROOT / "models/01_pipeline.yaml").read_text(encoding="utf-8"))
+    project = yaml.safe_load((ROOT / "config/controller_policy.yaml").read_text(encoding="utf-8"))
     project["execution"]["observation_attempts"] = 3
     project["execution"]["observation_interval_seconds"] = 0
     project["execution"]["reconciliation_interval_seconds"] = 0
@@ -70,7 +70,7 @@ def main():
     quick.write_text(yaml.safe_dump(project, sort_keys=False), encoding="utf-8")
     import copy
     unsafe = copy.deepcopy(project)
-    unsafe['jobs']['production']['retry_safe'] = False
+    unsafe['execution']['retry_safe'].remove('production')
     unsafe_path = output / 'unsafe-pipeline.yaml'
     unsafe_path.write_text(yaml.safe_dump(unsafe,sort_keys=False),encoding='utf-8')
     duration_goal = yaml.safe_load((ROOT / "models/02_goal.yaml").read_text(encoding="utf-8"))
@@ -91,13 +91,16 @@ def main():
         'negative_staging': (quick, ROOT / 'examples/staging_failure_goal.yaml'),
         'negative_production': (quick, ROOT / 'examples/production_failure_goal.yaml'),
         'payment': (quick, ROOT / 'models/02_goal.yaml'),
-        'unsafe': (unsafe_path, ROOT / 'models/02_goal.yaml'),
+        'unsafe': (quick, ROOT / 'models/02_goal.yaml'),
         'staging': (quick, ROOT / 'examples/staging_goal.yaml'),
         'duration': (quick, duration_path),
         'reporting': (ROOT / 'examples/reporting_pipeline.yaml', ROOT / 'examples/reporting_goal.yaml'),
     }
     for key, (pipeline, goal) in configurations.items():
-        subprocess.run([sys.executable, str(ROOT / 'generate_project.py'), '--project-dir',
+        policy = ROOT/'examples/config/controller_policy.yaml' if key=='reporting' else unsafe_path if key=='unsafe' else quick
+        bindings = ROOT/'examples/config/runtime_bindings.yaml' if key=='reporting' else ROOT/'config/runtime_bindings.yaml'
+        pipeline = ROOT/'examples/reporting_pipeline.yaml' if key=='reporting' else ROOT/'models/01_pipeline.yaml'
+        subprocess.run([sys.executable, str(ROOT / 'generate_project.py'), '--policy',str(policy),'--bindings',str(bindings),'--project-dir',
                         str(output / 'projects' / key), '--pipeline', str(pipeline), '--goal', str(goal)],
                        env=env, check=True, stdout=subprocess.DEVNULL)
     rows = []

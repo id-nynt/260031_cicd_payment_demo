@@ -1,5 +1,7 @@
 # Manual conventional experiment: deploy v1 to v2
 
+**Configuration lifecycle:** edit the two models plus `bdi-cicd-framework/config/controller_policy.yaml` and `runtime_bindings.yaml`; regenerate explicitly after changing any of them. Missing policy fields fail validation. Campaign startup reuses the saved schema-2 contract and agent; neither approach regenerates them. Publish the complete migrated control revision for native trials and select the same revision for BDI; existing application v1/v2 tags and verified release receipts remain usable.
+
 Use the **same repository, v1/v2 application commits, Docker environment and runner** as BDI. The entry point is [`.github/workflows/ci-cd.yml`](../.github/workflows/ci-cd.yml). GitHub's job dependencies and scripts choose what happens next; Jason is not started.
 
 | Phase | Steps | When |

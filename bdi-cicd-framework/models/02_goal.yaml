@@ -1,16 +1,13 @@
 goal:
   achieve(A):
-  - production.status == success
-  - staging.status == success
+    - production.status == success
+    - staging.status == success
   maintain(M):
-  - production.duration <= 1800000
-  - production.health == healthy
+    - production.duration <= 1800000
+    - production.health == healthy
   duration_unit: milliseconds
   avoid(V):
-  - condition: production.status == success
-    when: test.status != success
-  - condition: production.status == success
-    when: staging.status != success
-telemetry_constraints:
-  error_rate_high_gt: 0.05
-  latency_p95_ms_high_gt: 500
+    - condition: production.status == success
+      when: test.status != success
+    - condition: production.status == success
+      when: staging.status != success

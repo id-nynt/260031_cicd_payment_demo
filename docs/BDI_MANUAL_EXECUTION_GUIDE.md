@@ -431,6 +431,10 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --
 
 **Start:** v1 running. Prepare Observation and Traffic PowerShell windows **before launching**. Read all of this step first. Enabling `request_faults` does not itself create errors.
 
+**Why traffic must continue:** this script is the client sending payment requests. Without `--continuous`, it sends six requests and exits; the app itself can remain ready. The two-minute latency query needs recent payment samples. Once requests stop, the histogram rate can become zero and p95 undefined, so the controller cannot confirm healthy telemetry. Stopping errors must therefore be followed immediately by **normal traffic**, not silence.
+
+Use the direct `node` commands below. In the observed Windows invocation, the npm wrapper did not forward `--continuous`. Direct invocation removes that argument-forwarding dependency. Do not change missing metrics to zero or extend the observation budget just to conceal missing traffic.
+
 **Actions 1 - launch:** Controller PowerShell:
 
 ```powershell
@@ -459,7 +463,15 @@ Get-Content "$watchDir/controller-journal.jsonl" -Tail 30 -Wait
 ```
 
 - `Set-Location` resolves the copied relative path; `Read-Host` records this campaign's path in this window.
-- `Get-Content` follows the journal; start after the file appears. Watch this file, not only the agent log tab.
+- `Get-Content` follows the journal; start after the file appears. **The pause is a Java journal event, not a message in the MAS `controller_agent` tab.** Keep this Observation terminal visible.
+
+**Expected start signal in Observation PowerShell** (field order can differ):
+
+```json
+{"event":"controller_pause","after_entity":"production","milliseconds":60000}
+```
+
+This excerpt identifies a 60-second pause that resumes automatically. It is not a prompt awaiting input. Watch the current campaign's new event, not a pause from a previous journal. If the event is already more than 60 seconds old, inspect the current outcome before proceeding; do not guess from `run entity=production`, which only means dispatch started.
 
 **Actions 3 - at `controller_pause` with `after_entity: production`:** immediately run in Traffic PowerShell:
 
@@ -469,20 +481,36 @@ $health = Invoke-RestMethod http://localhost:3000/health
 $health
 if ($health.experimentMode -ne 'request_faults') { throw 'Wrong app mode; inspect this campaign before injecting' }
 $env:PAYMENT_BASE_URL = 'http://localhost:3000'
-npm run traffic:experiment -- inject_error 6 --continuous
+node scripts/generate-experiment-traffic.mjs inject_error 6 --continuous
 ```
 
 - `Set-Location` selects the traffic script's repository.
 - The health request and display confirm the new app's mode/identity; the guard rejects a normal-mode app.
-- `PAYMENT_BASE_URL` targets production; `npm run` continuously sends fault-header requests.
+- `PAYMENT_BASE_URL` targets production; `node` passes `--continuous` directly to the script and continuously sends fault-header requests.
 
-**Actions 4 - stop the temporary fault:** keep errors running through the end of the pause until the journal shows a production `telemetry_measurement` with an error rate above `0.05` and MAS shows `BDI_DECISION=wait_reconsider`. Then **immediately Ctrl+C in Traffic PowerShell**, and run:
+**Traffic checkpoint before continuing:**
+
+- `/health` must show `request_faults`. If the guard throws or the connection resets, stop here; the app may still be changing. Recheck `/health` before retrying. Do not continue past the error.
+- HTTP 503 lines and `Summary` lines must repeat across multiple batches, approximately once a second plus request time.
+- The `PS C:\...>` prompt must **not** return until you press Ctrl+C or the script fails.
+- Six responses followed by a prompt means the client stopped. The final `Wait 10-20 seconds...` message also means the script exited; it is not running in the background.
+- Keep the Traffic terminal visible. If it exits with an error, retain that error and check the app/mode before restarting.
+
+**Actions 4 - stop the temporary fault:** keep errors running through the end of the pause until the journal shows a production `telemetry_measurement` with `data_status: fresh` and an error rate above `0.05` and MAS shows `BDI_DECISION=wait_reconsider`. Then **immediately Ctrl+C in Traffic PowerShell**, and run:
 
 ```powershell
-npm run traffic:experiment -- normal 6 --continuous
+node scripts/generate-experiment-traffic.mjs normal 6 --continuous
 ```
 
 - This sends successful requests while the two-minute metric window clears. Do not wait another two minutes before starting normal traffic.
+
+**Normal-traffic checkpoint:**
+
+- Repeated HTTP 201 responses and increasing success totals must appear; the PowerShell prompt must not return. Leave this running until the agent's final result.
+- In the Observation terminal, production measurements should remain/become `data_status: fresh`; error rate should fall below the configured limit as the old errors leave the window. Latency must also pass.
+- `wait_reconsider` alone does not prove a bad error rate: it also appears for missing data or while waiting for the next healthy sample.
+- An `unavailable` measurement's numeric zeros are placeholders, not proof of zero errors or zero latency. If normal traffic is repeating but measurements remain unavailable beyond the export/scrape delay, inspect Prometheus rather than assuming success (see F2).
+- If the campaign already ended or rollback began, new traffic cannot resume that campaign. Finish recording it, reset with Part B and start a new C3 run.
 
 **Expected results:**
 
@@ -700,12 +728,17 @@ $knownGood
 | Ports 3000/3001 do not respond | B3 checks existing containers. If absent or unhealthy, inspect deployment logs and restore using B4 after resolving prerequisites. Starting the local port-3002 rehearsal does not start production. |
 | Fault command says wrong experiment mode | The new request-fault deployment has not arrived, or you targeted the wrong port. Inspect `/health` and the current journal before injecting. |
 | Campaign succeeds just after the pause | Both observed samples were healthy. Enabling request faults alone injects nothing. C3 requires actual HTTP 503 traffic and a confirmed bad observation. |
+| Traffic prints six responses and returns to PowerShell | It is a single batch, not continuous traffic. Use the direct `node ... --continuous` commands in C3; verify repeated batches and no returned prompt. |
+| No pause message in the agent tab | Follow C3 Actions 2 in Observation PowerShell. `controller_pause` is in the campaign journal, not the `controller_agent` log. |
+| App ready but telemetry unavailable | Check that normal payment traffic continues. No recent payments can make p95 undefined; readiness alone is insufficient. If traffic continues, check current-execution queries in Prometheus, scrape/export health and sample freshness. |
 | Temporary traffic causes rollback | Errors or another unhealthy metric outlasted the fixed observation budget. Inspect measurements/timing; remove errors promptly at the first confirmed unhealthy observation on the next run. |
 | WinError 183 / campaign directory exists | Generate a new timestamp/path. Do not erase or reuse the old evidence directory. |
 | Missing/stale project artifacts | Review changed inputs/generator, run A3 generation explicitly, then validate. Do not delete the generation manifest. |
 | Gradle 75% after `Campaign finished` | Campaign is complete; close MAS Console after capturing evidence. That percentage is not pipeline progress. |
 | Another controller holds lock | An earlier controller/console remains active. Resolve it first; linked worktrees share the lock. |
 | `execution_uncertain` after interruption | Follow F3. Closing local Jason does not necessarily cancel GitHub execution. |
+
+**If telemetry stays unavailable despite repeating normal HTTP 201 responses:** open production Prometheus at `http://localhost:9090`. Copy the exact `latency_p95_ms_query` from input 01, replace `{{run_id}}` with the current `/health.deploymentRunId`, and execute it. A finite p95 is required; `NaN` or an empty result is not healthy evidence. Check the error-rate, availability and sample-age queries the same way. Use port 9091 for staging. The journal currently suppresses the individual metric exception, so `unavailable` alone cannot distinguish no traffic from a scrape, query or freshness problem. Preserve the query results if this continues; do not disable correlation or freshness checks.
 
 ### F3. Reconcile an interrupted campaign
 

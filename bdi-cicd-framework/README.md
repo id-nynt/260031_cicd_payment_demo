@@ -1,90 +1,128 @@
-# BDI CI/CD controller
+# Adapt the BDI CI/CD framework to your project
 
-Engineer inputs are **models/01_pipeline.yaml** and **models/02_goal.yaml**. The payment example supplies job bindings, endpoints and PromQL in the pipeline input; recovery actions have their own mapping. Goals supply achievements, safety constraints and telemetry thresholds. No separate project manifest is read by the controller.
+This framework uses a Jason BDI agent to pursue deployment goals. You describe the available jobs, their dependencies, observations and recovery actions. The agent selects work, checks results and decides whether to continue, retry, recheck health, recover or stop.
 
-Read [how generation and runtime connect](../docs/BDI_GENERATION_AND_RUNTIME.md) for the origin of E/D/O/R, predefined versus project-specific rules, the active agent/environment, telemetry configuration sources, and the assessment of embedding GitHub job steps. Follow the [manual experiment walkthrough](../docs/BDI_MANUAL_EXECUTION_GUIDE.md) one step at a time for local startup, version tags, baseline/v2 campaigns and recovery.
+**Jason decides; Java executes and observes; GitHub Actions runs only the selected job.** Starting the controller starts a campaign immediately. The agent ends when that campaign finishes; it is not a permanent production monitor.
 
-Achievement goals support `entity.status == success` and `entity.status == failure`. Failure goals are explicit negative experiments: a matching executed failure satisfies the goal; rejected dispatch or uncertain execution does not. Unmet campaigns report ?Attempted but failed to achieve goals.? Negative experiments never create verified release receipts. See the [manual failure-goal experiment](../docs/BDI_MANUAL_EXECUTION_GUIDE.md#optional-experiment-require-staging-to-fail).
+## 1. Understand the configuration
 
-## Project generation and campaign execution
+| File | Role | Who edits it? |
+|---|---|---|
+| [models/01_pipeline.yaml](models/01_pipeline.yaml) | Available entities, dependencies, GitHub job mappings, telemetry and execution budgets | Engineer |
+| [models/02_goal.yaml](models/02_goal.yaml) | Desired results, maintenance/avoidance constraints and health thresholds | Engineer |
+| [models/03_workflow_model.yaml](models/03_workflow_model.yaml) | Validated project contract and runtime bindings | Generator |
+| [bdi/controller_agent.asl](bdi/controller_agent.asl) | Executable project agent: generated beliefs/goals plus generic reasoning plans | Generator |
+| `models/generation-manifest.json` | Input, generator and artifact hashes | Generator |
+
+Inputs **01 and 02 are the configuration sources of truth**. The saved 03 is the agent generator's sole project-specific input. Generate once per configuration or generator revision, then reuse the persistent artifacts for campaigns. Commit inputs, generated contract, agent and manifest together. Campaign startup rejects missing, stale or inconsistent artifacts; it never regenerates them.
+
+### How the model becomes an agent
+
+| Model concept | Where its definition comes from |
+|---|---|
+| **E: entities** | Keys under `jobs` and `recovery` in 01; each maps to a real worker job |
+| **D: dependencies** | Each job's `needs` in 01; prerequisites must succeed |
+| **O: observable properties** | Framework-defined status, duration and health vocabulary; actual observations come from GitHub, readiness and Prometheus |
+| **R: recovery** | Each recovery entry's `from` entity and recovery action in 01 |
+| **Goals** | `achieve(A)`, `maintain(M)` and `avoid(V)` in 02 |
+
+The generator emits static beliefs for entities, dependencies, capabilities, budgets and goal predicates. During execution the agent receives attempt-correlated status, duration and telemetry beliefs, and tracks attempts and workflow state. Its `!master_goal` pursues the declared achievements through the plans in [generator/controller_generic.asl](generator/controller_generic.asl). The older `bdi_generic.asl` is not the active policy.
 
 ```text
-Explicit project generation (once per configuration revision):
-models/01_pipeline.yaml + models/02_goal.yaml
-  -> generate_project.py -> validate and save models/03_workflow_model.yaml
-  -> reload saved contract -> generate_agent + generator/controller_generic.asl
-  -> bdi/controller_agent.asl + models/generation-manifest.json
-
-Each campaign (no generation):
-run_controller.py -> validate persistent inputs/contract/agent/generator hashes
-  -> archive exact artifacts and provenance in runs/<campaign>/
-  -> harness.ControllerMain -> harness.ControllerEnvironment -> Jason
-  -> Java executes selected action -> entity-execution.yml runs selected entity only
-  -> correlated observation -> Jason selects next action / retry / recovery / stop
+01 + 02 -> generate_project.py / parser/workflow_model.py -> saved 03
+saved 03 + controller_generic.asl -> bdi/controller_agent.asl + manifest
+run_controller.py -> ControllerMain -> ControllerEnvironment -> Jason
+Jason action -> Java GitHub adapter -> selected worker job -> correlated observations
 ```
 
-`generate_project.py` is the only supported project generation entry point. Run it explicitly after changing either engineer input, the compiler, generation code or generic policy. Commit the generated contract, agent and generation manifest together with that revision. Generation reads the saved, validated workflow model as its sole project-specific input; it does not read the engineer inputs again when emitting AgentSpeak.
+The current policy retries only eligible transient failures/timeouts on retry-safe jobs within budget. Ordinary failures stop or recover. Bad telemetry causes bounded reobservation; enough consecutive healthy samples allow progress. Unknown execution must be reconciled before redispatch. Recovery uses a verified known-good release and verifies its health; restoration never counts as candidate delivery.
 
-`run_controller.py` validates existing artifacts without writing them. Missing, stale or inconsistent artifacts fail before Java starts, with a regeneration command. `--validate-only` performs the same check without creating a campaign. `--project-dir` selects a different generated project. Input options belong to generation, not campaign startup; the old `--generate-only` launch option is removed.
+`entity.status == failure` is supported for negative experiments. It requires an actual matching failure, does not manufacture one, and produces no known-good release receipt. Goals remain subject to dependencies and constraints; impossible goals end unmet.
 
-The schema 2 workflow contract leads with entities (E), dependencies (D), observations (O), recovery (R) and goals, followed by execution/observation/recovery policies and one bindings section. The framework derives its capability dictionary from that saved contract rather than repeating action lists and goals in YAML. Validation reconstructs the contract from engineer inputs, checks its derived capabilities, then compares the complete agent with its deterministic contract projection and generic executable policy. Thus extra/missing entities, changed action calls, dropped observations/recovery, changed goal constraints and altered goal rules are rejected, even if someone updates the agent hash. This is consistency validation, not a signature or proof that arbitrary replacement generator code is correct.
+## 2. Fill the two inputs
 
-`bdi/controller.mas2j` is a framework launch template. Each campaign loads an exact archival copy of the persistent agent in an isolated MAS directory; copying does not regenerate it. Java checks the snapshot hashes immediately before launch. The Gradle `runController` task is an internal launcher used with the campaign environment, not a replacement for Python's project validation.
+Use the commented [01 template](templates/models/01_pipeline.yaml) and [02 template](templates/models/02_goal.yaml). The [03 reference shape](templates/models/03_workflow_model.yaml) explains generated sections; **do not fill or copy it as an input**. These are YAML forms checked against the existing parser, not a separate JSON Schema implementation.
 
-Normal work is `build -> test -> security -> staging -> production`. Recovery is conditional and never a successful-path dependency. Jason limits retries, reobservation and reconciliation. Confirmed retryable failures use the configured retry budget only for retry-safe entities, including production. Deterministic failures stop or recover; unhealthy/unavailable telemetry is reobserved within a separate count/time budget. Two consecutive healthy observations are required for payment verification; recovery is attempted once. The worker contains no `needs` pipeline and cannot choose a successor. Build/test/security use hosted workers; deployment uses the existing self-hosted Linux `payment-deploy` runner and local Docker Compose.
+From the repository root, copy only 01 and 02 to `bdi-cicd-framework/models/` when replacing the payment example, then edit them. Keep a separate project directory if you need to retain both configurations.
 
-The [manual guide](../docs/BDI_MANUAL_EXECUTION_GUIDE.md) separates setup and local checks (Part A) from the eight live v1-to-v2 experiment phases (Part B), with commands and visible checkpoints. [Setup details](../docs/BDI_SETUP.md) provide additional authentication and troubleshooting reference. [Policy details](../docs/BDI_GENERATION_AND_RUNTIME.md) distinguish execution retry, health observation and reconciliation. Superseded guidance is in [docs/archive/pre-policy-refactor](../docs/archive/pre-policy-refactor/README.md).
+- **01:** replace project/name placeholders; rename/add/remove jobs; map exact GitHub job display names; set dependencies, environments, observation points, recovery and retry safety.
+- **01 telemetry:** replace hosts, ports, metric names and route filters with values your app actually exports. Addresses must be reachable from the controller. Keep `{{run_id}}` in queries so previous releases cannot satisfy current health checks.
+- **02:** select achievements and constraints using the same entity names. Choose meaningful duration limits, error fractions and p95 latency limits. The template values are examples.
 
-## Local verification (no deployment)
+**Expected:** your two inputs describe your app, with no remaining `YOUR_*`, `your-app` or `your_app_*` placeholders. Unknown fields and unsupported goals are rejected during generation.
 
-Requires Python 3.12 with PyYAML, JDK 21+, and the supplied Gradle wrapper. From the repository root (use `py -3 -B` instead of `python` on Windows if necessary):
+### Connect your actual worker and application
+
+The input YAML does not implement shell commands or create runners. Adapt [.github/workflows/entity-execution.yml](../.github/workflows/entity-execution.yml) to build, test and deploy your app:
+
+- Retain the dispatch interface (`entity`, `campaign_id`, `execution_id`, `attempt`, `release_sha`, `failure_mode`, `experiment_mode`) and `run-name: bdi-${{ inputs.execution_id }}` for correlation.
+- Match entity choices and job display names to 01. Gate each job with `if: inputs.entity == '<entity>'`; let Jason order jobs rather than a worker `needs` chain.
+- Check out the supplied `release_sha`. Keep actual `steps`, `services`, runner labels and deployment commands in this worker, not input 01.
+- Supply the execution UUID to the deployed app (the example uses `CI_RUN_ID`). Expose readiness (HTTP 200 when ready, 503 when not ready) and export metrics labeled with that execution identity. See the [telemetry integration details](../docs/BDI_GENERATION_AND_RUNTIME.md#payment-telemetry-and-controllable-traffic) and existing adapters before replacing the app's telemetry.
+- Implement recovery using the supplied known-good SHA. Confirm database compatibility; source rollback does not undo database changes.
+
+Publish the worker and candidate source before live use. Make the dispatch workflow available on the repository default branch and select an existing published worker ref. Deployment runner labels must match the worker and the runner must stay online. Build/test jobs may use hosted runners while deployment jobs use your self-hosted runner.
+
+## 3. Generate and validate
+
+Requires Python with PyYAML, JDK 21+ and the supplied Gradle wrapper. Run from the repository root; on Windows use `py -3 -B` in place of `python`.
 
 ```sh
 python bdi-cicd-framework/generate_project.py
 python bdi-cicd-framework/run_controller.py --validate-only
-python bdi-cicd-framework/run_controller.py --scenario healthy
-python bdi-cicd-framework/verify_controller_experiment.py
-python -m unittest discover -s bdi-cicd-framework/parser -p 'test_*.py'
-cd bdi-cicd-framework/bdi
-bash ./gradlew --no-daemon test
 ```
 
-On Windows run `gradlew.bat`. `--gui` opens Jason's console and retains the final mind until closed. `examples/reporting_pipeline.yaml` and `reporting_goal.yaml` exercise another topology through the same compiler, agent and runtime. This example is a simulated application contract; it does not claim a live reporting deployment.
+**Expected:** generation prints the contract, agent and manifest paths; validation prints `Project artifacts are consistent`. No GitHub jobs or deployments run.
 
-## Telemetry and recovery
+For a separate configuration, always supply both input paths during generation:
 
-The payment application exports OTLP HTTP metrics to the OTel collector; Prometheus scrapes its exporter. Each worker sets `CI_RUN_ID` to the controller execution UUID. Canonical PromQL binds that identity. Java reads readiness and raw metrics, checks finite values and sample/source freshness, and publishes entity/attempt/round measurements. AgentSpeak applies the configured error/latency thresholds and decides whether to reobserve or continue. Production and recovery both require an accepted post-deployment observation. HTTP/job success alone cannot achieve deployment goals.
+```sh
+python bdi-cicd-framework/generate_project.py --project-dir projects/my-app --pipeline projects/my-app/models/01_pipeline.yaml --goal projects/my-app/models/02_goal.yaml
+python bdi-cicd-framework/run_controller.py --project-dir projects/my-app --validate-only
+```
 
-For live use, configure `GITHUB_REPOSITORY`, `GITHUB_TOKEN` (Actions write), `BDI_WORKFLOW_REF` (approved branch/tag with the worker), and `BDI_RELEASE_SHA` (full immutable candidate SHA). The worker must already be available for dispatch. Start the controller outside the runner checkout and its execution slot. Keep endpoint overrides consistent with the intended deployment. See the [GitHub dispatch API contract](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event), version 2026-03-10.
+Use the same `--project-dir` on subsequent commands for that configuration.
 
-An initial live baseline requires explicit `--baseline`; it has no rollback source. Subsequent runs use `--known-good <trusted-achieved-live-controller-result.json> --confirm-compatible-rollback`. Receipts must verify the same project, repository and recovery environment at a full commit SHA. The compatibility flag confirms the retained database schema/data can be used by that revision. Rollback rebuilds this verified source and verifies its new execution identity and telemetry. A restored environment yields `stopped/restored`, never successful candidate delivery. Receipt files are trusted operator evidence, not cryptographically signed attestations.
+## 4. Optionally test without deployment
 
-## Uncertain execution
+```sh
+python bdi-cicd-framework/run_controller.py --scenario healthy --gui
+python -m unittest discover -s bdi-cicd-framework/parser -p 'test_*.py'
+```
 
-Before each POST, Java atomically persists execution intent in the common Git directory (`bdi-execution-pending.json`). All worktrees share a controller lock. A lost acknowledgement, timeout, missing selected job or polling failure becomes unknown. Jason requests bounded read-only reconciliation. Java searches the exact `bdi-<execution UUID>` run name and checks the selected job. Absence or ambiguity never authorizes another dispatch. Unresolved state blocks later campaigns, including after a restart.
+**Expected:** the simulation opens MAS Console and shows decisions and a final outcome; success goals compatible with the healthy scenario should be achieved. Tests check the compiler and artifact contracts. Simulation does not prove that your real worker, runner or telemetry works. The [reporting example](examples/reporting_pipeline.yaml) demonstrates another topology; it is not a deployed application.
 
-After a stopped process, `python bdi-cicd-framework/run_controller.py --reconcile-only` performs only remote reads and records a reconciliation result. It never resumes the old campaign or declares candidate achievement. Confirmed terminal status clears the pending marker; unknown preserves it. If the run cannot be found in the bounded search (500 recent dispatches), investigate it manually; do not erase the marker to force a retry. Repository-local locking does not coordinate independent clones or other deployment tools.
+## 5. Start a real deployment
 
-## Artifacts and file responsibilities
+In the controller terminal, configure these values before launch:
 
-| Location | Responsibility |
+| Environment variable | Value |
 |---|---|
-| `models/01_pipeline.yaml`, `02_goal.yaml` | Canonical engineer inputs |
-| `models/03_workflow_model.yaml`, `bdi/controller_agent.asl` | Persistent generated project contract and agent |
-| `models/generation-manifest.json` | Input, generator and artifact hashes; paths relative to project directory |
-| `parser/workflow_model.py`, `model_transform.py` | Canonical compiler plus reused syntax/model machinery |
-| `generator/controller_generic.asl` | Generic Jason control policy |
-| `bdi/controller.mas2j`, `harness/Controller*`, `GitHubEntityExecution`, telemetry adapters | Runtime source and bindings |
-| `runs/<campaign>/` | Execution journal/result, MAS, provenance and exact archival snapshots of existing artifacts |
-| `bdi/fixtures/*workflow.yaml` | Generated Java test fixtures, checked against the compiler |
-| `parser/fixtures/legacy/` | Compatibility fixtures, never live inputs |
-| `examples/` | Second-application and staging-goal examples; legacy project manifests are in parser fixtures |
-| `../docs/legacy/pre-canonical/` | Archived agents/models and manual rollback workflow |
-| `../docs/experiments/` | Deliberately retained historical and repair validation evidence |
-| `bdi/build`, `.gradle`, `bin`, `__pycache__` | Disposable output, not evidence |
+| `GITHUB_REPOSITORY` | Your `owner/repository` |
+| `GITHUB_TOKEN` | A token with repository access and Actions write; keep it secret |
+| `BDI_WORKFLOW_REF` | Published worker branch/tag matching input 01 |
+| `BDI_RELEASE_SHA` | Full 40-character **published application commit**, not an unpublished local HEAD |
 
-Follow the [manual experiment walkthrough](../docs/BDI_MANUAL_EXECUTION_GUIDE.md) for actions, commands and checkpoints. Every campaign directory must be new. Provenance identifies persistent artifact paths and the generation-manifest hash, and includes input snapshots/hashes, workflow/agent/MAS/template hashes, source file hashes and source commit; scenario receipts are explicitly labeled and rejected for live rollback. Preserve a campaign as evidence deliberately; Gradle's verification output is disposable. The old `config/` Gradle scripts are archived. Non-controller Java classes remain compatibility material, not supported launch paths. Do not invoke the old `model_transform.py` CLI for canonical input generation.
+Remove leftover scenario/fault settings such as `BDI_EXECUTION_PLAN` for an ordinary deployment. Keep Docker, the deployment runner and required monitoring services running. Run the controller outside the runner's checkout/job slot.
 
-## Limits
+For the first healthy baseline, which has no earlier rollback receipt:
 
-No live GitHub, runner, Docker deployment or rollback is part of repair verification. The workflow rebuilds source rather than promoting an immutable image digest, and never restores a database. Telemetry proves bounded sampled health, not indefinite service correctness. Security auditing blocks high/critical production dependency advisories. Independent clones need shared external coordination before concurrent live control. The second application verifies generic generation/reasoning, not a second production integration.
+```sh
+python bdi-cicd-framework/run_controller.py --gui --baseline --artifacts-dir bdi-cicd-framework/runs/my-first-baseline
+```
+
+**Expected:** MAS Console shows selected jobs; GitHub runs one selected entity per dispatch. Deployment goals succeed only after required health checks. Inspect `controller-result.json`: require `mode: github`, `outcome: achieved`, the intended release SHA and verified environment receipts before treating it as known-good.
+
+For the next release, set `BDI_RELEASE_SHA` to its published SHA and run:
+
+```sh
+python bdi-cicd-framework/run_controller.py --gui --known-good bdi-cicd-framework/runs/my-first-baseline/controller-result.json --confirm-compatible-rollback --artifacts-dir bdi-cicd-framework/runs/my-next-release
+```
+
+Only confirm compatible rollback when the retained database is compatible with the baseline. Each campaign directory must be new; omit `--artifacts-dir` to get an automatic unique directory. Keep the successful baseline receipt for later campaigns.
+
+**Expected:** the agent delivers and verifies the candidate, or stops with evidence (and verifies recovery if selected). Read `controller-journal.jsonl` for decisions and `controller-result.json` for the final outcome. Campaign directories also preserve artifact snapshots and provenance. Once finished, close MAS Console to release the foreground Gradle command; deployed containers remain running.
+
+If interrupted, close the old console and run `python bdi-cicd-framework/run_controller.py --reconcile-only` with the same project and GitHub configuration. It checks the old remote execution, without resuming or dispatching. Do not delete pending records or start overlapping campaigns to bypass uncertainty.
+
+For the payment demo's detailed setup, traffic experiments and v1 restoration, follow the [manual guide](../docs/BDI_MANUAL_EXECUTION_GUIDE.md). For supported policy, telemetry contracts and implementation details, read [generation and runtime](../docs/BDI_GENERATION_AND_RUNTIME.md).

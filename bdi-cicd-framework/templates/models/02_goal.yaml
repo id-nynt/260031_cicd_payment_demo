@@ -1,0 +1,22 @@
+# Engineer input: entity names must exist in input 01. Numeric values are examples.
+goal:
+  # All achievements must hold. Supported desired statuses: success or failure.
+  # failure is a negative experiment; it does not inject faults or create a release receipt.
+  achieve(A):
+  - production.status == success
+  - staging.status == success
+  # Supported constraints: entity.duration <= milliseconds; entity.health == healthy.
+  maintain(M):
+  - production.duration <= 1800000
+  - production.health == healthy
+  duration_unit: milliseconds
+  # Forbid condition when the accompanying predicate holds.
+  avoid(V):
+  - condition: production.status == success
+    when: test.status != success
+  - condition: production.status == success
+    when: staging.status != success
+# Error rate is a fraction (0.05 = 5%); latency is milliseconds.
+telemetry_constraints:
+  error_rate_high_gt: 0.05
+  latency_p95_ms_high_gt: 500

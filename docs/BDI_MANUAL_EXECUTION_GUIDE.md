@@ -11,6 +11,7 @@ Run commands yourself, one step at a time. There is no end-to-end automation scr
 | Healthy deployment | C1, then E1 |
 | Build/test/security failure or bounded retry | C2, then E1 |
 | Scripted traffic: healthy, fluctuating, burst, temporary/persistent/intermittent errors, idle | C0, then E1 |
+| Scripted staging failures: temporary or persistent | C0-S, then E1 |
 | Manual temporary production error traffic, then continue v2 | C3, then E1 |
 | Persistent production error traffic, then rollback | C4, then E1 |
 | Deterministic production failure, then rollback | C5, then E1 |
@@ -427,9 +428,68 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --
 
 **Cleanup:** after BDI finishes, inspect E1 and the traffic evidence. Ctrl+C stops the client early and saves a summary; it does not stop BDI. Repeat B before another comparison. Keep the manual client off while the scenario client runs, unless intentionally testing combined load.
 
-**Staging variant:** replace `production.experiment_mode` with `staging.experiment_mode`, launch with `--pause-after staging`, and add `--entity staging` to the client command (it defaults to port 3001). The client follows that staging execution; a production recovery or any campaign completion stops it.
+**Staging scenarios:** use the complete C0-S procedure below instead of adapting production commands manually.
 
 **Customization:** profiles are in `scripts/traffic-scenarios/`. Copy a JSON profile, adjust phase seconds, target rate (0..10), error fraction (0..1), jitter and seed, then use `--profile path/to/profile.json` instead of `--scenario`. These are payment-app profiles: another app needs its own request body/endpoints and identity/fault integration. This is not a high-concurrency capacity benchmark. True server-latency injection is not available through the current published worker's request-fault interface; normal load fluctuations measure actual response latency but do not manufacture delay.
+
+### C0-S. Staging traffic failures: recover or block promotion
+
+**Start:** finish B1-B4 so production and staging are verified v1. Choose **one** of these profiles; repeat setup/reset before the other comparison:
+
+| Profile | Staging traffic | Expected BDI behavior |
+|---|---|---|
+| `staging-temporary-errors` | 70% error headers for 75 seconds, then continuous normal traffic | Wait/reobserve staging; if health recovers within budget, continue to production and verify v2 |
+| `staging-persistent-errors` | 70% error headers until campaign completion or the 600-second cap | Exhaust staging observation budget and stop promotion; production stays v1 |
+
+Both profiles select staging and port **3001** by default. The runner rejects a conflicting `--entity production` argument. Production receives no traffic from this client. BDI outcomes still depend on real measurements.
+
+**Actions 1 - prepare:** Controller PowerShell; change only `$trafficScenario` to choose the second case:
+
+```powershell
+$trafficScenario = 'staging-temporary-errors'
+$env:BDI_RELEASE_SHA = $v2Sha
+$candidateDir = 'bdi-cicd-framework/runs/' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '-' + $trafficScenario
+$faultFile = [System.IO.Path]::GetFullPath("$candidateDir-faults.properties")
+Set-Content -LiteralPath $faultFile -Value 'staging.experiment_mode=request_faults' -Encoding ascii
+$env:BDI_EXECUTION_PLAN = $faultFile
+$candidateDir
+```
+
+- The first two assignments choose the scenario and published v2.
+- `$candidateDir` names fresh campaign evidence; `$faultFile` resolves its separate configuration file.
+- `Set-Content` enables request faults **only in staging**; the next assignment selects that file.
+- The last command prints the path to paste in the Traffic terminal. Do not launch yet.
+
+**Actions 2 - arm traffic:** in Traffic PowerShell, use the same scenario name:
+
+```powershell
+Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
+$trafficScenario = 'staging-temporary-errors'
+$trafficCampaign = Read-Host 'Paste the staging campaign directory from Actions 1'
+node scripts/run-traffic-scenario.mjs --campaign "$trafficCampaign" --scenario "$trafficScenario" --seed 42
+```
+
+- `Set-Location` selects the client; the scenario assignment matches Actions 1.
+- `Read-Host` transfers the campaign path to this window.
+- `node` prints **WAITING for fresh staging controller_pause**. Keep it running.
+
+**Actions 3 - launch:** back in Controller PowerShell:
+
+```powershell
+py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --confirm-compatible-rollback --pause-after staging --pause-ms 60000 --artifacts-dir "$candidateDir"
+```
+
+- The controller pauses after staging deployment; the client verifies its execution ID and automatically begins staged traffic. Production is still v1 at this point.
+
+**Expected results:**
+
+- Traffic terminal: STARTED, PHASE, then ACTIVE counters for injected HTTP 503 and successful HTTP 201 requests. Evidence records `entity: staging` and a port-3001 URL.
+- MAS: `observe entity=staging` and repeated `wait_reconsider` while errors remain in the metric window.
+- **Temporary:** the client automatically switches to normal traffic after 75 seconds. On healthy verification, GitHub then receives **Production entity**; final result can be `achieved / not_needed`. If health does not recover in time, stopping is valid; inspect the journal.
+- **Persistent:** the normal success-goal campaign stops, ordinarily `stopped / not_attempted`. No production job or production rollback should be selected for this staging health failure. Port 3000 remains v1; port 3001 may serve the failed candidate in request-fault mode.
+- The traffic client stops on `controller_finished`. During successful temporary recovery it keeps normal staging traffic running until the campaign ends, supporting the pre-production staging check.
+
+**Cleanup:** E1, then B1-B4. Even when production remains v1, restore staging too before the next comparison. Preserve both campaign and sibling traffic evidence. For manual staging injection instead, C4 retains the port-3001 variant.
 
 ### C1. Successful v2 deployment
 

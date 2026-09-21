@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtemp, mkdir, writeFile, appendFile, readFile, rm } from 'node:fs/promises';
@@ -9,14 +9,14 @@ import { runScenario, validateProfile, seededRandom } from '../run-traffic-scena
 const profile = phases => ({ name: 'test', seed: 42, jitter: 0, phases });
 const phase = (seconds, error_fraction = 0) => ({ seconds, requests_per_second: 10, error_fraction });
 
-async function fixture(t, { identity = 'candidate', onPayment, expired = false } = {}) {
+async function fixture(t, { identity = 'candidate', onPayment, expired = false, entity = 'production' } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'bdi-traffic-test-'));
   const campaign = join(root, 'campaign');
   await mkdir(campaign);
   const journal = join(campaign, 'controller-journal.jsonl');
   await writeFile(journal, [
-    { event: 'execution_configuration', entity: 'production', execution_id: 'candidate' },
-    { event: 'controller_pause', after_entity: 'production', timestamp: new Date(Date.now() - (expired ? 120000 : 0)).toISOString(), milliseconds: 60000 }
+    { event: 'execution_configuration', entity, execution_id: 'candidate' },
+    { event: 'controller_pause', after_entity: entity, timestamp: new Date(Date.now() - (expired ? 120000 : 0)).toISOString(), milliseconds: 60000 }
   ].map(e => JSON.stringify(e)).join('\n') + '\n');
   const received = [];
   const server = createServer(async (req, res) => {
@@ -110,4 +110,28 @@ test('operator abort saves evidence without waiting for a pause', async t => {
   assert.equal(result.stop_reason, 'operator_stop');
   assert.equal(f.received.length, 0);
   assert.equal(JSON.parse(await readFile(join(f.output, 'summary.json'))).stop_reason, 'operator_stop');
+});
+
+
+test('staging profile follows staging pause and switches to healthy traffic', async t => {
+  const f = await fixture(t, { entity: 'staging' });
+  const p = { ...profile([phase(.3, 1), phase(.3)]), entity: 'staging' };
+  const result = await runScenario({ ...f, profile: p });
+  assert.equal(result.entity, 'staging');
+  assert.ok(result.injected_errors >= 1);
+  assert.ok(result.successful >= 1);
+});
+
+test('staging-only profile rejects a production override before requests', async t => {
+  const f = await fixture(t);
+  const p = { ...profile([phase(.1, 1)]), entity: 'staging' };
+  await assert.rejects(runScenario({ ...f, profile: p, entity: 'production' }), /disagrees/);
+  assert.equal(f.received.length, 0);
+});
+
+test('persistent staging traffic stops when the campaign stops promotion', async t => {
+  const f = await fixture(t, { entity: 'staging', onPayment: async ({ journal }) => appendFile(journal, JSON.stringify({ event: 'controller_finished', outcome: 'stopped' }) + '\n') });
+  const result = await runScenario({ ...f, profile: { ...profile([phase(2, 1)]), entity: 'staging' } });
+  assert.equal(result.stop_reason, 'campaign_finished');
+  assert.equal(result.requests, 1);
 });

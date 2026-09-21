@@ -1,4 +1,4 @@
-﻿# Campaign-linked traffic profiles
+# Campaign-linked traffic profiles
 
 Run from the repository root with Node 22+. Use [manual guide C0](../../docs/BDI_MANUAL_EXECUTION_GUIDE.md#c0-scenario-driven-traffic-recommended-for-repeatable-timing) for complete controller setup. Keep the original `generate-experiment-traffic.mjs` for manual traffic.
 
@@ -8,7 +8,7 @@ node scripts/run-traffic-scenario.mjs --campaign bdi-cicd-framework/runs/YOUR-NE
 
 Arm this command before starting the controller with the same campaign path and `--pause-after production --pause-ms 60000`. It waits for the journal, validates the deployed execution UUID, and sends fake payments only after the pause begins. Error profiles require `production.experiment_mode=request_faults` in the controller's fault file. It cannot create deployments, inject latency, or change BDI decisions.
 
-Profiles: `healthy`, `fluctuating`, `burst`, `temporary-errors`, `persistent-errors`, `intermittent-errors`, `idle`. Each is a JSON file in this directory. Choose `--profile <file>` instead of `--scenario` for a custom profile:
+Profiles: `healthy`, `fluctuating`, `burst`, `temporary-errors`, `persistent-errors`, `intermittent-errors`, `idle`, `staging-temporary-errors`, `staging-persistent-errors`. Each is a JSON file in this directory. Choose `--profile <file>` instead of `--scenario` for a custom profile:
 
 ```json
 {
@@ -39,3 +39,15 @@ Local regression checks, with mock HTTP responses and no real payments/deploymen
 ```powershell
 node --test scripts/tests/traffic-scenario.test.mjs
 ```
+
+## Staging failure cases
+
+Use manual guide **C0-S** for ready-to-copy setup and launch commands. Both staging profiles declare `"entity": "staging"`; the CLI defaults to port 3001 and rejects an entity override that disagrees with the profile.
+
+```powershell
+node scripts/run-traffic-scenario.mjs --campaign YOUR-NEW-CAMPAIGN --scenario staging-temporary-errors
+# For a separate campaign after resetting both environments:
+node scripts/run-traffic-scenario.mjs --campaign YOUR-NEXT-CAMPAIGN --scenario staging-persistent-errors
+```
+
+Configure `staging.experiment_mode=request_faults` in the fault file and launch BDI with `--pause-after staging --pause-ms 60000`. Temporary errors last 75 seconds, then normal traffic supports recovery and promotion. Persistent errors should block promotion under the default policy, leaving production at v1; there is no staging recovery mapping. Restore staging as well as production before repeating.

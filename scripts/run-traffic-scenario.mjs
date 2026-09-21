@@ -9,6 +9,7 @@ export function validateProfile(p) {
   if (!p || typeof p.name !== 'string' || !Number.isInteger(p.seed) ||
       !Number.isFinite(p.jitter) || p.jitter < 0 || p.jitter > 0.5 ||
       !Array.isArray(p.phases) || !p.phases.length) throw new Error('Invalid profile name, seed, jitter or phases');
+  if (p.entity !== undefined && !['staging', 'production'].includes(p.entity)) throw new Error('Invalid profile entity');
   let seconds = 0;
   for (const phase of p.phases) {
     if (![phase.seconds, phase.requests_per_second, phase.error_fraction].every(Number.isFinite) ||
@@ -45,11 +46,12 @@ async function getHealth(baseUrl) {
   return response.json();
 }
 
-export async function runScenario({ campaign, profile, baseUrl, entity = 'production', output,
+export async function runScenario({ campaign, profile, baseUrl, entity = profile.entity ?? 'production', output,
   waitSeconds = 1800, signal, pollMs = 50, log = console.log }) {
   validateProfile(profile);
   if (!['staging', 'production'].includes(entity)) throw new Error('Entity must be staging or production');
   if (!Number.isFinite(waitSeconds) || waitSeconds <= 0 || waitSeconds > 3600) throw new Error('wait-seconds must be 1..3600');
+  if (profile.entity && entity !== profile.entity) throw new Error('Selected entity disagrees with the profile entity');
   const url = new URL(baseUrl);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error('Use a plain HTTP(S) app origin');
   baseUrl = url.origin;
@@ -172,7 +174,7 @@ export async function runScenario({ campaign, profile, baseUrl, entity = 'produc
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes('--help')) {
-    console.log('node scripts/run-traffic-scenario.mjs --campaign <new-campaign-dir> --scenario <healthy|fluctuating|burst|temporary-errors|persistent-errors|intermittent-errors|idle> [--entity production|staging] [--url http://localhost:3000] [--seed 42] [--wait-seconds 1800] [--output <new-dir>]\nOr use --profile <JSON file> instead of --scenario. Start before the controller pause. Fake-payment adapter only; never dispatches CI/CD.');
+    console.log('node scripts/run-traffic-scenario.mjs --campaign <new-campaign-dir> --scenario <healthy|fluctuating|burst|temporary-errors|persistent-errors|intermittent-errors|idle|staging-temporary-errors|staging-persistent-errors> [--entity production|staging] [--url http://localhost:3000] [--seed 42] [--wait-seconds 1800] [--output <new-dir>]\nOr use --profile <JSON file> instead of --scenario. Start before the controller pause. Fake-payment adapter only; never dispatches CI/CD.');
     return;
   }
   const options = {};
@@ -187,11 +189,12 @@ async function main() {
   const profilePath = options.profile ?? join(dirname(fileURLToPath(import.meta.url)), 'traffic-scenarios', `${options.scenario}.json`);
   const profile = JSON.parse(await readFile(profilePath, 'utf8'));
   if (options.seed !== undefined) profile.seed = Number(options.seed);
+  const entity = options.entity ?? profile.entity ?? 'production';
   const abort = new AbortController();
   process.once('SIGINT', () => abort.abort());
   process.once('SIGTERM', () => abort.abort());
-  await runScenario({ campaign: options.campaign, profile, entity: options.entity,
-    baseUrl: options.url ?? (options.entity === 'staging' ? 'http://localhost:3001' : 'http://localhost:3000'),
+  await runScenario({ campaign: options.campaign, profile, entity,
+    baseUrl: options.url ?? (entity === 'staging' ? 'http://localhost:3001' : 'http://localhost:3000'),
     output: options.output, waitSeconds: options['wait-seconds'] === undefined ? 1800 : Number(options['wait-seconds']), signal: abort.signal });
 }
 

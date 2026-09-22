@@ -24,7 +24,8 @@ def load_configuration():
     expected = dict(execution=doc['execution'], thresholds=doc['bindings']['thresholds'],
                     max_production_ms=int(next(x.split(' <= ')[1] for x in doc['goals']['maintain(M)'] if x.startswith('production.duration'))),
                     recovery_triggers=doc['recovery_policy']['rollback']['run_after'],
-                    **({'candidate_repair':doc['candidate_repair']} if 'candidate_repair' in doc else {}))
+                    **({'candidate_repair':doc['candidate_repair']} if 'candidate_repair' in doc else {}),
+            **({'rollback_reconsideration':doc['rollback_reconsideration']} if 'rollback_reconsideration' in doc else {}))
     if config['policy'] != expected or config['bindings'] != doc['bindings']:
         raise ValueError('Configuration differs from reviewed contract snapshot')
     for name, entry in config['configuration_inputs'].items():

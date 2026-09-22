@@ -19,6 +19,8 @@ public final class ControllerEnvironment extends Environment {
     private final Map<String, EntityExecution.Result> latest = new LinkedHashMap<>();
     private Path resultFile;
     private String scenario;
+    private com.fasterxml.jackson.databind.JsonNode reconsiderationConfig;
+    private final java.util.Set<String> reconsidering = new java.util.HashSet<>();
     private com.fasterxml.jackson.databind.JsonNode repairConfig;
     private com.fasterxml.jackson.databind.JsonNode diagnosticBindings;
     private final Map<String,Long> repairStarted = new LinkedHashMap<>();
@@ -38,6 +40,7 @@ public final class ControllerEnvironment extends Environment {
             controller = ControllerProjectConfig.load(projectFile);
             var document=JSON.valueToTree(new org.yaml.snakeyaml.Yaml().load(Files.readString(projectFile)));
             repairConfig=document.path("candidate_repair");
+            reconsiderationConfig=document.path("rollback_reconsideration");
             diagnosticBindings=document.path("bindings").path("diagnostics");
             resultFile = Path.of(value("BDI_RESULT_FILE", "build/controller-result.json"));
             journal = new StructuredEventLogger(Path.of(value("BDI_JOURNAL_FILE", "build/controller-journal.jsonl")));
@@ -69,6 +72,16 @@ public final class ControllerEnvironment extends Environment {
                 case "record_decision" -> {
                     journal.event("bdi_decision", null, Map.of("entity", atom(action, 0),
                         "decision", atom(action, 1), "counter", integer(action, 2)));
+                    yield true;
+                }
+                case "begin_reconsideration" -> {
+                    String entity=atom(action,0);
+                    if (!reconsiderationConfig.has(entity) || !latest.containsKey(entity)
+                            || !latest.get(entity).status().equals("success") || !reconsidering.add(entity))
+                        throw new IllegalStateException("Unconfigured or repeated reconsideration");
+                    removePerceptsByUnif(Literal.parseLiteral("telemetry_measurement("+entity+",_,_,_,_,_,_,_,_)"));
+                    observationStarted.remove(entity); telemetry.remove(entity);
+                    journal.event("rollback_selected",null,Map.of("entity",entity,"execution_id",latest.get(entity).executionId()));
                     yield true;
                 }
                 case "run_job" -> runJob(action);
@@ -146,7 +159,7 @@ public final class ControllerEnvironment extends Environment {
         if (restart && outcome.equals("executed")) {
             repairCompleted.put(entity,true);
             // Fresh verification samples get a new observation window, bounded by the total repair deadline.
-            observationRounds.remove(entity); observationStarted.remove(entity); telemetry.remove(entity);
+            observationStarted.remove(entity); telemetry.remove(entity);
         }
         journal.event(restart?"repair_finished":"diagnosis_finished",null,Map.of("entity",entity,"attempt",attempt,"status",outcome,
             "deployment_execution_id",latest.get(entity).executionId()));
@@ -234,6 +247,7 @@ public final class ControllerEnvironment extends Environment {
             boolean protectedEntity = !recovery && controller.releaseSources().keySet().stream()
                 .anyMatch(r -> controller.environments().get(r).equals(controller.environments().get(entity)));
             if (java.util.Set.of("candidate_stopped","candidate_restart_fails","candidate_repair_unknown").contains(scenario) && entity.equals("production") && !repairCompleted.getOrDefault(entity,false)) { decision="block"; reason="scenario_candidate_stopped"; }
+            else if (scenario.equals("rollback_reconsideration") && entity.equals("production")) { decision=reconsidering.contains(entity)?"allow":"block"; reason="scenario_reconsideration"; }
             else if (scenario.equals("rollback_unhealthy") && recovery) { decision = "block"; reason = "scenario_recovery_unhealthy"; }
             else if (scenario.equals("rollback_unknown") && recovery) { decision = "unknown"; reason = "scenario_recovery_unavailable"; }
             else if (scenario.equals("production_unknown") && protectedEntity) { decision = "unknown"; reason = "scenario_production_unavailable"; }
@@ -256,7 +270,7 @@ public final class ControllerEnvironment extends Environment {
             String environment = controller.environments().get(entity);
             if (execution == null || environment == null) throw new IllegalStateException("No deployment identity/environment for " + entity);
             var provider = new ProjectTelemetryProvider(telemetryProject, environment, entity, execution.executionId());
-            measurement = repairCompleted.getOrDefault(entity,false) ? provider.measureRepair() : provider.measure();
+            measurement = (repairCompleted.getOrDefault(entity,false) || reconsidering.contains(entity)) ? provider.measureRepair() : provider.measure();
             return publishMeasurement(entity, round, measurement, execution.executionId());
         }
         measurement = reason.equals("scenario_candidate_stopped")

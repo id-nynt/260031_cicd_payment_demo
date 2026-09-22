@@ -25,6 +25,39 @@ class AutomationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Ambiguous'):
             select_run([run,dict(run,databaseId=2)],'worker','title','2026-09-22T10:00:00Z')
 
+    def test_injection_evidence_is_separate_from_diagnosis_for_both_approaches(self):
+        for mechanism in ('bdi','github-actions'):
+            for case in ('candidate-stopped','candidate-restart-fails'):
+                with self.subTest(mechanism=mechanism,case=case),tempfile.TemporaryDirectory() as tmp:
+                    root=Path(tmp);folder=root/'trials/t';result=folder/'result'
+                    write(root/'study.json',dict(v1_sha='v1',v2_sha='v2',trials=[dict(id='t',case=case,mechanism=mechanism)]))
+                    write(root/'reset.json',{})
+                    write(folder/'started.json',dict(reset_result=str(root/'reset.json'),reset_check='check'))
+                    write(result/'controller-result.json',dict(executions={'production':{'executionId':'candidate'}}))
+                    (folder/'result-path.txt').write_text(str(result))
+                    if mechanism=='bdi':
+                        logs=folder/'remote';logs.mkdir()
+                        write(folder/'remote-collection.json',dict(complete=True,directory=str(logs)))
+                        logfile=logs/'worker.log'
+                    else:
+                        write(folder/'native/collection.json',dict(complete_download=True))
+                        logfile=folder/'native/github-run.log'
+                    evidence=dict(event='fault_injected',fault='candidate_stopped',status='observed',app_state='stopped',
+                                  project='payment-production',service='app',container_id='container',
+                                  deployment_execution_id='candidate',expected_execution_id='candidate')
+                    logfile.write_text('job step timestamp FAULT_INJECTION_JSON='+json.dumps(evidence))
+                    record=make_record(root,'t')
+                    self.assertTrue(record['fault_injected']);self.assertTrue(record['fault_reviewed'])
+                    self.assertFalse(record['diagnosis_succeeded'])
+                    event=dict(event='diagnosis_finished',entity='production',deployment_execution_id='candidate',status='app_stopped')
+                    (result/'experiment-events.jsonl').write_text(json.dumps(event))
+                    self.assertTrue(make_record(root,'t')['diagnosis_succeeded'])
+                    evidence['deployment_execution_id']='other'
+                    logfile.write_text('FAULT_INJECTION_JSON='+json.dumps(evidence))
+                    record=make_record(root,'t')
+                    self.assertFalse(record['fault_injected']);self.assertFalse(record['fault_reviewed'])
+                    self.assertTrue(record['diagnosis_succeeded'])
+
     def test_forced_test_failure_records_exposure_without_traffic(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);folder=root/'trials/t';result=folder/'bdi'

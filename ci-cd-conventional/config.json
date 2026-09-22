@@ -37,6 +37,11 @@
         "deadline_seconds": 300,
         "verification_window_seconds": 120
       }
+    },
+    "rollback_reconsideration": {
+      "production": {
+        "window_seconds": 60
+      }
     }
   },
   "bindings": {
@@ -86,7 +91,7 @@
       }
     }
   },
-  "contract_sha256": "4640aedb0da541ed70b30d2d6390743ed2d47da4438c4b87a90a0225e6077092",
+  "contract_sha256": "c91e1126419d3617a3e4e4332ec0ceb068add34665cfc448bd7c36766dcd8abe",
   "configuration_inputs": {
     "pipeline": {
       "path": "models/01_pipeline.yaml",
@@ -98,7 +103,7 @@
     },
     "policy": {
       "path": "config/controller_policy.yaml",
-      "sha256": "c339fcec957bcae975e6d556c59bc6bef9d8b1ad3d335d94ec8580d0aeba697f"
+      "sha256": "8a3098ff127e2144475fb453bba1cb11deac29fdfd0ce15ac664c42f16cb1ca1"
     },
     "bindings": {
       "path": "config/runtime_bindings.yaml",

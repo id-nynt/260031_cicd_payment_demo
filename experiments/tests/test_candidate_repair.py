@@ -50,6 +50,55 @@ class CandidateRepairTest(unittest.TestCase):
         with patch.object(repair,'docker',return_value=''):
             with self.assertRaisesRegex(ValueError,'project=payment-production, service=app, exact_matches=0'):repair.container('payment-production','app')
 
+    @staticmethod
+    def app_item(identity, run_id, **state):
+        return dict(Id=identity, Name='/'+identity, Config=dict(Env=[] if run_id is None else ['CI_RUN_ID='+run_id],
+            Labels={'com.docker.compose.project':'payment-production','com.docker.compose.service':'app'}),
+            State=dict(Running=False,Status='exited',**state))
+
+    def test_expected_identity_excludes_stale_app_but_duplicate_identity_is_rejected(self):
+        candidate=self.app_item('candidate','deploy-v2')
+        stale=self.app_item('stale',None)
+        old=self.app_item('old','deploy-v1')
+        for items, count in [([candidate,stale,old],1),([stale,old],0),([candidate,dict(candidate,Id='duplicate')],2)]:
+            with self.subTest(count=count), patch.object(repair,'docker',side_effect=['ids',json.dumps(items)]):
+                if count==1:
+                    self.assertEqual('candidate',repair.container('payment-production','app','deploy-v2')['Id'])
+                else:
+                    with self.assertRaisesRegex(ValueError,'exact_matches='+str(count)):
+                        repair.container('payment-production','app','deploy-v2')
+
+    def test_diagnosis_with_stale_app_and_ready_dependency(self):
+        candidate=self.app_item('candidate','deploy-v2')
+        stale=self.app_item('stale',None)
+        dep=dict(Id='database',State=dict(Running=True),Config=dict(Env=[]))
+        with patch.object(repair,'candidates',side_effect=[[stale,candidate],[dep]]), patch.object(repair.subprocess,'run') as ready:
+            ready.return_value.returncode=0
+            result=self.call('diagnose')
+        self.assertEqual('observed',result['status'])
+        self.assertEqual('candidate',result['before']['container_id'])
+        self.assertTrue(result['before']['dependency_ready'])
+
+    def test_preflight_reports_stale_container_without_mutating(self):
+        candidate=self.app_item('candidate','deploy-v2');candidate['State']['Running']=True
+        stale=self.app_item('stale',None)
+        dep=dict(Id='database',State=dict(Running=True))
+        for apps, status in [([candidate],'observed'),([candidate,stale],'unknown'),([candidate,dict(candidate,Id='other')],'unknown')]:
+            with patch.object(repair,'candidates',side_effect=[apps,[dep]]),patch.object(repair,'docker') as docker:
+                result=repair.preflight('payment-production','app','postgres','deploy-v2')
+                self.assertEqual(status,result['status']);docker.assert_not_called()
+        self.assertIn('expected_app_count_not_one',result['issues'])
+
+    def test_stop_confirmation_requires_exact_exited_candidate(self):
+        candidate=self.app_item('candidate','deploy-v2')
+        with patch.object(repair,'container',return_value=candidate):
+            result=repair.verify_stopped('payment-production','app','deploy-v2')
+            self.assertEqual('fault_injected',result['event'])
+            self.assertEqual('deploy-v2',result['deployment_execution_id'])
+            candidate['State']['Running']=True
+            with self.assertRaisesRegex(ValueError,'not confirmed'):
+                repair.verify_stopped('payment-production','app','deploy-v2')
+
     def test_controlled_restart_failure_is_retained(self):
         with patch.object(repair,'inspect_target',return_value=self.stopped),patch.object(repair,'docker') as docker:
             result=self.call(failure=True)

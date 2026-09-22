@@ -18,7 +18,7 @@ def control_files(root=ROOT, scope='paired'):
         'ci-cd-conventional/run-entity.py', 'experiments/record_trial.py', 'experiments/dispatch_trial.py', 'experiments/collect.py',
         'scripts/run-traffic-scenario.mjs', 'scripts/traffic-scenarios/*.json',
         'experiments/scenarios.json', 'experiments/experiment_metrics.py',
-        'experiments/experiment_protocol.py', 'experiments/control_revision.py',
+        'experiments/experiment_protocol.py', 'experiments/control_revision.py', 'experiments/evaluate_study.py',
     ]
     if scope == 'paired':
         patterns += ['bdi-cicd-framework/models/*.yaml', 'bdi-cicd-framework/config/*.yaml',

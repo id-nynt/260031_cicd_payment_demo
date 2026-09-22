@@ -12,6 +12,27 @@ from experiments.collect import main as collect
 
 
 class ResultsTest(unittest.TestCase):
+    def test_rollback_cancellation_requires_fresh_correlated_samples(self):
+        from experiments.experiment_metrics import extract
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)/'trial';directory.mkdir()
+            plan=Path(str(directory)+'-experiment');plan.mkdir()
+            (plan/'plan.json').write_text(json.dumps(dict(case='rollback-reconsideration')))
+            result=dict(mode='github',outcome='achieved',release_sha='v2',verified_releases={'production':{'release_sha':'v2','execution_id':'id'}})
+            (directory/'controller-result.json').write_text(json.dumps(result))
+            healthy=dict(entity='production',execution_id='id',data_status='fresh',readiness='ready',availability=1,error_rate=0,latency_p95_ms=20)
+            events=[dict(event=name,timestamp=f'2026-01-01T00:00:{i:02}Z',**fields) for i,(name,fields) in enumerate([
+                ('campaign_started',{}),('rollback_selected',dict(entity='production',execution_id='id')),
+                ('observation',healthy),('observation',healthy),('decision',dict(decision='rollback_cancelled')),('campaign_finished',{})])]
+            def check():
+                (directory/'experiment-events.jsonl').write_text('\n'.join(json.dumps(e) for e in events))
+                return extract(directory)
+            self.assertTrue(check()['protocol_expectation_met'])
+            events[3]['execution_id']='stale'
+            self.assertIn('rollback_cancellation_health_not_verified',check()['validation_issues'])
+            events.pop(1)
+            self.assertIn('rollback_intention_not_observed',check()['validation_issues'])
+
     def test_repair_metrics_need_verified_candidate_not_rollback(self):
         from experiments.experiment_metrics import extract
         with tempfile.TemporaryDirectory() as tmp:

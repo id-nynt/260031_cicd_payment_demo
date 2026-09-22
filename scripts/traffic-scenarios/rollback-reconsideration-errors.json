@@ -1,0 +1,18 @@
+{
+  "name": "rollback-reconsideration-errors",
+  "description": "195 seconds of request errors survive the initial 15s pause and 180s/36-sample gate; normal traffic then clears the 30s window during the final 60s rollback recheck. Verify the actual pending/cancel sequence.",
+  "seed": 42,
+  "jitter": 0.25,
+  "phases": [
+    {
+      "seconds": 195,
+      "requests_per_second": 4,
+      "error_fraction": 0.7
+    },
+    {
+      "seconds": 405,
+      "requests_per_second": 4,
+      "error_fraction": 0
+    }
+  ]
+}

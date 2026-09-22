@@ -96,7 +96,8 @@ def conventional_policy(document):
     return {'execution': document['execution'], 'max_production_ms': int(duration[0][1]),
             'thresholds': document['bindings']['thresholds'],
             'recovery_triggers': document['recovery_policy']['rollback']['run_after'],
-            **({'candidate_repair':document['candidate_repair']} if 'candidate_repair' in document else {})}
+            **({'candidate_repair':document['candidate_repair']} if 'candidate_repair' in document else {}),
+            **({'rollback_reconsideration':document['rollback_reconsideration']} if 'rollback_reconsideration' in document else {})}
 
 
 def main() -> int:
@@ -106,7 +107,7 @@ def main() -> int:
     parser.add_argument("--scenario", choices=["healthy", "staging_failure", "transient_test_failure", "exhausted_test_failure",
                                                 "telemetry_block", "telemetry_unknown", "telemetry_delayed", "telemetry_transient", "production_transient", "telemetry_flapping", "observation_deadline", "deterministic_test_failure", "dispatch_rejected", "production_retry",
                                                 "production_failure", "production_unhealthy", "production_unknown",
-                                                "rollback_failure", "rollback_unknown", "rollback_unhealthy", "execution_uncertain", "reconciled_success", "reconciled_failure", "candidate_stopped", "candidate_restart_fails", "candidate_repair_unknown"])
+                                                "rollback_failure", "rollback_unknown", "rollback_unhealthy", "execution_uncertain", "reconciled_success", "reconciled_failure", "candidate_stopped", "candidate_restart_fails", "candidate_repair_unknown", "rollback_reconsideration"])
     parser.add_argument("--known-good", type=Path, help="achieved live campaign result verifying the baseline release")
     parser.add_argument("--baseline", action="store_true", help="explicit first baseline run without prior recovery release")
     parser.add_argument("--confirm-compatible-rollback", action="store_true", help="confirm source rollback is compatible with retained database schema/data")

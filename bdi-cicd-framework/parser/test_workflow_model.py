@@ -11,7 +11,7 @@ class CanonicalModelTest(unittest.TestCase):
     def setUp(self):
         # These tests exercise the unchanged schema-2 core; repair extension has separate tests.
         pipeline=read(ROOT/'models/01_pipeline.yaml');pipeline.pop('candidate_repair',None)
-        policy=read(ROOT/'config/controller_policy.yaml');policy.pop('candidate_repair',None)
+        policy=read(ROOT/'config/controller_policy.yaml');policy.pop('candidate_repair',None);policy.pop('rollback_reconsideration',None)
         bindings=read(ROOT/'config/runtime_bindings.yaml');bindings.pop('diagnostics',None)
         self.pipeline,self.goals = resolve_documents(pipeline,read(ROOT/'models/02_goal.yaml'),policy,bindings)
 

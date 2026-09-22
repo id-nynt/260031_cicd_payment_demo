@@ -72,7 +72,7 @@ def evaluate(study_dir):
                     row['issues'].append('incomplete_native_download')
             for key in ('candidate_delivered','service_restored','candidate_repaired','runtime_seconds',
                         'recovery_seconds','candidate_repair_seconds','retries','repair_attempts',
-                        'rollback_attempts','protocol_key','protocol_expectation_met'):
+                        'rollback_attempts','protocol_key','protocol_expectation_met','rollback_selected','rollback_cancelled','rollback_reconsideration_seconds'):
                 row[key]=metrics.get(key)
             for key in ('runtime_seconds','recovery_seconds','candidate_repair_seconds','retries','repair_attempts','rollback_attempts'):
                 value=row.get(key)
@@ -80,6 +80,8 @@ def evaluate(study_dir):
                     row['issues'].append('invalid_numeric_'+key)
             for key in ('candidate_delivered','service_restored','candidate_repaired'):
                 if type(row.get(key)) is not bool:row['issues'].append('invalid_boolean_'+key)
+            row['fault_injected']=record.get('fault_injected')
+            row['diagnosis_succeeded']=record.get('diagnosis_succeeded')
             row['result_dir']=str(result_dir)
             row['outcome']=result.get('outcome')
             row['recovery_outcome']=result.get('recovery_outcome')

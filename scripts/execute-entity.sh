@@ -206,9 +206,12 @@ case "$ENTITY" in
       done
     )
     if [ "${FAILURE_MODE:-none}" = "candidate_stopped" ]; then
-    # Inject stopped candidate after successful deployment
+    # Stop, then independently confirm the exact deployment identity and state.
     (
       docker compose stop app
+      python "$(dirname "${BASH_SOURCE[0]}")/candidate-repair.py" verify-stop \
+        --project payment-production --app app --dependency postgres --expected "$CI_RUN_ID" \
+        --output "${RUNNER_TEMP:?}/fault-${CI_RUN_ID}.json"
     )
     fi
     ;;

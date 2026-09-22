@@ -296,8 +296,22 @@ def validate_candidate_repair(doc, repairs, diagnostics):
         if binding['app_service']==binding['dependency_service']: raise ModelError('App and dependency must differ')
 
 
+def validate_reconsideration(doc, rules):
+    if not isinstance(rules, dict): raise ModelError('rollback_reconsideration must be a mapping')
+    sources={edge['from'] for edge in doc['workflow']['recovery(R)']}
+    for entity, rule in rules.items():
+        if entity not in sources: raise ModelError('Reconsideration requires a recovery source')
+        keys(rule, {'window_seconds'}, {'window_seconds'})
+        window=rule['window_seconds']
+        if type(window) is not int or not 10 <= window <= 120:
+            raise ModelError('Reconsideration window must be 10..120 seconds')
+        if window < doc['execution']['healthy_observations'] * doc['execution']['observation_interval_seconds']:
+            raise ModelError('Reconsideration window cannot fit required healthy observations')
+
+
 def compile_sources(pipeline, goals, policy, bindings):
     pipeline,policy,bindings=map(deepcopy,(pipeline,policy,bindings))
+    reconsideration=policy.pop('rollback_reconsideration', {})
     actions=pipeline.pop('candidate_repair', {})
     rules=policy.pop('candidate_repair', {})
     diagnostics=bindings.pop('diagnostics', {})
@@ -314,6 +328,10 @@ def compile_sources(pipeline, goals, policy, bindings):
         doc['schema_version']=3
         doc['candidate_repair']=merged
         doc['bindings']['diagnostics']=diagnostics
+    if reconsideration:
+        if not merged: raise ModelError('Reconsideration requires schema 3 candidate capabilities')
+        validate_reconsideration(doc,reconsideration)
+        doc['rollback_reconsideration']=reconsideration
     return doc,model
 
 
@@ -332,6 +350,7 @@ def compile_inputs(pipeline, goals, policy=None, bindings=None):
 def expand_workflow(doc):
     if type(doc.get('schema_version')) is int and doc['schema_version'] == 3:
         base=deepcopy(doc)
+        reconsideration=base.pop('rollback_reconsideration', {})
         repairs=base.pop('candidate_repair', None)
         diagnostics=base.get('bindings',{}).pop('diagnostics', None)
         base['schema_version']=2
@@ -340,6 +359,8 @@ def expand_workflow(doc):
         if not repairs: raise ModelError('Schema 3 requires explicit candidate repair capabilities')
         expanded['runtime']['candidate_repair']=deepcopy(repairs)
         expanded['runtime']['diagnostics']=deepcopy(diagnostics)
+        validate_reconsideration(base,reconsideration)
+        expanded['runtime']['rollback_reconsideration']=deepcopy(reconsideration)
         return expanded,model
     if type(doc.get('schema_version')) is not int or doc['schema_version'] != 2:
         raise ModelError('Unsupported workflow schema; explicitly regenerate project artifacts for schema 2')
@@ -425,6 +446,8 @@ def render_agent(workflow, template):
         facts+=f"latency_limit({expanded['runtime']['thresholds']['latency_p95_ms_high_gt']}).\n"
     for entity,rule in doc.get('candidate_repair',{}).items():
         facts+=f'repair_enabled({entity}).\nrepair_limit({entity}, {rule["max_attempts"]}).\n'
+    for entity,rule in doc.get('rollback_reconsideration',{}).items():
+        facts+=f'reconsideration_window({entity}, {rule["window_seconds"]*1000}).\n'
     return facts+'\n'+Path(template).read_text(encoding='utf-8'), doc, model
 
 

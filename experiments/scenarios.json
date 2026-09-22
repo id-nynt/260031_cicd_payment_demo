@@ -63,5 +63,10 @@
     "entity": "production",
     "profile": null,
     "fault": "production.failure_mode=candidate_stopped\nrestart_production.failure_mode=force_failure"
+  },
+  "rollback-reconsideration": {
+    "entity": "production",
+    "profile": "rollback-reconsideration-errors",
+    "fault": "production.experiment_mode=request_faults"
   }
 }

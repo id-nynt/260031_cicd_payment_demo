@@ -14,10 +14,23 @@ ARCHIVE=ROOT.parent/'docs/archives/03_model-inputs-before-four-source'
 class FourSourcesTest(unittest.TestCase):
     def setUp(self):
         self.sources=[read(ROOT/p) for p in ['models/01_pipeline.yaml','models/02_goal.yaml','config/controller_policy.yaml','config/runtime_bindings.yaml']]
+    def test_reconsideration_window_is_bounded_and_generated(self):
+        from workflow_model import render_agent, ModelError
+        for invalid in (0,121,True):
+            sources=deepcopy(self.sources)
+            sources[2]['rollback_reconsideration']['production']['window_seconds']=invalid
+            with self.assertRaises(ModelError): compile_sources(*sources)
+        sources=deepcopy(self.sources)
+        sources[2]['rollback_reconsideration']['staging']={'window_seconds':60}
+        with self.assertRaises(ModelError): compile_sources(*sources)
+
     def test_contract_and_agent_equivalence(self):
         doc,_=compile_sources(*self.sources)
-        legacy=deepcopy(doc);legacy['schema_version']=2;legacy.pop('candidate_repair');legacy['bindings'].pop('diagnostics')
-        self.assertEqual(read(ARCHIVE/'payment-resolved.yaml'),legacy)
+        legacy=deepcopy(doc);legacy['schema_version']=2;legacy.pop('candidate_repair');legacy.pop('rollback_reconsideration',None);legacy['bindings'].pop('diagnostics')
+        archived=read(ARCHIVE/'payment-resolved.yaml')
+        # The shared telemetry window was intentionally shortened in the experiment protocol.
+        archived['bindings']['metrics']={k:v.replace('[2m]','[30s]') for k,v in archived['bindings']['metrics'].items()}
+        self.assertEqual(archived,legacy)
         with tempfile.TemporaryDirectory() as tmp:
             w=Path(tmp)/'03.yaml';a=Path(tmp)/'agent.asl'
             w.write_text(yaml.safe_dump(doc,sort_keys=False),encoding='utf-8')

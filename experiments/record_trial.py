@@ -9,6 +9,33 @@ from pathlib import Path
 from evaluate_study import evaluate, read
 
 
+def injected_stop_evidence(folder, mechanism, collected, candidate_id):
+    """Read explicit worker confirmation, never infer injection from a requested fault."""
+    if not candidate_id:
+        return False
+    if mechanism == 'github-actions':
+        paths=[folder/'native/github-run.log']
+    else:
+        remote=Path(collected.get('directory') or folder/'missing-remote-evidence').resolve()
+        if not remote.is_relative_to(folder.resolve()):
+            raise ValueError('Remote evidence directory outside this trial')
+        paths=list(remote.glob('*.log'))
+    for path in paths:
+        if not path.exists(): continue
+        for line in path.read_text(encoding='utf-8-sig', errors='replace').splitlines():
+            if 'FAULT_INJECTION_JSON=' not in line: continue
+            try: evidence=json.loads(line.split('FAULT_INJECTION_JSON=',1)[1])
+            except ValueError: continue  # Echoed shell source is not evidence.
+            if (evidence.get('event')=='fault_injected' and evidence.get('fault')=='candidate_stopped'
+                    and evidence.get('status')=='observed' and evidence.get('app_state')=='stopped'
+                    and evidence.get('project')=='payment-production' and evidence.get('service')=='app'
+                    and evidence.get('container_id')
+                    and evidence.get('deployment_execution_id')==candidate_id
+                    and evidence.get('expected_execution_id')==candidate_id):
+                return True
+    return False
+
+
 def make_record(study_dir, trial_id, interventions=None, notes=''):
     study_dir=Path(study_dir).resolve()
     study=read(study_dir/'study.json')
@@ -44,7 +71,7 @@ def make_record(study_dir, trial_id, interventions=None, notes=''):
             safety='verified_baseline'
     event_path=result_dir/'experiment-events.jsonl'
     events=[json.loads(line) for line in event_path.read_text(encoding='utf-8-sig').splitlines() if line.strip()] if event_path.exists() else []
-    case=trial['case']; exposed=False
+    case=trial['case']; exposed=False; fault_injected=None; diagnosis_succeeded=None
     if case=='healthy':
         traffic=metrics.get('traffic_by_entity',{})
         exposed=all(traffic.get(e,{}).get('required') is True and
@@ -56,26 +83,26 @@ def make_record(study_dir, trial_id, interventions=None, notes=''):
         receipts=list(result_dir.parent.parent.rglob('attempt-*.json')) if trial['mechanism']=='github-actions' else []
         config=config or any(read(p).get('entity')=='test' and read(p).get('failure_mode')=='force_failure' for p in receipts)
         exposed=config and result.get('executions',{}).get('test',{}).get('status')=='failure'
-    elif case in ('production-temporary','production-persistent'):
+    elif case in ('production-temporary','production-persistent','rollback-reconsideration'):
         traffic=metrics.get('traffic_by_entity',{}).get('production',{})
-        expected='temporary-errors' if case=='production-temporary' else 'persistent-errors'
+        expected={'production-temporary':'temporary-errors','production-persistent':'persistent-errors','rollback-reconsideration':'rollback-reconsideration-errors'}[case]
         exposed=(traffic.get('summary',{}).get('scenario')==expected and traffic.get('summary',{}).get('injected_errors',0)>0
                  and not traffic.get('validation_issues'))
-    elif case=='candidate-stopped':
+    elif case in ('candidate-stopped','candidate-restart-fails'):
         candidate=result.get('executions',{}).get('production',{})
         candidate_id=candidate.get('executionId',candidate.get('execution_id'))
-        exposed=any(e.get('event')=='diagnosis_finished' and e.get('app_state')=='stopped'
-                    and candidate_id and e.get('deployment_execution_id')==candidate_id for e in events)
-        # Java records the diagnostic classification separately from the receipt.
-        for p in result_dir.rglob('receipt.json'):
-            receipt=read(p)
-            exposed=exposed or (receipt.get('action')=='diagnose' and receipt.get('status')=='observed'
-                and receipt.get('before',{}).get('app_state')=='stopped'
-                and candidate_id and receipt.get('expected_execution_id')==candidate_id
-                and receipt.get('before',{}).get('deployment_execution_id')==candidate_id)
+        diagnosis_succeeded=bool(candidate_id and any(
+            e.get('event')=='diagnosis_finished' and e.get('entity')=='production'
+            and e.get('deployment_execution_id')==candidate_id
+            and (e.get('status')=='app_stopped' or
+                 (e.get('status')=='observed' and e.get('app_state')=='stopped' and e.get('dependency_ready') is True))
+            for e in events))
+        fault_injected=injected_stop_evidence(folder,trial['mechanism'],collected,candidate_id)
+        exposed=fault_injected
     return dict(result_dir=str(result_dir),reset_result=start['reset_result'],reset_check=start['reset_check'],
         evidence_complete=complete,fault_reviewed=bool(exposed),safety=safety,human_interventions=interventions,
-        notes=notes,review_method='saved-evidence-v1',finalised_at=datetime.now(timezone.utc).isoformat())
+        fault_injected=fault_injected,diagnosis_succeeded=diagnosis_succeeded,
+        notes=notes,review_method='saved-evidence-v2',finalised_at=datetime.now(timezone.utc).isoformat())
 
 
 def main():

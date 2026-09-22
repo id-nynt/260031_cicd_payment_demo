@@ -117,7 +117,7 @@ class NativeWorkflowTest(unittest.TestCase):
         doc=workflow('ci-cd.yml')
         self.assertEqual({'workflow_dispatch'},set(doc['on']))
         self.assertEqual(set(CASES),set(doc['on']['workflow_dispatch']['inputs']['scenario']['options']))
-        self.assertEqual(len(CASES),13)
+        self.assertEqual(len(CASES),14)
         for job in doc['jobs'].values(): self.assertNotIn('uses',job)
         self.assertIn('known_good_sha',doc['jobs']['rollback']['if'])
         self.assertIn("needs.production.outputs.status == 'success'",doc['jobs']['rollback']['if'])
@@ -135,6 +135,18 @@ class NativeWorkflowTest(unittest.TestCase):
             self.assertIn("'transient_failure'",condition);self.assertIn("'timeout'",condition)
             self.assertNotIn("'unknown'",condition)
         self.assertFalse(any(s.get('id')=='retry' for s in doc['jobs']['rollback']['steps']))
+    def test_pending_rollback_recheck_requires_consecutive_fresh_health_and_expires(self):
+        good=dict(data_status='fresh',readiness='ready',availability=1,error_rate=0,latency_p95_ms=10)
+        bad=dict(good,error_rate=.7)
+        for sequence, expected in [([good,bad,good,good],'allow'),([dict(good,data_status='unavailable')]*20,'block')]:
+            elapsed=[0];seen=[];values=iter(sequence)
+            def sample(): return next(values, bad)
+            def sleep(seconds): elapsed[0]+=seconds
+            decision=native.reconsider(self.policy,'production',sample,lambda r,v:seen.append(v),clock=lambda:elapsed[0],sleep=sleep)
+            self.assertEqual(expected,decision)
+            self.assertLessEqual(elapsed[0],self.policy['rollback_reconsideration']['production']['window_seconds'])
+            if expected=='allow': self.assertEqual(4,len(seen))
+
     def test_short_timing_observes_fault_then_two_healthy_samples(self):
         from experiments.experiment_protocol import OBSERVATION_DELAY_SECONDS
         self.assertEqual(15,OBSERVATION_DELAY_SECONDS)

@@ -1,8 +1,8 @@
-# RQ1 compact experiments: five scenarios with BDI and conventional CI/CD
+# RQ1 compact experiments: six scenarios with BDI and conventional CI/CD
 
 ## Where to start
 
-This guide takes you through **five scenarios, each run once with each approach**. Use one Controller PowerShell window throughout. Every candidate run follows the same sequence:
+This guide offers a **focused follow-up (C5-C6, four runs)** or the full six-scenario study. The focused follow-up is the default for a completed earlier study. Use one Controller PowerShell window throughout. Every candidate run follows the same sequence:
 
 **Choose one run in C -> D: save and record its evidence -> E: restore v1 -> return to C for the next run.**
 
@@ -13,10 +13,10 @@ This guide takes you through **five scenarios, each run once with each approach*
 | Compact study already created, but no candidate has run | B1; B2 **existing study** branch; B3-B4; C1 |
 | Returning to the same study after closing PowerShell | B1; B2 **existing study** branch; B3. If a trial started, use F2 before any reset; otherwise B4 and the next C scenario |
 | A candidate run just finished | D1-D4, then E; return to the next run in the same C scenario |
-| All ten trials recorded and final reset passed | G: evaluate and back up |
+| All scheduled trials recorded and final reset passed | G: evaluate and back up |
 | Old work is hanging and you want a fresh study | F3 first; then B1, B2 **new study**, B3-B4 |
 
-**For your existing study:** wording changes alone do not require a new tag. However, the MAS Console option below adds `--gui` support to `run_experiment.py`, which is a frozen control file. If your selected worker predates that support, finish/preserve any active run, then follow A2 and create a new study in B2.1 before further candidates. Do not bypass B1's control-revision check or mix control revisions within a study.
+**For your completed ten-trial study:** keep trials 001-008 and the excluded 009-010 as historical evidence. Do not restart everything. Follow **A2 -> B1 -> B2.1 (`focused`) -> B2.2 -> B3 -> B4 -> C5 -> C6 -> G1**. Complete **D then E after every individual run**. This creates four new trials under a new published control revision; it does not modify the old study. Reuse the existing app v1/v2 pair and compatible baseline receipt. The new C6 replaces the failed-restart case with rollback reconsideration. This document keeps its filename for stable links.
 
 **Open and keep running:** Docker Desktop, the existing Linux deployment runner, Controller PowerShell at the repository root, and your repository's GitHub Actions page. Keep the machine awake. Do not run experiments concurrently.
 
@@ -42,14 +42,14 @@ If functions were already loaded in your terminal, copy B3 again to replace the 
 | `experiments/results/release-pairs/current-pair.txt` | Selects the pair JSON; commands read and trim the path automatically |
 | Study | One saved schedule plus all its trial/reset evidence |
 | `experiments/results/current-compact-study.txt` | Selects the study folder; changing this file does **not** reset the application |
-| Trial | One scenario executed by one approach; five scenarios times two approaches = ten trials |
+| Trial | One scenario executed by one approach; focused = four trials, full = twelve |
 | Baseline receipt | Historical evidence of a verified v1 deployment; reused as the rollback reference |
 | Reset receipt | Evidence of a fresh deployment of v1 to **both** environments before a candidate; used by only one trial |
 
 Creating a study, loading helper functions and deploying v1 are different actions. **B4 and E actually reset the environments.** Merely completing B1-B3 does not.
 
 ## Experiment introduction
-Run only the five cases below to examine **normal delivery, safe stopping, waiting for recovery, rollback and candidate repair**. Both approaches use the same app v1/v2 SHAs, worker revision, jobs, telemetry, faults and recovery capabilities. BDI pursues `master_goal`; conventional execution uses the GitHub Actions workflow. A repaired and verified v2 can achieve delivery. Restoring v1 is successful restoration, **not** v2 delivery.
+Run only the six cases below to examine **normal delivery, safe stopping, waiting for recovery, rollback and candidate repair**. Both approaches use the same app v1/v2 SHAs, worker revision, jobs, telemetry, faults and recovery capabilities. BDI pursues `master_goal`; conventional execution uses the GitHub Actions workflow. A repaired and verified v2 can achieve delivery. Restoring v1 is successful restoration, **not** v2 delivery.
 
 
 
@@ -60,14 +60,15 @@ Run only the five cases below to examine **normal delivery, safe stopping, waiti
 | 3 | 8 | `production-temporary` | 35 seconds of mixed request errors, then normal traffic: bounded reobservation through the 30-second metric window, then two healthy observations and continued v2 |
 | 4 | 9 | `production-persistent` | Sustained request errors: bounded observations, then verified rollback to v1 |
 | 5 | 7 | `candidate-stopped` | Matching production app stopped after deployment succeeds: diagnose, one restart, fresh verification, continue v2 |
+| 6 | Additional | `rollback-reconsideration` | Errors persist until rollback is selected, then clear: fresh correlated rechecks cancel pending rollback and retain verified v2 |
 
 These are expected responses to inspect, not guaranteed results. Preserve unexpected outcomes. Both mechanisms can recover; report ties as well as differences. This compact subset does not establish resilience to every possible CI/CD failure.
 
-**Default workload:** one repetition = **10 measured candidate runs**, plus v1 resets and a baseline only if no receipt exists. This is a small descriptive study/pilot, not statistical proof of superiority. If time permits, choose more repetitions **before creating the schedule**. Three repetitions mean 30 candidate runs. Each case runs BDI then conventional in odd repetitions; order reverses in even repetitions. Never run the two approaches concurrently.
+**Default workload:** `focused` runs C5 and C6 with both approaches: **four measured candidate runs**, plus v1 resets. Choose `full` for all six cases (twelve runs). One repetition is a descriptive pilot, not statistical proof of superiority. Choose repetitions before scheduling. Odd repetitions run BDI first; even repetitions reverse the order. Never run both approaches concurrently.
 
-**Matched timing:** 35 seconds of temporary faults, observation starts after a 15-second deployment pause, 30-second rolling error/latency queries, five-second observation spacing and two consecutive healthy samples. Prometheus scrape and app metric export intervals remain five seconds. The rolling window retains earlier faults, so passing is not expected immediately at second 35; allow the window to clear while normal traffic continues. The experiment scripts start traffic before the pause; do not add a manual client.
+**Matched timing for C3:** 35 seconds of temporary faults, observation starts after a 15-second deployment pause, 30-second rolling error/latency queries, five-second observation spacing and two consecutive healthy samples. Prometheus scrape and app metric export intervals remain five seconds. The rolling window retains earlier faults, so passing is not expected immediately at second 35; allow the window to clear while normal traffic continues. The experiment scripts start traffic before the pause; do not add a manual client.
 
-**Do not shorten observation/repair budgets to save time.** The 180-second observation budget remains; repair probes/decision budgets are unchanged. A timing change requires a newly published control revision and a new study; do not mix results with the old 75/60/120-second protocol. Normal verification uses two consecutive healthy samples; repair retains its 120-second probe window and 300-second decision budget. Runner queues and approval waits can add substantial runtime.
+**Do not shorten observation/repair budgets to save time.** The 180-second observation budget remains; repair probes/decision budgets are unchanged. Both approaches now receive a further bounded 60-second final recheck before committing a telemetry-triggered rollback when the candidate is still ready. C6 uses 195 seconds of request faults so it reaches that decision; a 35-second fault normally recovers during initial observations and cannot demonstrate cancelling a pending rollback. Late recovery in C6 is timing-dependent: the saved rollback-selection event is required evidence. A timing change requires a newly published control revision and a new study; do not mix results with the old 75/60/120-second protocol. Normal verification uses two consecutive healthy samples; repair retains its 120-second probe window and 300-second decision budget. Runner queues and approval waits can add substantial runtime.
 
 ## A. One-time setup and control publication
 
@@ -216,6 +217,7 @@ If the current pair already selects this exact published control revision, skip 
 
     function Invoke-StudyReset {
         param([switch]$Headless)
+        Write-Host '[compact-reset] Checking baseline and starting a fresh v1 reset.'
         if (-not $studyDir -or -not $knownGood) { throw 'Load the study and verified baseline first.' }
         foreach ($name in @('BDI_EXECUTION_PLAN','BDI_SCENARIO','BDI_READY_URL','BDI_PROMETHEUS_URL','BDI_PAUSE_AFTER_ENTITY','BDI_PAUSE_MILLISECONDS')) {
             if (Test-Path "Env:$name") { Remove-Item "Env:$name" }
@@ -227,6 +229,11 @@ If the current pair already selects this exact published control revision, skip 
         py -3 -B bdi-cicd-framework/run_controller.py @displayArgs --known-good "$knownGood" --confirm-compatible-rollback --artifacts-dir "$destination"
         if ($LASTEXITCODE -ne 0) { throw 'Reset incomplete: inspect evidence; do not launch a candidate.' }
         Assert-V1Receipt (Join-Path $destination 'controller-result.json') (Join-Path $destination 'reset-check.json')
+        $resetReceipt = Get-Content (Join-Path $destination 'controller-result.json') -Raw | ConvertFrom-Json
+        foreach ($entity in @('staging','production')) {
+            py -3 -B scripts/candidate-repair.py preflight --project "payment-$entity" --app app --dependency postgres --expected $resetReceipt.verified_releases.$entity.execution_id --output (Join-Path $destination "container-preflight-$entity.json")
+            if ($LASTEXITCODE -ne 0) { throw 'Container preflight failed. Inspect the saved inventory; do not start candidates or delete containers blindly.' }
+        }
         $destination | Set-Content (Join-Path $studyDir 'current-reset.txt') -Encoding utf8
         $env:BDI_RELEASE_SHA = $v2Sha
         "Both environments verified at v1: $destination"
@@ -245,9 +252,10 @@ If the current pair already selects this exact published control revision, skip 
 
 #### B2.1. Create a new study only
 
-**Manual choice:** one repetition is the recommended compact set (ten candidate trials). Choose this before creating the schedule.
+**Manual choice:** leave `focused` for the four-run follow-up. Change it to `full` only to run all six cases. Choose before creating the schedule.
 
 ```powershell
+$studyScope = 'focused'
 $repetitions = 1
 $seed = 42
 ```
@@ -258,7 +266,9 @@ $seed = 42
 . {
     $ErrorActionPreference = 'Stop'
     if ($repetitions -lt 1 -or $repetitions -gt 100) { throw 'Choose an explicit repetition count from 1 to 100.' }
-    $cases = @('healthy','test-failure','production-temporary','production-persistent','candidate-stopped')
+    if ($studyScope -notin @('focused','full')) { throw 'Choose focused or full in the manual block.' }
+    $studySet = if ($studyScope -eq 'focused') { 'focused-recovery-v1' } else { 'compact-six-v3' }
+    $cases = if ($studyScope -eq 'focused') { @('candidate-stopped','rollback-reconsideration') } else { @('healthy','test-failure','production-temporary','production-persistent','candidate-stopped','rollback-reconsideration') }
     $catalog = Get-Content experiments/scenarios.json -Raw | ConvertFrom-Json
     if (@($cases | Where-Object { $_ -notin $catalog.PSObject.Properties.Name }).Count) { throw 'Catalog mismatch.' }
     # Starting a new study changes only the selection, never the old evidence.
@@ -269,12 +279,12 @@ $seed = 42
         if (-not (Test-Path (Join-Path $oldSelection 'study.json'))) { throw 'Previous study pointer is invalid; resolve F3.1 before replacing it.' }
         $historyDir = 'experiments/results/study-pointer-history'
         New-Item -ItemType Directory -Force -Path $historyDir | Out-Null
-        $pointerBackup = Join-Path $historyDir ('compact-five-' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '.txt')
+        $pointerBackup = Join-Path $historyDir ('compact-six-' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '.txt')
         if (Test-Path $pointerBackup) { throw 'Pointer backup already exists; use a fresh timestamp.' }
         Copy-Item -LiteralPath $studyPointer -Destination $pointerBackup -ErrorAction Stop
         "Previous study preserved: $oldSelection ; pointer backup: $pointerBackup"
     }
-    $studyDir = [System.IO.Path]::GetFullPath('experiments/results/studies/compact-five-' + (Get-Date -Format yyyyMMdd-HHmmss-fff))
+    $studyDir = [System.IO.Path]::GetFullPath('experiments/results/studies/' + $studySet + '-' + (Get-Date -Format yyyyMMdd-HHmmss-fff))
     New-Item -ItemType Directory -Path $studyDir -ErrorAction Stop | Out-Null
     $trials = @(); $index = 0
     for ($repeat = 1; $repeat -le $repetitions; $repeat++) {
@@ -286,7 +296,7 @@ $seed = 42
             }
         }
     }
-    [pscustomobject]@{ schema_version=1; study_set='compact-five-v1'; pair_file=$pairFile; repository=$pair.repository; v1_sha=$v1Sha; v2_sha=$v2Sha; worker_sha=$workerSha; worker_ref=$workerRef; repetitions=$repetitions; seed=$seed; trials=$trials } |
+    [pscustomobject]@{ schema_version=1; study_set=$studySet; scope=$studyScope; pair_file=$pairFile; repository=$pair.repository; v1_sha=$v1Sha; v2_sha=$v2Sha; worker_sha=$workerSha; worker_ref=$workerRef; repetitions=$repetitions; seed=$seed; trials=$trials } |
         ConvertTo-Json -Depth 8 | Set-Content (Join-Path $studyDir 'study.json') -Encoding utf8
     $trials | Export-Csv (Join-Path $studyDir 'schedule.csv') -NoTypeInformation -Encoding utf8
     $studyDir | Set-Content experiments/results/current-compact-study.txt -Encoding utf8
@@ -294,7 +304,7 @@ $seed = 42
 }
 ```
 
-**Expected:** a new study folder and `candidate trials: 10`. This has created the schedule only; neither environment has been reset.
+**Expected:** a new study folder and `candidate trials: 4` (`12` for full). This has created the schedule only; neither environment has been reset.
 
 #### B2.2. Load the saved study and show progress
 
@@ -306,7 +316,7 @@ $seed = 42
     $studyDir = (Get-Content experiments/results/current-compact-study.txt -Raw).Trim()
     $study = Get-Content (Join-Path $studyDir 'study.json') -Raw | ConvertFrom-Json
     if ($study.repository -ne $pair.repository -or $study.v1_sha -ne $v1Sha -or $study.v2_sha -ne $v2Sha -or $study.worker_sha -ne $workerSha) { throw 'Current pair/control differs from this study. Restore the selection or create a new study.' }
-    if ($study.study_set -ne 'compact-five-v1') { throw 'Select this compact study, not the full study.' }
+    if ($study.study_set -notin @('compact-five-v1','compact-six-v2','focused-recovery-v1','compact-six-v3')) { throw 'Select this compact study, not the full study.' }
     "Study folder: $studyDir"
     foreach ($item in $study.trials) {
         $folder = Join-Path $studyDir "trials/$($item.id)"
@@ -331,13 +341,19 @@ function Invoke-CompactCandidate {
         [switch]$Headless
     )
     $ErrorActionPreference = 'Stop'
+    Write-Host "[compact-launcher] Checking $Case / $Mechanism prerequisites."
     if (-not $studyDir -or -not $pair) { throw 'Complete B1 and B2 first.' }
+    Write-Host "[compact-launcher] Study: $studyDir"
     $study = Get-Content (Join-Path $studyDir 'study.json') -Raw | ConvertFrom-Json
     $trial = $study.trials | Where-Object { -not (Test-Path (Join-Path $studyDir "trials/$($_.id)/record.json")) } | Select-Object -First 1
     if (-not $trial) { throw 'All trials are recorded. Complete E if needed, then G; do not launch again.' }
+    if ($study.study_set -notin @('focused-recovery-v1','compact-six-v3')) { throw 'Preserve the old study. After A2, create the new schedule in B2.1.' }
     if ($trial.case -ne $Case -or $trial.mechanism -ne $Mechanism) { throw "Next scheduled trial is $($trial.id). Use its C instruction; do not skip or repeat trials." }
     $trialRoot = Join-Path $studyDir "trials/$($trial.id)"
     if (Test-Path (Join-Path $trialRoot 'started.json')) { throw 'Already started: use F2 to resume collection, never redispatch.' }
+    if (-not (Test-Path (Join-Path $studyDir 'current-reset.txt'))) {
+        throw 'No verified reset is saved for this study. Complete B4 and wait for Both environments verified at v1 before running C.'
+    }
     New-Item -ItemType Directory -Force -Path $trialRoot | Out-Null
     $trial.id | Set-Content (Join-Path $studyDir 'current-trial.txt') -Encoding utf8
     $trial | ConvertTo-Json | Set-Content (Join-Path $trialRoot 'planned-trial.json') -Encoding utf8
@@ -347,9 +363,16 @@ function Invoke-CompactCandidate {
     $resetResult = Join-Path $resetDir 'controller-result.json'
     $resetCheck = Join-Path $trialRoot 'reset-check.json'
     Assert-V1Receipt "$resetResult" "$resetCheck"
+    $resetReceipt = Get-Content -LiteralPath $resetResult -Raw | ConvertFrom-Json
+    foreach ($entity in @('staging','production')) {
+        $preflightPath = Join-Path $trialRoot ("container-preflight-$entity-" + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '.json')
+        py -3 -B scripts/candidate-repair.py preflight --project "payment-$entity" --app app --dependency postgres --expected $resetReceipt.verified_releases.$entity.execution_id --output "$preflightPath"
+        if ($LASTEXITCODE -ne 0) { throw 'Stale, duplicate or incorrect containers detected. Review the preflight evidence before running.' }
+    }
     $trial.id | Set-Content (Join-Path $resetDir 'used-by-trial.txt') -Encoding utf8
     [pscustomobject]@{ started_at=(Get-Date).ToUniversalTime().ToString('o'); reset_result=$resetResult; reset_check=$resetCheck } |
         ConvertTo-Json | Set-Content (Join-Path $trialRoot 'started.json') -Encoding utf8
+    Write-Host "[compact-launcher] Starting $($trial.id). Evidence: $trialRoot"
     if ($trial.mechanism -eq 'bdi') {
         $resultDir = Join-Path $trialRoot 'bdi'
         $resultDir | Set-Content (Join-Path $trialRoot 'result-path.txt') -Encoding utf8
@@ -387,7 +410,7 @@ function Invoke-CompactCandidate {
 }
 ```
 
-**Expected now:** PowerShell returns to its prompt without deploying anything. Later, calling the function in C blocks until the controller or GitHub run finishes. For BDI, close the MAS Console only after `Campaign finished` so the function can return. A failed outcome must still be saved and recorded.
+**Expected now:** defining the function returns to the prompt without deploying anything. Calling it in C must immediately print `[compact-launcher] Checking ...`, followed by the study path or an error. If that first line never appears, do not assume Java or GitHub is running; inspect the function loaded in this terminal using F2. Later, calling the function in C blocks until the controller or GitHub run finishes. For BDI, close the MAS Console only after `Campaign finished` so the function can return. A failed outcome must still be saved and recorded.
 
 ### B4. Actually restore both environments to v1
 
@@ -407,11 +430,15 @@ function Invoke-CompactCandidate {
 
 **Next:** choose the next pending trial in C. After a successful E reset in this session, go directly to C; do not reset twice. On a new session, an existing unused reset may be replaced by this fresh reset once no candidate is active.
 
+**Container checkpoint:** the reset and candidate launch both save `container-preflight-*.json`. The read-only check verifies a unique expected app, reports stale app containers and checks dependency uniqueness/running state. A failure stops the next candidate. Inspect IDs, deployment identities and state; remove only a confirmed obsolete container without force or volume deletion. Never remove the baseline/current candidate just because its service label matches. A stale container does not necessarily occupy a port.
+
+The previously confirmed obsolete `relaxed_kepler` container was removed during this repair; its removal audit is under `experiments/results/maintenance/`. Existing experiment evidence is preserved.
+
 The identical BDI reset routine prepares both approaches outside measured candidate time. Database volumes are retained. Do not use `docker compose down -v`.
 
-## C. Run the five scenarios, one approach at a time
+## C. Run the six scenarios, one approach at a time
 
-For the default **one repetition**, follow C1 through C5 in order. Each scenario has two runs. **After each run, complete D and E before starting the other approach.** Do not paste both approach commands together.
+For **focused**, go directly to C5 (trials 001/002), then C6 (003/004). For **full**, follow C1 through C6; the table below gives full-study numbers. Each scenario has two runs. **After each run, complete D and E before starting the other approach.** Do not paste both approach commands together.
 
 | Scenario | First run | Second run | After both are recorded and reset |
 |---|---|---|---|
@@ -419,7 +446,8 @@ For the default **one repetition**, follow C1 through C5 in order. Each scenario
 | C2 test failure | 003 BDI | 004 conventional | C3 or operator handoff in G2 |
 | C3 temporary degradation | 005 BDI | 006 conventional | C4 |
 | C4 persistent degradation | 007 BDI | 008 conventional | C5 |
-| C5 stopped candidate | 009 BDI | 010 conventional | G1 evaluation |
+| C5 stopped candidate | 009 BDI | 010 conventional | C6 |
+| C6 rollback reconsideration | 011 BDI | 012 conventional | G1 evaluation |
 
 If you deliberately selected multiple repetitions, follow the saved schedule: odd repetitions use BDI first, even repetitions conventional first. Return to C1 for each new repetition; the launcher refuses out-of-order requests.
 
@@ -533,7 +561,7 @@ Invoke-CompactCandidate -Case 'production-persistent' -Mechanism github-actions
 
 **Setup:** B1-B3 must be loaded and B4/E must have produced a fresh unused v1 reset. After successful deployment the helper stops only the correlated candidate app container. Staging uses normal traffic; production uses the repair worker probes instead of a separate normal traffic client.
 
-**Run 1 - BDI** (trial 009 for repetition 1):
+**Run 1 - BDI** (focused trial 001; full trial 009):
 
 ```powershell
 Invoke-CompactCandidate -Case 'candidate-stopped' -Mechanism bdi
@@ -541,7 +569,7 @@ Invoke-CompactCandidate -Case 'candidate-stopped' -Mechanism bdi
 
 **When it finishes:** complete **D1-D4** to save/record this trial, then **E** to reset. Return here for Run 2. If interrupted, use F2; do not rerun the command.
 
-**Run 2 - conventional** (trial 010 for repetition 1), only after Run 1 is recorded and E passes:
+**Run 2 - conventional** (focused trial 002; full trial 010), only after Run 1 is recorded and E passes:
 
 ```powershell
 Invoke-CompactCandidate -Case 'candidate-stopped' -Mechanism github-actions
@@ -551,7 +579,37 @@ Invoke-CompactCandidate -Case 'candidate-stopped' -Mechanism github-actions
 
 **Expected results to inspect:** Inspect diagnosis of the matching stopped candidate, one bounded restart and fresh identity-correlated health verification. Successful repair should continue v2 delivery. A restart command alone is not proof of recovery; if verification fails, inspect verified rollback or safe stop.
 
-**Next:** after both records and resets, continue to **G1 (or C1 for the next scheduled repetition)**. Unexpected outcomes remain part of the study; do not repeat until a preferred result appears.
+**Next:** after both records and resets, continue to **C6**. Unexpected outcomes remain part of the study; do not repeat until a preferred result appears.
+
+### C6. Cancel pending rollback after recovery (`rollback-reconsideration`)
+
+**Open:** Controller PowerShell, MAS Console for BDI, and GitHub Actions. Keep Docker and the runner running.
+
+**Setup:** use the new schedule and a fresh unused E reset. Production request errors last 195 seconds, then normal traffic resumes. Initial unhealthy observations exhaust the usual budget. Both controllers select rollback, but check fresh, deployment-correlated health for up to 60 more seconds before dispatching it. Do not inject faults manually.
+
+**Run 1 - BDI** (focused trial 003; full trial 011):
+
+```powershell
+Invoke-CompactCandidate -Case 'rollback-reconsideration' -Mechanism bdi
+```
+
+**When finished:** D1-D4, then E. Return here for Run 2.
+
+**Run 2 - conventional** (focused trial 004; full trial 012):
+
+```powershell
+Invoke-CompactCandidate -Case 'rollback-reconsideration' -Mechanism github-actions
+```
+
+**When finished:** D1-D4, then E, including the final reset.
+
+**Expected:** `rollback_selected`, followed by fresh correlated observations, two consecutive healthy samples and `rollback_cancelled`. No rollback job should execute; verified v2 remains and candidate delivery succeeds. Selection is an intention: it can be cancelled only before rollback dispatch. If health does not recover within the final window, rollback must execute and verify v1 instead.
+
+**Evidence:** inspect `rollback_selected`, `rollback_cancelled`, `rollback_reconsideration_seconds`, `rollback_attempts`, final safety and the ordered controller events. If errors clear before rollback selection, the trial does not test this case and is excluded with `rollback_intention_not_observed`. Preserve it rather than claiming reconsideration occurred.
+
+**Why this case:** it makes changing a pending recovery decision visible. C5 tests repair, while C6 tests reacting to changing observations. Both approaches have the same final recheck and may tie. These trials demonstrate BDI capabilities; comparative superiority requires an observed benefit under equal conditions.
+
+**Next:** G1 after the final reset; for another scheduled repetition, return to C5 (focused) or C1 (full).
 
 ## D. Finalise EVERY candidate: save, inspect and record
 
@@ -564,8 +622,13 @@ Do this after each individual C command, before resetting or launching another c
 ```powershell
 . {
     $ErrorActionPreference = 'Stop'
-    $trialId = (Get-Content (Join-Path $studyDir 'current-trial.txt') -Raw).Trim()
-    $trial = $study.trials | Where-Object id -eq $trialId
+    $studyDir = (Get-Content -LiteralPath 'experiments/results/current-compact-study.txt' -Raw).Trim()
+    $study = Get-Content -LiteralPath (Join-Path $studyDir 'study.json') -Raw | ConvertFrom-Json
+    $trialId = (Get-Content -LiteralPath (Join-Path $studyDir 'current-trial.txt') -Raw).Trim()
+    if ([string]::IsNullOrWhiteSpace($trialId)) { throw 'Saved trial ID is blank. Inspect current-trial.txt; do not guess a trial.' }
+    $trialMatches = @($study.trials | Where-Object { $_.id -eq $trialId })
+    if ($trialMatches.Count -ne 1) { throw 'Saved trial does not uniquely match this study schedule.' }
+    $trial = $trialMatches[0]
     $trialRoot = Join-Path $studyDir "trials/$trialId"
     $resultDir = (Get-Content (Join-Path $trialRoot 'result-path.txt') -Raw).Trim()
     if (Test-Path (Join-Path $resultDir 'controller-result.json')) {
@@ -653,12 +716,27 @@ $interventionText = (Read-Host 'Human interventions during candidate execution; 
 $notes = Read-Host 'Notes: approvals, additional agent intervention, interruptions or unexpected behaviour'
 ```
 
+For C5, `fault_injected=true` requires a worker log line beginning `FAULT_INJECTION_JSON=` whose container and deployment identity confirm the injected stop. `diagnosis_succeeded=true` separately requires a correlated stopped-app diagnosis. A requested failure mode or unavailable HTTP endpoint alone does not prove injection. Missing injection evidence is not inferred from diagnosis. Failed diagnosis remains explicit as `stopped_candidate_diagnosis_not_confirmed`; do not reinterpret old records using the new fields.
+
+The recording block reloads the study and trial ID from disk, so it does not depend on `$trial` surviving previous steps. If an earlier attempt reported `argument --trial: expected one argument`, rerun only this corrected D4 block; keep D2/D3 evidence and do not repeat the candidate.
+
 An execution agent may supply these from its own documented action history. Unknown intervention counts must stay unknown. Routine reset and collection do not count as candidate repair interventions.
 
 ```powershell
 . {
     $ErrorActionPreference = 'Stop'
-    $recordArgs = @('--study', $studyDir, '--trial', $trial.id)
+    $studyDir = (Get-Content -LiteralPath 'experiments/results/current-compact-study.txt' -Raw).Trim()
+    $study = Get-Content -LiteralPath (Join-Path $studyDir 'study.json') -Raw | ConvertFrom-Json
+    $trialId = (Get-Content -LiteralPath (Join-Path $studyDir 'current-trial.txt') -Raw).Trim()
+    if ([string]::IsNullOrWhiteSpace($trialId)) { throw 'Saved trial ID is blank. Inspect current-trial.txt; do not guess a trial.' }
+    $trialMatches = @($study.trials | Where-Object { $_.id -eq $trialId })
+    if ($trialMatches.Count -ne 1) { throw 'Saved trial does not uniquely match this study schedule.' }
+    $trial = $trialMatches[0]
+    $trialRoot = Join-Path $studyDir "trials/$trialId"
+    if (-not (Test-Path -LiteralPath (Join-Path $trialRoot 'started.json'))) { throw 'This trial has no start record. Do not record an unrun trial.' }
+    if (Test-Path -LiteralPath (Join-Path $trialRoot 'record.json')) { throw 'Record already exists. Preserve it; continue to E when remote work is terminal.' }
+    Write-Host "Recording saved trial: $trialId"
+    $recordArgs = @('--study', $studyDir, '--trial', $trialId)
     if ($interventionText) {
         if ($interventionText -notmatch '^\d+$') { throw 'Use a nonnegative count or leave blank.' }
         $recordArgs += @('--human-interventions', $interventionText)
@@ -686,7 +764,7 @@ Confirm candidate, diagnostic, repair and rollback jobs are terminal. Close the 
 
 **Expected:** new verified v1 reset in both environments; completed evidence is unchanged. This reset is also required when production already appears v1, and after the final trial. Do not delete database volumes or result folders.
 
-**Next:** return to the C scenario you just used: after its first approach run the second; after both, follow its Next instruction. After trial 010, evaluate in G1. Never reuse one reset for two candidate trials.
+**Next:** return to the C scenario you just used: after its first approach run the second; after both, follow its Next instruction. After the final scheduled trial (004 focused / 012 full), evaluate in G1. Never reuse one reset for two candidate trials.
 
 ## F. Baseline and troubleshooting
 
@@ -730,6 +808,17 @@ $pair | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $pairFile -Encoding u
 **Expected:** the selected pair links an achieved live v1 receipt for both environments. Baseline work is excluded from measured candidate runs. Continue to B4.
 
 ### F2. Resume an interrupted trial or resolve an error
+
+**No output after calling the launcher:** in the same terminal, once its prompt is available, run the read-only commands below. They show the actual function definition and selected study in that session; a function loaded before a guide edit does not update automatically.
+
+```powershell
+Get-Command Invoke-CompactCandidate -ErrorAction Stop | Format-List Name,CommandType,Definition
+$studyDir
+```
+
+Compare the definition with B3. Reload the entire B3 function if it is empty, outdated or different. Look for the first `[compact-launcher]` message when invoking it. A missing reset is resolved with B4, not by making another study. If remote work might already be active, resolve its state before any new launch/reset.
+
+**Editor Java Problems panel:** messages such as `Failed to configure project` or `java.lang.Error cannot be resolved` concern the editor's Java project/classpath. They do not prove the experiment's Gradle launch failed. Inspect the experiment terminal and saved `controller-console.log` for an actual runtime/build error. Guide 03 and this guide both ultimately launch `run_controller.py`; the compact launcher adds traffic coordination and evidence collection. Python/Gradle startup output, MAS Console and the saved journal provide evidence that the agent has started.
 
 | Situation | Action |
 |---|---|
@@ -850,7 +939,7 @@ Open a **fresh Controller PowerShell** to avoid stale `$trial`, `$studyDir` and 
 |---|---|---|
 | 1 | A2: commit/publish/select the reviewed control revision if needed | Correct worker tag; existing app v1/v2 SHAs and baseline preserved |
 | 2 | B1: load the selected pair and reset helpers | Session variables populated; stale experiment environment overrides cleared |
-| 3 | B2.1 once, then B2.2 | New ten-trial schedule; previous pointer backed up; `current-compact-study.txt` selects the new directory |
+| 3 | B2.1 once, then B2.2 | New twelve-trial schedule; previous pointer backed up; `current-compact-study.txt` selects the new directory |
 | 4 | B3; F1 only if the baseline is missing | Load the candidate launcher; reuse the verified baseline |
 | 5 | B4 | Fresh reset receipt verifies **both staging and production at v1** |
 | 6 | C1 onward | Start new trial 001; old trial numbering/results belong to the old study |
@@ -861,7 +950,7 @@ If you only closed the terminal and want to **continue the same unchanged study*
 
 ## G. Evaluate the study and hand off remaining work
 
-### G1. Evaluate and back up
+### G1. Evaluate and back up (twelve trials in the new study)
 
 **Open:** Controller PowerShell after finalisation and the final reset. The evaluator is read-only; it can also show pending trials mid-study.
 
@@ -889,7 +978,7 @@ If you only closed the terminal and want to **continue the same unchanged study*
 
 A study is complete only when all scheduled records exist, evidence exclusions are explained, the final reset verifies **both** environments at v1, and evaluation outputs are saved. Agent task completion alone is not study completion.
 
-For one complete eligible repetition, expect **10 recorded trials and 5 matched pairs**, with `final_reset_complete=true` and `study_complete=true`. These completion flags do not override evidence exclusions. Missing or excluded evidence reduces the matched count; retain and explain it. Pair differences are **BDI minus conventional**. Positive delivery difference favours BDI; negative runtime difference means BDI was faster. Do not turn missing times into zero.
+For one complete eligible repetition, expect **4 recorded trials and 2 matched pairs for focused**, or **12 recorded trials and 6 matched pairs for full**, with `final_reset_complete=true` and `study_complete=true`. These completion flags do not override evidence exclusions. Missing or excluded evidence reduces the matched count; retain and explain it. Pair differences are **BDI minus conventional**. Positive delivery difference favours BDI; negative runtime difference means BDI was faster. Do not turn missing times into zero.
 
 Report each case separately:
 
@@ -898,17 +987,22 @@ Report each case separately:
 3. **Temporary degradation:** did each wait for recovery and deliver v2 without unnecessary restart/rollback?
 4. **Persistent degradation:** did each restore verified v1? Restoration does not achieve v2 delivery.
 5. **Stopped candidate:** did diagnosis, bounded restart and fresh verification deliver v2? Compare repair attempts/time and interventions.
+6. **Failed restart:** did the controller stop repairing after one failed attempt and restore verified v1? Compare decision/recovery time and interventions.
 
 `recovery_seconds` measures first adverse production event to accepted rollback. `candidate_repair_seconds` measures restart request to accepted candidate health. They are different paths; compare only like-for-like values. Use matched pairs for conclusions, report ties, and do not infer statistical superiority from one run per case. This set illustrates runtime decision-making; comparative benefit must come from the observed outcomes/costs.
 
 **Archive:** back up the entire compact study directory, reports, selected pair JSON, original baseline receipt directory and frozen revision identifiers. Results are Git-ignored. Keep the final verified v1 deployed unless you deliberately stop the stacks after recording completion. The full study and its pointer remain separate.
 
-### G2. Optional handoff: run C1-C2 manually, delegate C3-C5
+### G2. Optional operator handoff
+
+**Focused study:** the execution agent loads B1, B2.2 and B3, then resumes the next pending C5/C6 trial. It must save D and reset E after each run, preserve completed/started records and finish G1. Never create another schedule on handoff. Use `-Headless` for unattended runs.
+
+**Full study only: run C1-C2 manually, delegate C3-C6.**
 
 Use **one study**, one repetition and seed 42 throughout. Complete B, then C1-C2 with D/E after every trial for trials **001-004**: healthy BDI, healthy conventional, test-failure BDI, test-failure conventional. A red test-failure run is expected, but it still requires collection, final-state capture, `record_trial.py`, and reset. After trial 004, complete E and verify both environments at v1. Stop before dispatching trial 005.
 
-Before handoff, evaluate the study (the evaluator command in G1 may be used mid-study, but the completion guard will correctly report incomplete). Expect four recorded/eligible trials and two matched pairs; trials 005-010 are pending. If the first four are ineligible, explain/correct evidence through documented amendments before treating them as valid comparisons. Keep the saved pointer, records and reset receipts.
+Before handoff, evaluate the study (the evaluator command in G1 may be used mid-study, but the completion guard will correctly report incomplete). Expect four recorded/eligible trials and two matched pairs; trials 005-012 are pending. If the first four are ineligible, explain/correct evidence through documented amendments before treating them as valid comparisons. Keep the saved pointer, records and reset receipts.
 
-The execution agent must read this guide, load B1, **B2.2 only**, and B3, confirm the first four records and unused reset, then resume C3 at trial 005. Do not create another schedule, overwrite records, repeat completed trials or assume an existing `started.json` is safe to dispatch again. It completes trials 005-010, records each and resets after each, including the final trial; then evaluates and reports the full study. This handoff changes the operator, not the experiment configuration. Human interventions during measured execution must be recorded honestly; routine setup/collection is excluded.
+The execution agent must read this guide, load B1, **B2.2 only**, and B3, confirm the first four records and unused reset, then resume C3 at trial 005. Do not create another schedule, overwrite records, repeat completed trials or assume an existing `started.json` is safe to dispatch again. It completes trials 005-012, records each and resets after each, including the final trial; then evaluates and reports the full study. This handoff changes the operator, not the experiment configuration. Human interventions during measured execution must be recorded honestly; routine setup/collection is excluded.
 
 For an unattended handoff, the agent must use `-Headless` on every candidate and reset helper call. Otherwise it must inspect and close each completed MAS Console before collection or the next reset can finish. Record this display-mode choice in operator notes.

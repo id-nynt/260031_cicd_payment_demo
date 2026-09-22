@@ -15,6 +15,7 @@ run-name: conventional-${{ inputs.scenario }}-${{ inputs.release_sha }}
         - healthy
         - candidate-stopped
         - candidate-restart-fails
+        - rollback-reconsideration
         - build-failure
         - test-failure
         - transient-test-failure
@@ -340,7 +341,7 @@ jobs:
       NODE_ENV: production
       PAYMENT_PROVIDER: fake
       FAKE_PAYMENT_OUTCOME: succeeded
-      EXPERIMENT_MODE: ${{ (inputs.scenario == 'production-temporary' || inputs.scenario == 'production-persistent') && 'request_faults' || 'normal' }}
+      EXPERIMENT_MODE: ${{ (inputs.scenario == 'production-temporary' || inputs.scenario == 'production-persistent' || inputs.scenario == 'rollback-reconsideration') && 'request_faults' || 'normal' }}
       MERCHANT_NAME: Production Merchant
       RELEASE_SHA: ${{ inputs.release_sha }}
       FAILURE_MODE: ${{ inputs.scenario == 'service-unavailable' && 'service_unavailable' || (inputs.scenario == 'candidate-stopped' || inputs.scenario == 'candidate-restart-fails') && 'candidate_stopped' || 'none' }}

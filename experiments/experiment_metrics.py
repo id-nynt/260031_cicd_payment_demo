@@ -88,8 +88,20 @@ def extract(directory):
     if plan.get('case') in ('candidate-stopped','candidate-restart-fails') and not any(
             e['event']=='diagnosis_finished' and (e.get('status')=='app_stopped' or
             (e.get('app_state')=='stopped' and e.get('dependency_ready') is True)) for e in events):
-        reasons.append('stopped_candidate_fault_not_observed')
-    row = dict(metrics_schema_version=2, traffic_by_entity=traffic_by_entity, repair_attempts=len(repair_actions), diagnoses=sum(e['event']=='diagnosis_started' for e in events),
+        reasons.append('stopped_candidate_diagnosis_not_confirmed')
+    rollback_selected=next((e for e in events if e.get('event')=='rollback_selected'),None)
+    rollback_cancelled=next((e for e in events if e.get('event')=='decision' and e.get('decision')=='rollback_cancelled'),None)
+    if plan.get('case')=='rollback-reconsideration' and not rollback_selected:
+        reasons.append('rollback_intention_not_observed')
+    recheck_samples=[]
+    if rollback_selected and rollback_cancelled:
+        recheck_samples=[e for e in measurements if e.get('entity')=='production' and
+            stamp(rollback_selected['timestamp']) < stamp(e['timestamp']) < stamp(rollback_cancelled['timestamp'])]
+    recheck_verified=bool(rollback_selected and rollback_selected.get('execution_id') and len(recheck_samples)>=2 and
+        all(not bad(e) and e.get('execution_id')==rollback_selected['execution_id'] for e in recheck_samples[-2:]))
+    if plan.get('case')=='rollback-reconsideration' and rollback_cancelled and not recheck_verified:
+        reasons.append('rollback_cancellation_health_not_verified')
+    row = dict(metrics_schema_version=2, rollback_selected=bool(rollback_selected), rollback_cancelled=bool(rollback_cancelled), rollback_reconsideration_seconds=duration(rollback_selected,rollback_cancelled), traffic_by_entity=traffic_by_entity, repair_attempts=len(repair_actions), diagnoses=sum(e['event']=='diagnosis_started' for e in events),
         candidate_repaired=bool(delivery and repair_verified and repair_actions and any(
             e['event']=='repair_finished' and e.get('status')=='executed' for e in events)),
         candidate_repair_seconds=duration(repair_actions[0] if repair_actions else None,repair_verified),
@@ -110,7 +122,7 @@ def extract(directory):
         human_interventions=len(interventions) if isinstance(interventions,list) else None,
         validation_issues=reasons, eligible_for_comparison=not reasons)
     # These are protocol expectations, not an independent oracle proving application correctness.
-    expectations = {'candidate-stopped':delivery and row['candidate_repaired'] and row['repair_attempts']==1,
+    expectations = {'rollback-reconsideration':bool(delivery and recheck_verified and rollback_selected and rollback_cancelled and not row['rollback_attempts'] and stamp(rollback_cancelled['timestamp']) > stamp(rollback_selected['timestamp'])), 'candidate-stopped':delivery and row['candidate_repaired'] and row['repair_attempts']==1,
         'candidate-restart-fails':bool(restored) and row['repair_attempts']==1 and not delivery, 'healthy': delivery, 'transient-test-failure': delivery and row['retries'] == 1,
         'build-failure': not row['production_dispatched'] and result.get('outcome') == 'stopped' and result.get('executions', {}).get('build', {}).get('status') == 'failure',
         'staging-persistent': not row['production_dispatched'] and result.get('outcome') == 'stopped',

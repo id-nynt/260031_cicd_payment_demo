@@ -367,6 +367,32 @@ all_goals_satisfied :-
     <- .print("BDI_RECOVERY=failed entity=", Entity, " reason=", Reason);
        !end(stopped, failed).
 
+// Select rollback as a pending intention, never as an already-dispatched action.
+// Only exhausted request-degradation observations can be reconsidered; failed jobs
+// and failed/uncertain repair operations retain their existing safe fallback.
++!recover(Entity)
+    : workflow_active & failure_context(Entity, telemetry_block, _)
+      & recovery(Entity, Recovery) & recover_on(Entity, telemetry_block, Recovery)
+      & known_good_available & safe_to_execute(Recovery) & not recovery_attempted(Entity)
+      & reconsideration_window(Entity, _) & not reconsidered(Entity) & not repair_checked(Entity)
+    <- -workflow_active;
+       +reconsidered(Entity);
+       +recovery_pending(Entity, Recovery);
+       .abolish(telemetry_sample(Entity, _, _, _, _));
+       -healthy_count(Entity, _); +healthy_count(Entity, 0);
+       +observing(Entity);
+       .print("BDI_DECISION=rollback_selected entity=", Entity);
+       begin_reconsideration(Entity);
+       observe_telemetry(Entity).
+
++!commit_pending_recovery(Entity)
+    : recovery_pending(Entity, Recovery)
+    <- -recovery_pending(Entity, Recovery);
+       -observing(Entity);
+       record_decision(Entity, rollback_committed, 1);
+       +workflow_active;
+       !recover(Entity).
+
 // START RECOVERY: mapping, trigger, known-good source and single-attempt guard.
 +!recover(Entity)
     : workflow_active & failure_context(Entity, Reason, _)
@@ -452,6 +478,36 @@ all_goals_satisfied :-
     : observing(Entity) & attempt_count(Entity, Attempt) & error_rate_limit(MaxError) & latency_limit(MaxLatency)
       & Error <= MaxError & Latency <= MaxLatency & Availability >= 1
     <- +telemetry_sample(Entity, Attempt, Round, allow, Time).
+
+// Recheck results still arrive through percepts. No action assumes observation completion.
++telemetry_sample(Entity, Attempt, Round, Decision, Time)
+    : recovery_pending(Entity, _) & observing(Entity) & attempt_count(Entity, Attempt)
+      & reconsideration_window(Entity, Limit) & Time >= Limit
+    <- !commit_pending_recovery(Entity).
++telemetry_sample(Entity, Attempt, Round, allow, Time)
+    : recovery_pending(Entity, _) & observing(Entity) & attempt_count(Entity, Attempt)
+      & reconsideration_window(Entity, Limit) & Time < Limit
+      & healthy_count(Entity, Count) & healthy_observations(Need) & Count + 1 >= Need
+    <- -recovery_pending(Entity, _);
+       -observing(Entity); -terminal(Entity, _); -failure_context(Entity, _, _);
+       -telemetry(Entity, _); +telemetry(Entity, allow);
+       +phase_result(Entity, success);
+       accept_telemetry(Entity, allow);
+       record_decision(Entity, rollback_cancelled, 1);
+       .print("BDI_DECISION=rollback_cancelled resume_candidate entity=", Entity);
+       +workflow_active;
+       !run_pipeline.
++telemetry_sample(Entity, Attempt, Round, allow, Time)
+    : recovery_pending(Entity, _) & observing(Entity) & attempt_count(Entity, Attempt)
+      & reconsideration_window(Entity, Limit) & Time < Limit
+      & healthy_count(Entity, Count) & healthy_observations(Need) & Count + 1 < Need
+    <- -healthy_count(Entity, Count); Next = Count + 1; +healthy_count(Entity, Next);
+       !reobserve(Entity, Round).
++telemetry_sample(Entity, Attempt, Round, Decision, Time)
+    : recovery_pending(Entity, _) & observing(Entity) & attempt_count(Entity, Attempt)
+      & reconsideration_window(Entity, Limit) & Time < Limit & Decision \== allow
+    <- -healthy_count(Entity, _); +healthy_count(Entity, 0);
+       !reobserve(Entity, Round).
 
 observation_open(Round, Time) :- observation_limit(Max) & Round < Max & observation_timeout(Deadline) & Time < Deadline.
 +telemetry_sample(Entity, Attempt, Round, allow, Time)

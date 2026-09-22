@@ -21,6 +21,7 @@ class CandidateAgentTest(unittest.TestCase):
             doc=yaml.safe_load((ROOT/relative).read_text())
             if relative=='config/controller_policy.yaml':
                 doc['execution'].update(observation_attempts=4,observation_interval_seconds=1,observation_timeout_seconds=15)
+                doc['rollback_reconsideration']['production']['window_seconds']=10
             path.write_text(yaml.safe_dump(doc,sort_keys=False),encoding='utf-8')
         generate(cls.project,cls.project/'models/01_pipeline.yaml',cls.project/'models/02_goal.yaml')
 
@@ -38,6 +39,16 @@ class CandidateAgentTest(unittest.TestCase):
         events=[json.loads(line) for line in (directory/'controller-journal.jsonl').read_text().splitlines()]
         self.assertFalse(any(e['event']=='controller_action_error' for e in events))
         return result,events
+
+    def test_pending_rollback_is_cancelled_only_after_fresh_candidate_health(self):
+        result,events=self.run_case('rollback_reconsideration','achieved','not_needed')
+        self.assertNotIn('rollback',result['executions'])
+        selected=next(i for i,e in enumerate(events) if e['event']=='rollback_selected')
+        cancelled=next(i for i,e in enumerate(events) if e.get('decision')=='rollback_cancelled')
+        samples=[e for e in events[selected:cancelled] if e['event']=='telemetry_measurement' and e['entity']=='production']
+        self.assertGreaterEqual(len(samples),2)
+        self.assertTrue(all(e['error_rate']==0 and e['data_status']=='fresh' for e in samples[-2:]))
+        self.assertFalse(any(e['event']=='bdi_recovery_decision' for e in events))
 
     def test_repair_preserves_candidate_and_resumes_master_goal(self):
         result,events=self.run_case('candidate_stopped','achieved','not_needed')
@@ -63,5 +74,8 @@ class CandidateAgentTest(unittest.TestCase):
         result,events=self.run_case('production_unhealthy','stopped','restored')
         self.assertFalse(any(e['event']=='repair_started' for e in events))
         self.assertEqual(0,sum(e['event']=='diagnosis_started' for e in events))
+        self.assertEqual(1,sum(e['event']=='rollback_selected' for e in events))
+        self.assertEqual(1,sum(e.get('decision')=='rollback_committed' for e in events))
+        self.assertFalse(any(e.get('decision')=='rollback_cancelled' for e in events))
 
 if __name__=='__main__':unittest.main()

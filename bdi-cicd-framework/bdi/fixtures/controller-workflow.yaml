@@ -133,3 +133,6 @@ candidate_repair:
     max_attempts: 1
     deadline_seconds: 300
     verification_window_seconds: 120
+rollback_reconsideration:
+  production:
+    window_seconds: 60

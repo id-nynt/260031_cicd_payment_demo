@@ -138,10 +138,24 @@ def observe(policy, sample, record, clock=time.monotonic, sleep=time.sleep, repa
         if round_number<execution['observation_attempts']: sleep(min(execution['observation_interval_seconds'],max(0,deadline-clock())))
     return 'block' if value.get('data_status') == 'fresh' and not healthy(value,policy['thresholds']) else 'unknown'
 
+def reconsider(policy, entity, sample, record, clock=time.monotonic, sleep=time.sleep):
+    """One bounded fresh window; no rollback side effect has been dispatched."""
+    rule=policy['rollback_reconsideration'][entity]
+    deadline=clock()+rule['window_seconds']; consecutive=0; round_number=0
+    while clock()<deadline:
+        round_number+=1
+        value=sample(); record(round_number,value)
+        if clock()>=deadline: break
+        consecutive=consecutive+1 if healthy(value,policy['thresholds']) else 0
+        if consecutive>=policy['execution']['healthy_observations']: return 'allow'
+        sleep(min(policy['execution']['observation_interval_seconds'],max(0,deadline-clock())))
+    return 'block'
+
+
 def gate(directory, entity, execution_id, sha, scenario, seed, execution_directory=None):
     doc, _, policy = configuration()
     events=directory/'experiment-events.jsonl'; directory.mkdir(parents=True,exist_ok=False)
-    selected=CATALOG[scenario]; traffic=None; traffic_log=None
+    selected=CATALOG[scenario]; traffic=None; traffic_log=None; last_sample=[{}]
     emit(events,'execution_configuration',entity=entity,execution_id=execution_id,release_sha=sha)
     try:
         if entity in ['staging','production']:
@@ -153,6 +167,7 @@ def gate(directory, entity, execution_id, sha, scenario, seed, execution_directo
                     '--scenario',target['profile'],'--entity',entity,'--seed',str(seed),'--output',str(directory)+'-traffic'], stdout=traffic_log, stderr=subprocess.STDOUT)
             time.sleep(OBSERVATION_DELAY_SECONDS)
         def record(round_number, value):
+            last_sample[0]=value
             emit(events,'observation',entity=entity,round=round_number,**value)
             print(f'OBSERVE {entity} round={round_number} data={value["data_status"]} error_rate={value["error_rate"]}',flush=True)
         if entity == 'production':
@@ -200,6 +215,14 @@ def gate(directory, entity, execution_id, sha, scenario, seed, execution_directo
             return measure(doc['bindings'],entity,execution_id,verify_identity=repaired[0])
         decision=observe(policy,sample,record,repair=repair if entity in policy.get('candidate_repair',{}) else None,
             deadline_limit=lambda: repair_start[0]+policy['candidate_repair'][entity]['deadline_seconds'] if repair_start[0] is not None else float('inf'))
+        previous=last_sample[0]
+        if (decision=='block' and entity in policy.get('rollback_reconsideration',{}) and repair_start[0] is None
+                and previous.get('data_status')=='fresh' and previous.get('readiness')=='ready' and previous.get('availability')==1):
+            emit(events,'rollback_selected',entity=entity,execution_id=execution_id)
+            def recheck_record(round_number,value):
+                emit(events,'observation',entity=entity,round=round_number,phase='rollback_recheck',execution_id=execution_id,**value)
+            decision=reconsider(policy,entity,lambda:measure(doc['bindings'],entity,execution_id,verify_identity=True),recheck_record)
+            emit(events,'decision',entity=entity,decision='rollback_cancelled' if decision=='allow' else 'rollback_committed',counter=1)
         restart_receipt=directory/'restart-receipt.json'
         if decision=='allow' and restart_receipt.exists() and json.loads(restart_receipt.read_text())['status']=='executed':
             emit(events,'decision',entity=entity,decision='repair_verified',counter=1)

@@ -8,7 +8,8 @@ This is the single operational guide for BDI setup, baseline, runtime preparatio
 |---|---|
 | New computer / first experiment | **A1-A4**, then **F1** to establish the pair baseline, then **B1-B3** |
 | Tools ready, but you need a new v1/v2 pair after an app change | **A4**, then **F1**, then **B1-B3** |
-| Existing pair and successful v1 baseline already saved (your current situation) | **B1-B3**; skip A and F1 |
+| Existing pair and baseline, upgrading to candidate repair (this update) | **A3 validation**, **A4.4** once, then **B1-B3**; app commits remain unchanged |
+| Existing pair and successful v1 baseline already saved, control revision unchanged | **B1-B3**; skip A and F1 |
 | Both environments just passed B3/E reset in this session | Choose **one** scenario in **C** |
 | A scenario just finished | **D** save/inspect evidence, then **E** reset to v1 |
 | A terminal was reopened | **B2** reloads settings; **D** can independently reload the saved trial path |
@@ -127,10 +128,10 @@ These selection files and experiment folders are Git-ignored. Back them up toget
 
 | Source file | Review or change here |
 |---|---|
-| `models/01_pipeline.yaml` | Jobs, dependencies, worker job names, environments, recovery relationship and `max_retries` |
+| `models/01_pipeline.yaml` | Jobs, dependencies, worker job names, environments, recovery relationship, candidate repair capabilities and `max_retries` |
 | `models/02_goal.yaml` | Achievement, maintenance and avoidance goals |
-| `config/controller_policy.yaml` | Retry-safe entities, observation/reconciliation budgets, recovery rules and error/latency thresholds |
-| `config/runtime_bindings.yaml` | Readiness/Prometheus URLs, correlated metric queries and freshness limit |
+| `config/controller_policy.yaml` | Retry-safe entities, observation/reconciliation budgets, restart/verification limits, recovery rules and thresholds |
+| `config/runtime_bindings.yaml` | Readiness/Prometheus URLs, correlated queries, freshness and diagnostic Docker project/services |
 
 **Actions 1 - generation, only when needed:** the migration already generated the current artifacts. Skip this block if you have not changed any source or generator and validation below passes; run it for a new configuration revision or after reviewing a stale-artifact error. Do not copy relocated settings back into 01/02, edit generated 03/ASL, or delete the manifest.
 
@@ -164,7 +165,7 @@ These selection files and experiment folders are Git-ignored. Back them up toget
 
 - Validation prints `Project artifacts are consistent`; a missing/stale profile stops startup with an explicit regeneration instruction.
 - Persistent outputs: `models/03_workflow_model.yaml`, `models/generation-manifest.json`, `bdi/controller_agent.asl`.
-- Existing payment policy is unchanged: one execution retry for eligible retryable failures, at most 36 observations at five-second intervals within 180 seconds, and two consecutive healthy observations. These are explicit configuration values, not hidden defaults.
+- Normal execution limits remain: one retry for eligible retryable failures, at most 36 observations at five-second intervals within 180 seconds, and two consecutive healthy observations. Candidate repair adds one production restart, a 120-second probe window and a 300-second decision budget starting at diagnosis. These are explicit configuration values.
 - MAS Console's `controller_agent` log reaches `BDI_CONTROLLER_RESULT=achieved recovery=not_needed`.
 - No real GitHub deployment is dispatched by this simulation.
 
@@ -302,6 +303,52 @@ The control tag selects the reviewed workflow code. Both mechanisms use this sam
 
 **Next:** start Docker/runner as in B1, establish the first v1 receipt in F1, then B2-B3. Do not run F1 again between ordinary trials.
 
+#### A4.4. Update only the control revision, retaining an existing app pair
+
+**Use this for the adaptive repair update.** Payment code and v1/v2 labels have not changed. Keep their immutable tags and existing verified v1 receipt. The old worker tag cannot execute the new diagnosis/restart operations; select a new control tag and save a new pair record. Do not overwrite old tags or results.
+
+**Open:** Controller PowerShell at the repository root and your GitHub review/Actions pages. First review and commit the implementation, generated artifacts, conventional snapshots and workflow copies. Publish/register the reviewed workflows through your normal branch/PR process. The following block checks a clean committed checkout, publishes a new tag, and saves the selection; it does not deploy.
+
+```powershell
+. {
+    $ErrorActionPreference = 'Stop'
+    $oldPairFile = (Get-Content experiments/results/release-pairs/current-pair.txt -Raw).Trim()
+    $oldPair = Get-Content -LiteralPath $oldPairFile -Raw | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace($oldPair.known_good_receipt)) { throw 'Link the existing v1 receipt in F1 first.' }
+    if (-not (Test-Path -LiteralPath $oldPair.known_good_receipt)) { throw 'Restore the saved v1 receipt before continuing.' }
+    if (git status --porcelain) { throw 'Review and commit the control update first.' }
+    git diff --quiet $oldPair.v2_sha HEAD -- src tests package.json package-lock.json Dockerfile docker-compose.yml
+    if ($LASTEXITCODE -ne 0) { throw 'Application files differ: review whether A4.1-A4.3 is required instead.' }
+    py -3 bdi-cicd-framework/run_controller.py --validate-only
+    if ($LASTEXITCODE -ne 0) { throw 'Resolve generated artifact consistency.' }
+    py -3 ci-cd-conventional/configuration.py --check-bdi-parity
+    if ($LASTEXITCODE -ne 0) { throw 'Resolve configuration parity.' }
+    py -3 ci-cd-conventional/sync_workflows.py --check
+    if ($LASTEXITCODE -ne 0) { throw 'Resolve workflow copies.' }
+    $series = (Get-Date -Format yyyyMMdd-HHmmss) + '-repair'
+    $workerRef = "comparison-worker-$series"
+    $workerSha = (git rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve reviewed control commit.' }
+    git tag $workerRef $workerSha
+    if ($LASTEXITCODE -ne 0) { throw 'Choose a fresh tag; never move an existing tag.' }
+    git push origin "refs/tags/$workerRef"
+    if ($LASTEXITCODE -ne 0) { throw 'Resolve tag publication before continuing.' }
+    $pairFile = [System.IO.Path]::GetFullPath("experiments/results/release-pairs/$series.json")
+    if (Test-Path -LiteralPath $pairFile) { throw 'Do not overwrite a pair record.' }
+    [pscustomobject]@{
+        series=$series; repository=$oldPair.repository
+        v1_tag=$oldPair.v1_tag; v1_sha=$oldPair.v1_sha
+        v2_tag=$oldPair.v2_tag; v2_sha=$oldPair.v2_sha
+        worker_ref=$workerRef; worker_sha=$workerSha
+        known_good_receipt=$oldPair.known_good_receipt; previous_pair=$oldPairFile
+    } | ConvertTo-Json | Set-Content -LiteralPath $pairFile -Encoding utf8
+    $pairFile | Set-Content experiments/results/release-pairs/current-pair.txt -Encoding utf8
+    Get-Content -LiteralPath $pairFile
+}
+```
+
+**Expected:** a new `*-repair.json` record and control tag, with the original v1/v2 SHAs and receipt retained. If publication fails, the local tag can exist without a new selection; resolve the reported error before proceeding. This creates a new experimental series: do not pool it with the earlier worker/policy revision. **Next: B1-B3**, then C1 `healthy`. Repeat **C1 → D → E** for each chosen case, changing only the separate `$case` selection. F1 is unnecessary when the retained receipt passes B2 validation.
+
 <a id="b1-start-docker-and-the-deployment-runner"></a>
 <a id="b2-restore-the-controller-session-completely"></a>
 ## B. Setup before each runtime
@@ -431,7 +478,7 @@ Keep `$knownGood` as the original pair baseline. Do not replace it with a v2 res
 
 | Purpose | Choose |
 |---|---|
-| Matched BDI versus conventional study, all 11 shared cases | **C1**: automatic traffic, fault timing, console capture and metrics |
+| Matched BDI versus conventional study, 13 available shared cases | **C1**: automatic traffic/probes, fault timing, console capture and metrics |
 | Interactive MAS GUI with healthy/error traffic | **C2**: replaces both old C0 and C0-S |
 | Direct manual faults or a different goal | C3-C7 below (optional) |
 
@@ -451,6 +498,8 @@ $case = 'healthy'
 | Case | Automatic injection / timing | Expected result |
 |---|---|---|
 | `healthy` | Normal production traffic | Deliver and verify v2 |
+| `candidate-stopped` | Stop production app after its deployment job has passed; database stays ready | Diagnose matching stopped v2, restart once, probe and verify fresh health; achieve v2 |
+| `candidate-restart-fails` | Same stopped candidate; controlled restart is immediately stopped again | One failed repair, then restore and verify v1; v2 goal remains unmet |
 | `build-failure` | Build job exits before compilation/deployment | Stop; production remains v1 |
 | `test-failure` | Test job exits with persistent failure | Stop; production remains v1 |
 | `transient-test-failure` | First test attempt exits as a typed transient failure; second executes tests | Retry once; deliver if checks pass |
@@ -464,7 +513,11 @@ $case = 'healthy'
 
 **Scope:** build/test failures are controlled job failures, not yet independent commits with compiler/test defects. “Service unavailable” means the deployed payment service; “infrastructure failure” means its staging database, not the entire host/cloud. The timeout is a controlled pre-deployment hang. A host loss, runner loss, deployment API outage and real network partition remain additional experiments; do not report these scoped faults as proving resilience to those broader failures.
 
-Traffic profiles use a fixed seed, bounded rates/jitter and the same request-fault headers. Temporary faults transition automatically to normal traffic; persistent faults stop when containment/recovery starts. Both approaches keep normal traffic running during each staging/production observation window, replacing it with the selected fault profile at the target stage. Each client stops when that entity's health decision is accepted or the campaign ends/recovery begins. Traffic metrics summarize the selected scenario target; retain the other stage's traffic artifact as background-load evidence.
+**Small initial study:** run `healthy`, `build-failure`, `candidate-stopped`, `production-persistent`, and `candidate-restart-fails` for both approaches, resetting between every trial. These cover normal delivery, deterministic stopping, repair that preserves v2, inapplicable repair, and failed repair with fallback. Add `production-temporary` for recovery without a restart. Predeclare repetitions and alternate approach order; all 13 cases are available, not mandatory.
+
+Traffic profiles use a fixed seed and bounded rates/jitter. Normally each staging/production gate gets continuous normal or selected fault traffic. For the two stopped-candidate cases, production cannot serve traffic before repair: both approaches keep the same 60-second pause, diagnose, and use the shared restart worker's normal payment probes for 120 seconds. Staging traffic remains automatic. The production evidence is the operation receipt/probe count and subsequent health observations, not a missing `-traffic` folder. The failed-restart case intentionally has no successful post-repair production probes. Rollback verifies its own deployment identity.
+
+**Expected repair trace:** `diagnose_candidate` → `restart_candidate` → `verify_repair` → `resume_candidate` → `Master goal achieved`. Diagnosis only authorizes restart for a matching stopped app with a ready database. Persistent request errors in a running app do not justify restart. A known-terminal failure or exhausted verification can select verified rollback; uncertain remote execution ends `unknown / unresolved` and requires F3. Repair is a bounded subgoal inside the existing execution loop; it never changes `master_goal` or turns rollback into v2 success.
 
 
 **Then run this block unchanged in Controller PowerShell:**
@@ -879,6 +932,7 @@ Most evidence is already written automatically. Do not manually copy JSON output
 | Exact configuration/agent provenance | Files inside `<campaign>/` |
 | C1 wrapper console and experiment plan | `<campaign>-experiment/controller-console.log`, `plan.json` |
 | Route C1 derived metrics | `<campaign>/experiment-metrics.json` |
+| Downloaded diagnosis/restart receipts, Docker identity and probe counts | `<campaign>/operation-<operation UUID>/receipt.json`; `download.log` reports download problems |
 | Traffic settings, requests, summary | Sibling `<campaign>-traffic*` folders |
 
 **Automatic capture:** the controller launcher now saves its combined stdout/stderr as `<campaign>/controller-console.log` while displaying it live. The GUI logging configuration sends agent messages to the console as well, so you no longer need to copy MAS text for new runs. This also covers baseline and reset runs. C1 additionally retains its wrapper console under `-experiment/`. Existing completed runs are not retroactively given a console log.
@@ -902,7 +956,7 @@ Close the **completed** MAS window, then run this block in Controller PowerShell
     $result.telemetry
     $result.verified_releases
     Get-Content -LiteralPath (Join-Path $candidateDir 'controller-journal.jsonl') |
-        Select-String 'bdi_decision|telemetry_measurement|bdi_recovery_decision|controller_finished'
+        Select-String 'bdi_decision|diagnosis_|repair_|telemetry_measurement|bdi_recovery_decision|controller_finished'
     $parent = Split-Path -Parent $candidateDir
     $leaf = Split-Path -Leaf $candidateDir
     Get-ChildItem -LiteralPath $parent -Directory | Where-Object { $_.Name -like "$leaf-traffic*" } | ForEach-Object {
@@ -916,6 +970,8 @@ Close the **completed** MAS window, then run this block in Controller PowerShell
 ```
 
 `achieved / not_needed` means candidate goals were met. `stopped / restored` means candidate delivery failed but verified v1 recovery succeeded. `stopped / not_attempted` commonly means the run stopped before recovery was applicable. Failed/unknown recovery requires investigation. Traffic `stopped` with `campaign_finished` means the client ended; it does not mean the deployment failed.
+
+For repair trials, inspect `candidate_repair_operations` in the result, the receipts above, and `repair_attempts`, `candidate_repaired`, `candidate_repair_seconds` in the metrics. The original production execution ID must match the diagnosis target and post-repair observations. The restart operation has its own GitHub run/operation UUID; it does not replace the production deployment identity. `candidate_repaired=true` requires final candidate delivery and accepted health after an executed restart. A repair action returning `executed` alone is insufficient. All this evidence is automatic; screenshots remain optional.
 
 Preserve campaign, matching `*-faults.properties`, and sibling traffic/experiment folders together, including failed runs. They are Git-ignored, so back them up separately. Use [guide 05](05_EXPERIMENT_RESULTS_GUIDE.md) for metrics and comparison. If the result is missing, inspect the saved path and journal; do not create a fake result or begin another run while remote work remains unresolved.
 
@@ -1063,6 +1119,10 @@ Then run the F1 verification/save block above. It checks the exact v1 SHA and bo
 
 | Symptom | Meaning and next action |
 |---|---|
+| Old worker tag, missing repair operation, or worker revision differs | Follow A4.4 once, retaining app SHAs. C1 rejects mismatched local/published worker files before dispatch; fetch a published ref if its commit is absent locally. |
+| Repair is not applicable | Running app, unready dependency, identity mismatch or insufficient evidence cannot justify a blind restart. Inspect diagnosis/receipt; the agent reobserves or falls back safely. |
+| Repair ends `unknown / unresolved` | The remote operation might still be running. F3 must settle it before E/reset or another trial; never delete the pending record to bypass it. |
+| Restart executed, but v2 still not delivered | Inspect fresh health, identity, probe count and the 300-second decision budget. Queue/approval delays consume this budget; operation/network timeouts can add bounded wall-clock overhead. Do not count the restart as successful recovery without verification. |
 | Starting another scenario while app is already v2 | The v1-to-v2 comparison is no longer clean. Stop the finished campaign's traffic and perform B1-B3 before retrying. |
 | `--known-good: expected one argument`, missing repository, or empty version | Variables were lost or set in another terminal. Repeat the entire B2 block in Controller PowerShell. |
 | `Cannot find path C:\controller-result.json` | `$candidateDir` (or `$baselineDir` during setup) was empty. D reloads the saved trial path. Do not use a baseline receipt when inspecting a candidate trial. |

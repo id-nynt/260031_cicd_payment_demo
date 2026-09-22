@@ -22,6 +22,7 @@ public final class ProjectTelemetryProvider implements ObservationProvider {
     private final ProjectConfig.Environment endpoints;
     private final HttpClient client = HttpClient.newHttpClient();
     private final PrometheusTelemetryObserver prometheus;
+    private final String runId;
 
     public ProjectTelemetryProvider(ProjectConfig project, String environment) {
         this(project, environment, environment);
@@ -33,6 +34,7 @@ public final class ProjectTelemetryProvider implements ObservationProvider {
 
     public ProjectTelemetryProvider(ProjectConfig project, String environment, String entity, String runId) {
         this.project = project;
+        this.runId = runId;
         this.environment = environment;
         this.entity = entity;
         this.endpoints = project.environment(environment);
@@ -50,6 +52,18 @@ public final class ProjectTelemetryProvider implements ObservationProvider {
     }
 
     public record Measurement(String dataStatus, String readiness, double errorRate, double latencyP95Ms, double availability) { }
+
+    /** Payment-worker repair requires a live identity check as well as correlated metrics. */
+    public Measurement measureRepair() {
+        try {
+            var request=HttpRequest.newBuilder(endpoints.readyUrl().resolve("/health")).timeout(Duration.ofSeconds(5)).GET().build();
+            var response=client.send(request,HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode()!=200 || !runId.equals(new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(response.body()).path("deploymentRunId").asText()))
+                return new Measurement("unavailable","unknown",0,0,0);
+        } catch (Exception error) { return new Measurement("unavailable","unknown",0,0,0); }
+        return measure();
+    }
 
     /** Raw normalized measurements. Policy is evaluated by the controller agent. */
     public Measurement measure() {

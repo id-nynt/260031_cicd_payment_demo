@@ -9,8 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class CanonicalModelTest(unittest.TestCase):
     def setUp(self):
-        self.pipeline,self.goals = resolve_documents(read(ROOT/'models/01_pipeline.yaml'),read(ROOT/'models/02_goal.yaml'),
-            read(ROOT/'config/controller_policy.yaml'),read(ROOT/'config/runtime_bindings.yaml'))
+        # These tests exercise the unchanged schema-2 core; repair extension has separate tests.
+        pipeline=read(ROOT/'models/01_pipeline.yaml');pipeline.pop('candidate_repair',None)
+        policy=read(ROOT/'config/controller_policy.yaml');policy.pop('candidate_repair',None)
+        bindings=read(ROOT/'config/runtime_bindings.yaml');bindings.pop('diagnostics',None)
+        self.pipeline,self.goals = resolve_documents(pipeline,read(ROOT/'models/02_goal.yaml'),policy,bindings)
 
     def test_normal_chain_and_separate_recovery(self):
         doc, model = compile_documents(self.pipeline,self.goals)

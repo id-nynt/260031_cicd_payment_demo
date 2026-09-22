@@ -126,7 +126,7 @@ Refresh `/checkout` at both ports: the banner must immediately show **Payment Se
 
 ## 5. Manually launch one measured trial
 
-Select any of the [11 shared scenarios](02_COMPARATIVE_EXECUTION_GUIDE.md#shared-scenarios): `healthy` (normal), `build-failure`, `test-failure`, `transient-test-failure`, `service-unavailable`, `infrastructure-failure`, `deployment-timeout`, `staging-temporary`, `staging-persistent`, `production-temporary`, `production-persistent`.
+Select any of the [13 shared scenarios](02_COMPARATIVE_EXECUTION_GUIDE.md#shared-scenarios): `healthy` (normal), `build-failure`, `test-failure`, `transient-test-failure`, `service-unavailable`, `infrastructure-failure`, `deployment-timeout`, `staging-temporary`, `staging-persistent`, `production-temporary`, `production-persistent`, `candidate-stopped`, `candidate-restart-fails`. For a compact first study, use the five-case subset in the comparative guide. The new repair cases require the new published control tag; an existing app pair can retain its SHAs and receipt using BDI manual A4.4's control-only publication steps (no BDI runtime is required by those steps after the optional parity checks).
 
 ```powershell
 $case = 'healthy'
@@ -155,6 +155,8 @@ Open the run's stage and health jobs. Look for:
 - Rollback followed by `HEALTH rollback = allow`: v1 restored, not v2 delivered.
 
 Successful staging/production deployments have a 60-second warmup, then at most 36 observations/180 seconds requiring two consecutive healthy samples. Temporary errors last 75 seconds; the two-minute metric window can delay recovery. Inspect actual samples rather than assuming success.
+
+The production gate can diagnose a stopped matching candidate with a ready database and restart it once. Both repair scenarios retain the 60-second pause; production then uses shared payment probes for 120 seconds instead of the regular traffic client. Fresh health and live deployment identity must pass within the repair decision budget (300 seconds). A repaired v2 can finish successfully; failed repair triggers the existing verified-v1 rollback job. Inspect `diagnose-receipt.json`/`restart-receipt.json` in `native-production-health`, plus common `diagnosis_*`, `repair_*` and `repair_verified` events. No manual log copy is needed: the collection command downloads these artifacts. After collection, follow the existing reset section before the next trial.
 
 ```powershell
 py -3 experiments/collect.py --repo $env:GITHUB_REPOSITORY --run-id $runId

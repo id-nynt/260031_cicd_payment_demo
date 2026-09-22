@@ -10,7 +10,7 @@ Select one reviewed control revision, immutable v1/v2 application SHAs, a verifi
 
 The app version label lives in `src/release.ts` and is compiled from each selected application commit. After updating the app, use the [version-pair refresh procedure](../execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#a4-create-or-refresh-the-version-pair) to freeze a new v1/v2 pair and establish a fresh receipt. Historical tags do not acquire the new heading automatically.
 
-The [comparative protocol](../execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md) is the authoritative document for the 11 scenarios, implemented failure scope, shared policy and timing limits. Do not maintain another scenario table here. `experiments/scenarios.json` is the executable catalog.
+The [comparative protocol](../execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md) is the authoritative document for the 13 available scenarios, implemented failure scope, shared policy and timing limits. Do not maintain another scenario table here. `experiments/scenarios.json` is the executable catalog.
 
 ## 2. Run pilots before the repeated dataset
 

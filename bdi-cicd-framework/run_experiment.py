@@ -56,6 +56,12 @@ def main():
             raise ModelError('Candidate is not the expected published commit')
         worker_sha = remote_commit(env['BDI_WORKFLOW_REF'])
         # GitHub workflow_dispatch expects a branch/tag ref; retain that ref and record its resolved SHA.
+        for relative in ('.github/workflows/entity-execution.yml','scripts/candidate-repair.py',
+                         'ci-cd-conventional/config.json','bdi-cicd-framework/models/03_workflow_model.yaml'):
+            frozen=subprocess.run(['git','show',f'{worker_sha}:{relative}'],cwd=ROOT.parent,capture_output=True,text=True,encoding='utf-8')
+            if frozen.returncode or frozen.stdout != (ROOT.parent/relative).read_text(encoding='utf-8'):
+                raise ModelError('Worker revision is absent locally or differs from reviewed control files: '+relative+
+                    '. Fetch the published ref if needed; follow BDI manual A4.4 before using an old worker tag.')
 
     entity, profile, fault = CASES[args.case]
     campaign = (args.artifacts_dir or ROOT.parent/'experiments/results'/('bdi' if args.mechanism == 'bdi' else 'scripted-controller')/f'{datetime.now().strftime("%Y%m%d-%H%M%S")}-{args.mechanism}-{args.case}-{uuid.uuid4().hex[:6]}').resolve()
@@ -70,7 +76,7 @@ def main():
     sources = {str(p.relative_to(ROOT.parent)): digest(p) for p in [
         ROOT/'run_controller.py', ROOT/'run_experiment.py', ROOT.parent/'experiments/experiment_metrics.py',
         ROOT.parent/'experiments/experiment_protocol.py', ROOT.parent/'experiments/scenarios.json',
-        ROOT.parent/'scripts/run-traffic-scenario.mjs', *sorted((ROOT/'bdi/harness').glob('*.java'))]}
+        ROOT.parent/'scripts/run-traffic-scenario.mjs', ROOT.parent/'scripts/candidate-repair.py', *sorted((ROOT/'bdi/harness').glob('*.java'))]}
     comparison = dict(case=args.case, seed=args.seed, candidate=args.release_sha, baseline=baseline_sha,
         repository=env['GITHUB_REPOSITORY'], worker=env['BDI_WORKFLOW_REF'], worker_sha=worker_sha, contract=digest(ROOT/'models/03_workflow_model.yaml'),
         policy=policy, profile=digest(traffic_profile) if traffic_profile else None, pause_ms=60000,
@@ -92,6 +98,7 @@ def main():
     traffic = []
     try:
         for traffic_entity in ['staging','production']:
+            if traffic_entity=='production' and args.case in ('candidate-stopped','candidate-restart-fails'): continue
             selected_profile = profile if traffic_entity == entity and profile else 'healthy'
             traffic_output = str(campaign)+'-traffic' if traffic_entity == entity else str(campaign)+'-traffic-'+traffic_entity
             traffic.append(subprocess.Popen(['node', str(ROOT.parent/'scripts/run-traffic-scenario.mjs'), '--campaign',str(campaign),

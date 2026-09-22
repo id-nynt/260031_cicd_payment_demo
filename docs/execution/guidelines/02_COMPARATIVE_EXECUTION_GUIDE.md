@@ -2,7 +2,7 @@
 
 **Current layout:** conventional implementation and frozen configuration are in `ci-cd-conventional/`; shared catalog and metrics are in `experiments/`. Its runtime does not import BDI. Workflow installation copies are checked for drift in CI.
 
-**Configuration lifecycle:** BDI uses its four explicit sources and generated schema-2 contract/agent. Conventional uses its own frozen `config.json` and snapshots. No campaign regenerates either project. After changing BDI policy, regenerate explicitly, review/update conventional snapshots and static workflow as needed, then run the parity check. Freeze one published control revision for both approaches; existing v1/v2 tags and verified receipts remain usable.
+**Configuration lifecycle:** BDI uses its four explicit sources and generated schema-3 repair contract/agent. Conventional uses its own frozen `config.json` and snapshots. No campaign regenerates either project. After changing BDI policy, regenerate explicitly, review/update conventional snapshots and static workflow as needed, then run the parity check. Freeze one published control revision for both approaches; existing v1/v2 tags and verified receipts remain usable.
 
 Use one payment app/repository, the same immutable v1/v2 sources and one shared deployment environment. **Conventional entry:** [ci-cd.yml](../../../.github/workflows/ci-cd.yml). **BDI entry:** `run_experiment.py --mechanism bdi`. Both use [entity-execution.yml](../../../.github/workflows/entity-execution.yml); conventional uses `needs`/conditions and a bounded telemetry script, while BDI uses Jason beliefs/plans.
 
@@ -12,11 +12,13 @@ The earlier `--mechanism conventional` Java implementation remains an optional *
 
 ## Shared scenarios
 
-Both entry points use the same 11 names in [scenarios.json](../../../experiments/scenarios.json). This table defines the fault, exposure and expected safe response for **both** approaches.
+Both entry points use the same 13 names in [scenarios.json](../../../experiments/scenarios.json). This table defines the fault, exposure and expected safe response for **both** approaches.
 
 | Case | Automatic injection / timing | Expected result |
 |---|---|---|
 | `healthy` | Normal production traffic | Deliver and verify v2 |
+| `candidate-stopped` | Stop app after the production deployment job passes; database remains ready | Diagnose, restart once, verify fresh health, deliver v2 |
+| `candidate-restart-fails` | Same fault, with a controlled stop immediately after restart | Repair fails; restore verified v1 without claiming v2 delivery |
 | `build-failure` | Build job exits before compilation/deployment | Stop; production remains v1 |
 | `test-failure` | Test job exits with persistent failure | Stop; production remains v1 |
 | `transient-test-failure` | First test attempt exits as a typed transient failure; second executes tests | Retry once; deliver if checks pass |
@@ -30,7 +32,9 @@ Both entry points use the same 11 names in [scenarios.json](../../../experiments
 
 **Scope:** build/test failures are controlled job failures, not yet independent commits with compiler/test defects. “Service unavailable” means the deployed payment service; “infrastructure failure” means its staging database, not the entire host/cloud. The timeout is a controlled pre-deployment hang. A host loss, runner loss, deployment API outage and real network partition remain additional experiments; do not report these scoped faults as proving resilience to those broader failures.
 
-Traffic profiles use a fixed seed, bounded rates/jitter and the same request-fault headers. Temporary faults transition automatically to normal traffic; persistent faults stop when containment/recovery starts. Both approaches keep normal traffic running during each staging/production observation window, replacing it with the selected fault profile at the target stage. Each client stops when that entity's health decision is accepted or the campaign ends/recovery begins. Traffic metrics summarize the selected scenario target; retain the other stage's traffic artifact as background-load evidence.
+Traffic profiles use a fixed seed, bounded rates/jitter and the same request-fault headers. Temporary faults transition automatically to normal traffic; persistent faults stop when containment/recovery starts. Normally both approaches keep normal or fault traffic running during each staging/production observation window. For `candidate-stopped` and `candidate-restart-fails`, the app cannot initially serve requests: production uses the shared repair worker's 120-second payment probes after restart instead of the ordinary traffic client. Both retain the 60-second pause and normal staging traffic. Failed restart intentionally produces no successful post-repair probes. Retain operation receipts and health observations as fault/repair evidence.
+
+**Efficient initial subset:** `healthy`, `build-failure`, `candidate-stopped`, `production-persistent`, `candidate-restart-fails`; add `production-temporary` for passive recovery. The larger catalog is optional. Predeclare the selected cases and repetitions before measuring; do not select only cases favoring one approach.
 
 ## Common setup and execution order
 
@@ -46,6 +50,8 @@ Shared policy: one additional execution retry for confirmed transient failure/ti
 
 The native retry DAG currently supports the payment topology, one retry and a five-second retry delay. Startup rejects incompatible contract revisions. BDI remains the configurable generated agent. BDI reads its saved contract; conventional reads its own checked-in policy and contract snapshots. Run `py -3 ci-cd-conventional/configuration.py --check-bdi-parity` before freezing a paired revision. No per-campaign generation occurs.
 
+Candidate repair has separate limits: diagnose once on the first unhealthy/unknown production sample, allow one restart only for the matching stopped app with a ready database, run the shared 120-second probes, then require two new healthy observations and current deployment identity. The 300-second decision budget starts at diagnosis; queue/approval delays count. Adapter/worker/network timeouts can add bounded wall-clock overhead. A restart resets the observation window/count in both implementations but cannot extend the overall repair budget. Inapplicable diagnosis resumes bounded observation; failed verification/known-terminal repair failure permits verified rollback. BDI preserves unresolved execution and stops when remote operation status is uncertain. The conventional gate's script runs synchronously on the runner; runner loss remains a separate untested case.
+
 Native reuse uses an explicit status output: failed execution steps may have a tolerated job conclusion so the retry DAG can run. The report job reads actual step failures/timeouts; downstream stages require `status=success`. The final result job fails when candidate delivery is not achieved. A green intermediate wrapper is not proof of candidate delivery.
 
 ## Evidence and metrics
@@ -60,6 +66,8 @@ Native reuse uses an explicit status output: failed execution steps may have a t
 
 Record candidate-delivery rate separately from restoration rate, containment, retries, observations, human interventions, elapsed time and recovery time. `eligible_for_comparison` flags missing/failed traffic, incomplete evidence and non-live runs. It is a screening flag, not independent proof of fault exposure or safety. A controlled execution fault must also appear in the relevant job logs. `protocol_expectation_met` is the case expectation, not an oracle proving correctness.
 
+Repair metrics are `repair_attempts`, `diagnoses`, `candidate_repaired`, `candidate_repair_seconds` and `repair_failures`. Count restart separately from normal job retries. `candidate_repaired` requires both executed repair and verified v2 delivery. Rollback can improve restoration rate while candidate delivery remains false. Summaries expose candidate repair rate among trials that attempted repair, with its denominator separate from rollback restoration rate.
+
 `protocol_key` compares case, seed, candidate, baseline, worker commit, contract, policy, all four input hashes and traffic profile. Match it across the native/BDI pair. The older `comparison_key` belongs to the scripted-controller comparison; do not use it to pair native trials. A matching key cannot certify database state, queue load or actual timing.
 
 Use the [results inspection guide](05_EXPERIMENT_RESULTS_GUIDE.md) for collection, fields, line filters and combined CSV output. New BDI results live under `experiments/results/bdi/`; downloaded native results live under `experiments/results/conventional/`. Keep all sibling experiment/traffic directories. Historical verification evidence is under `docs/archives/06_experiment-records/`.
@@ -73,6 +81,7 @@ Timing limitations: BDI action duration includes adapter-observed dispatch/poll 
 - **Potential advantage:** changing goals, dependencies or available recovery capabilities may be easier to express and inspect through agent beliefs/plans. Current BDI also journals uncertain dispatch intent and reconciles it before redispatch. Test interruption/reconciliation separately before claiming a reliability advantage over the native workflow.
 - **Temporary test or telemetry failure:** BDI should improve over a fail-fast pipeline with no retry/recheck. Our conventional baseline includes those protections, so expect a tie unless observations demonstrate a difference.
 - **Persistent production degradation or failed deployment:** both should restore verified v1. This improves service recovery, not v2 delivery.
+- **Stopped but repairable v2 process:** both have the same restart capability. BDI demonstrates diagnosis, contextual plan selection, fresh verification and resumption of its master goal; a capable conventional gate may achieve the same delivery outcome. Failed repair demonstrates bounded fallback, not proof of BDI superiority.
 - **Compiler defect, consistently failing test, persistent staging failure:** neither should deliver a broken v2. Correct stopping is the desired result.
 - **Host/runner/database loss with no available repair capability:** reasoning alone cannot repair it. Neither approach can promise completion without an executable recovery path.
 
@@ -82,4 +91,4 @@ The research conclusion must follow repeated paired results. If rates match, rep
 
 Offline checks cover workflow syntax, shared scenario/worker contracts, bounded telemetry, malformed/stale samples, pairing keys, existing Java policies/adapters and traffic scheduling. They do **not** validate real GitHub scheduling, reusable-workflow failure propagation or actual Docker recovery.
 
-Next pilot: healthy pair, transient-test pair, timeout pair, then temporary/persistent production pairs; inspect status outputs, retry counts, traffic evidence and restoration before collecting the full repeated 11-case dataset. No new live comparative trials have been run as part of this implementation.
+Next pilot: healthy pair, candidate-stopped pair, then failed-repair and persistent-production pairs; inspect original deployment identity, diagnosis/restart receipts, fresh verification and restoration before collecting the predeclared repeated dataset. Existing app pairs can use a newly published control revision via BDI manual A4.4. No new live comparative trials have been run as part of this implementation.

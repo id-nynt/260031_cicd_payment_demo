@@ -13,10 +13,12 @@ For the labelled app pair, record `/health.appVersion` and a refreshed checkout 
 |---|---|---|
 | BDI comparative C1 | `experiments/results/bdi/<trial>/` | `controller-result.json`, `experiment-metrics.json`, `controller-journal.jsonl`, `experiment-events.jsonl` |
 | BDI supporting evidence | Sibling `<trial>-experiment/`, `<trial>-traffic/`, `<trial>-traffic-<stage>/` | `plan.json`, `controller-console.log`, `faults.properties`, traffic `summary.json` and request/transition logs |
+| BDI repair evidence | `<trial>/operation-<operation UUID>/` | `receipt.json` and `download.log`; result `candidate_repair_operations` maps operations to GitHub runs |
 | BDI GUI/manual C2-C7 and baselines | Explicit `$candidateDir`/`$baselineDir` printed in the manual | Result/journal plus automatic controller-console.log; retain fault files, traffic output and optional agent-mind screenshots |
 | Conventional | `experiments/results/conventional/<run-id>/` | `github-run.json`, `github-run.log`, `collection.json` |
 | Conventional result | `artifacts/native-result/result/` beneath that directory | `controller-result.json`, `experiment-metrics.json`, `experiment-events.jsonl`, `github-jobs.json` |
 | Conventional supporting evidence | `artifacts/native-prepare/`, `artifacts/native-*-health/`, and sibling `result-experiment/`, `result-traffic/` | Plan, frozen config/input snapshots, gate decisions, complete traffic traces |
+| Conventional repair evidence | `artifacts/native-production-health/production/` | `diagnose-receipt.json`, `restart-receipt.json` and gate events |
 
 Download conventional evidence with `py -3 experiments/collect.py --repo OWNER/REPO --run-id RUN_ID`. It refuses existing directories. To retry collection after a transient download error, use a new `--output` folder and retain the original failure; do not include both copies as two trials in the analysis tree. Download before artifact retention expires. Results/reports are Git-ignored: archive them deliberately outside the working tree as well.
 
@@ -26,8 +28,16 @@ BDI manual D reloads `$candidateDir` from `experiments/results/current-bdi-trial
 
 ## 2. Read outcomes before metrics
 
+Choose the existing result directory in this separate input block (for BDI, manual D already sets `$candidateDir`):
+
 ```powershell
-$resultDir = 'REPLACE_WITH_THE_RESULT_DIRECTORY_FROM_THE_TABLE'
+$resultDir = (Read-Host 'Paste the result directory from the table, without quotes').Trim()
+```
+
+Then inspect it:
+
+```powershell
+if (-not (Test-Path -LiteralPath (Join-Path $resultDir 'controller-result.json'))) { throw 'Select an existing result directory.' }
 $r = Get-Content "$resultDir/controller-result.json" -Raw | ConvertFrom-Json
 $r | Select-Object mode,mechanism,outcome,recovery_outcome,release_sha,known_good_sha
 $r.executions
@@ -51,7 +61,7 @@ The eligibility flag is only a screen. Review the injected fault's real exposure
 
 ```powershell
 Get-Content "$resultDir/experiment-events.jsonl" |
-  Select-String 'action_started|action_finished|observation|health_accepted|recovery_started|campaign_finished'
+  Select-String 'action_started|action_finished|diagnosis_|repair_|observation|health_accepted|recovery_started|campaign_finished'
 # BDI only:
 Get-Content "$resultDir/controller-journal.jsonl" |
   Select-String 'bdi_decision|telemetry_measurement|bdi_recovery_decision|controller_finished'
@@ -61,6 +71,8 @@ Read JSONL records in timestamp order. `action_started.attempt > 1` proves anoth
 
 | Scenario | Evidence required beyond the plan |
 |---|---|
+| `candidate-stopped` | Successful original production job, stopped matching app + ready dependency diagnosis, one restart, same container/deployment ID, normal probes, two new accepted samples and final v2 delivery |
+| `candidate-restart-fails` | Stopped candidate diagnosis, one failed restart receipt, rollback to verified v1 and accepted rollback health; candidate delivery false |
 | `healthy` | Successful real payment traffic and accepted staging/production gates |
 | `build-failure`, `test-failure` | Worker log **Controlled experiment failure**, nonzero step result and blocked downstream jobs |
 | `transient-test-failure` | **Controlled transient failure** on attempt 1, actual tests on attempt 2 |
@@ -107,6 +119,10 @@ py -3 experiments/summarize.py --root experiments/results --candidate $v2Sha --o
 | Recovery time | First recorded adverse production event → accepted rollback; unknown when timestamps are absent |
 | Runtime | Recorded campaign start → finish; native preparation/setup before the start event is excluded |
 | Retries | Started execution attempts numbered above 1, excluding rollback |
+| Repair attempts / diagnoses | `repair_attempts` counts started restarts; `diagnoses` counts diagnostic operations, separately from retries |
+| Candidate repair rate | `candidate_repaired` among eligible trials with `repair_attempts > 0`; summary includes denominator |
+| Candidate repair time | `candidate_repair_seconds`: restart request to post-repair health acceptance, distinct from v1 rollback recovery time |
+| Repair failures | Restart actions with status other than `executed`; an executed but unhealthy repair is identified by false `candidate_repaired`, not this action-status count |
 | Recovery by retry/recheck | Candidate delivered after the relevant recorded failure; inspect traces separately from v1 restoration |
 | Interventions | Explicit operator annotations; absence is unknown |
 

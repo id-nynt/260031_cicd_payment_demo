@@ -33,6 +33,8 @@ public final class GitHubEntityExecution implements EntityExecution {
     private final Duration pollInterval;
     private final Duration maxWait;
     private final StructuredEventLogger journal;
+    private Map<String,String> operationInputs = Map.of();
+    private Instant operationDeadline;
     private final ExperimentExecutionPlan experimentPlan = new ExperimentExecutionPlan();
 
     public GitHubEntityExecution(ControllerProjectConfig project, StructuredEventLogger journal) {
@@ -103,7 +105,7 @@ public final class GitHubEntityExecution implements EntityExecution {
         ExperimentExecutionPlan.Injection injection = experimentPlan.next(entity);
         String experimentMode = !"0".equals(injection.forceErrorRate()) ? "high_error_rate" : injection.experimentMode();
         if (!java.util.Set.of("normal", "high_error_rate", "request_faults").contains(experimentMode)
-                || !java.util.Set.of("none", "force_failure", "transient_failure", "service_unavailable", "infrastructure_failure", "deployment_timeout").contains(injection.failureMode()))
+                || !java.util.Set.of("none", "force_failure", "transient_failure", "service_unavailable", "infrastructure_failure", "deployment_timeout", "candidate_stopped").contains(injection.failureMode()))
             throw new IllegalArgumentException("Unsupported experiment mode or failure mode");
         journal.event("execution_configuration", null, Map.of("entity", entity, "attempt", attempt,
             "execution_id", executionId, "failure_mode", injection.failureMode(), "experiment_mode", experimentMode,
@@ -120,7 +122,7 @@ public final class GitHubEntityExecution implements EntityExecution {
             long runId = dispatch(entity, attempt, executionId, injection.failureMode(), experimentMode, selectedSha);
             pending.put("run_id", runId); savePending();
             journal.event("dispatch_acknowledged", null, Map.of("execution_id", executionId, "github_run_id", runId));
-            return settle(awaitSelectedJob(runId, expectedJob, Instant.now().plus(maxWait)));
+            return settle(awaitSelectedJob(runId, expectedJob, operationDeadline == null ? Instant.now().plus(maxWait) : operationDeadline));
         } catch (DispatchRejected error) {
             pending.put("dispatch_rejected_http_status", error.status);
             savePending(); // A restart can settle this rejection without searching for a nonexistent run.
@@ -254,6 +256,7 @@ public final class GitHubEntityExecution implements EntityExecution {
                           String experimentMode, String selectedSha) throws Exception {
         URI uri = endpoint("/repos/" + repository + "/actions/workflows/" + project.workflowFile() + "/dispatches");
         var inputs = JSON.createObjectNode();
+        operationInputs.forEach(inputs::put);
         inputs.put("entity", entity).put("campaign_id", campaignId).put("execution_id", executionId)
             .put("attempt", String.valueOf(attempt)).put("release_sha", selectedSha)
             .put("failure_mode", failureMode).put("experiment_mode", experimentMode);
@@ -272,6 +275,26 @@ public final class GitHubEntityExecution implements EntityExecution {
 
     private static boolean rejectedStatus(int status) {
         return status == 401 || status == 403 || status == 404 || status == 422;
+    }
+
+    public Result executeOperation(String entity, int attempt, Map<String,String> inputs, Duration budget) throws Exception {
+        operationInputs=Map.copyOf(inputs);
+        operationDeadline=Instant.now().plus(budget);
+        try { return execute(entity,attempt); }
+        finally { operationInputs=Map.of(); operationDeadline=null; }
+    }
+
+    public JsonNode operationEvidence(Result result) throws Exception {
+        Path directory=Path.of(required("BDI_RUN_DIR"),"operation-"+result.executionId());
+        Files.createDirectories(directory);
+        ProcessBuilder builder=new ProcessBuilder("gh","run","download",Long.toString(result.githubRunId()),
+            "--repo",repository,"--name","repair-"+result.executionId(),"--dir",directory.toString());
+        builder.environment().put("GH_TOKEN",token);
+        builder.redirectErrorStream(true).redirectOutput(directory.resolve("download.log").toFile());
+        Process process=builder.start();
+        if (!process.waitFor(60,java.util.concurrent.TimeUnit.SECONDS)) { process.destroyForcibly(); throw new IOException("Repair evidence download timeout"); }
+        if (process.exitValue()!=0) throw new IOException("Repair evidence unavailable; see operation download log");
+        return JSON.readTree(Files.readString(directory.resolve("receipt.json")));
     }
 
     private static final class DispatchRejected extends IOException {

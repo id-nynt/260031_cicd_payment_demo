@@ -53,5 +53,15 @@
     "entity": "production",
     "profile": "persistent-errors",
     "fault": "production.experiment_mode=request_faults"
+  },
+  "candidate-stopped": {
+    "entity": "production",
+    "profile": null,
+    "fault": "production.failure_mode=candidate_stopped"
+  },
+  "candidate-restart-fails": {
+    "entity": "production",
+    "profile": null,
+    "fault": "production.failure_mode=candidate_stopped\nrestart_production.failure_mode=force_failure"
   }
 }

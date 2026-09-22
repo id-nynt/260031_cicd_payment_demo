@@ -49,7 +49,7 @@ class NativeWorkflowTest(unittest.TestCase):
         doc=workflow('ci-cd.yml')
         self.assertEqual({'workflow_dispatch'},set(doc['on']))
         self.assertEqual(set(CASES),set(doc['on']['workflow_dispatch']['inputs']['scenario']['options']))
-        self.assertEqual(len(CASES),11)
+        self.assertEqual(len(CASES),13)
         for name in ['build','test','security','staging','production','rollback']:
             self.assertEqual('./.github/workflows/conventional-entity.yml',doc['jobs'][name]['uses'])
         self.assertEqual(['staging_health'],doc['jobs']['production']['needs'])
@@ -82,6 +82,22 @@ class NativeWorkflowTest(unittest.TestCase):
         good=dict(data_status='fresh',readiness='ready',availability=1,error_rate=0,latency_p95_ms=10)
         def sample():elapsed[0]=2;return good
         self.assertEqual('unknown',native.observe(policy,sample,lambda *a:None,clock=lambda:elapsed[0]))
+
+    def test_repair_once_requires_two_new_healthy_samples_and_a_deadline(self):
+        policy=copy.deepcopy(self.policy);policy['execution'].update(observation_attempts=6,observation_interval_seconds=0)
+        good=dict(data_status='fresh',readiness='ready',availability=1,error_rate=0,latency_p95_ms=10)
+        bad=dict(good,readiness='unknown');calls=[];observations=[]
+        samples=iter([good,bad,good,good])
+        def repair():calls.append(1);return 'executed'
+        self.assertEqual('allow',native.observe(policy,lambda:next(samples),lambda r,v:observations.append(v),repair=repair))
+        self.assertEqual(1,len(calls));self.assertEqual(4,len(observations))
+        for status in ('failed','unknown','exhausted'):
+            self.assertEqual('block',native.observe(policy,lambda:bad,lambda *a:None,repair=lambda:status))
+        self.assertEqual('unknown',native.observe(policy,lambda:good,lambda *a:None,deadline_limit=lambda:0))
+
+    def test_repair_health_cannot_accept_another_deployment(self):
+        self.assertEqual('unavailable',native.measure(self.doc['bindings'],'production','v2',
+            get=lambda url:{'deploymentRunId':'v1'},verify_identity=True)['data_status'])
     def test_nonfinite_stale_and_future_telemetry_never_pass(self):
         binding=self.doc['bindings']
         for value,stamp in [('NaN',time.time()),('0',time.time()-60),('0',time.time()+60)]:

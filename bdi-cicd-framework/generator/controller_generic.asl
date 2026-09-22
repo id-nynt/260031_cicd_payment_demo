@@ -439,9 +439,52 @@ observation_open(Round, Time) :- observation_limit(Max) & Round < Max & observat
     & healthy_count(Entity, Count) & healthy_observations(Need) & observation_timeout(Deadline)
     & (Count + 1 < Need | Time > Deadline) & not observation_open(Round, Time)
     <- !accept_sample(Entity, unknown).
+// Diagnose once before spending the entire observation budget. Repairs are subgoals,
+// not normal pipeline achievements; the original deployment result stays intact.
++telemetry_sample(Entity, Attempt, Round, Decision, Time)
+    : observing(Entity) & attempt_count(Entity, Attempt) & Decision \== allow
+      & repair_enabled(Entity) & not repair_checked(Entity) & observation_open(Round, Time)
+    <- +repair_checked(Entity);
+       +repair_pending_sample(Entity, Attempt, Round);
+       .print("BDI_DECISION=diagnose_candidate entity=", Entity);
+       diagnose_candidate(Entity, 1).
+
++candidate_diagnosed(Entity, 1, app_stopped)
+    : observing(Entity) & repair_pending_sample(Entity, _, _) & repair_limit(Entity, Max) & Max > 0
+    <- .print("BDI_DECISION=restart_candidate entity=", Entity);
+       restart_candidate(Entity, 1).
++candidate_diagnosed(Entity, 1, execution_unknown)
+    : observing(Entity)
+    <- !end(unknown, unresolved).
++candidate_diagnosed(Entity, 1, Result)
+    : observing(Entity) & (Result == unknown | Result == failed | Result == exhausted)
+    <- -observing(Entity);
+       !failed(Entity, telemetry_unknown, stopped).
++candidate_diagnosed(Entity, 1, Result)
+    : observing(Entity) & repair_pending_sample(Entity, Attempt, Round)
+      & Result \== app_stopped & Result \== execution_unknown & Result \== unknown & Result \== failed & Result \== exhausted
+    <- -repair_pending_sample(Entity, Attempt, Round);
+       !reobserve(Entity, Round).
++candidate_restarted(Entity, 1, executed)
+    : observing(Entity) & repair_pending_sample(Entity, Attempt, Round)
+    <- -repair_pending_sample(Entity, Attempt, Round);
+       -healthy_count(Entity, _); +healthy_count(Entity, 0);
+       +candidate_repair_executed(Entity);
+       .print("BDI_DECISION=verify_repair entity=", Entity);
+       observe_telemetry(Entity).
++candidate_restarted(Entity, 1, execution_unknown)
+    : observing(Entity)
+    <- !end(unknown, unresolved).
++candidate_restarted(Entity, 1, Result)
+    : observing(Entity) & Result \== executed & Result \== execution_unknown
+    <- -observing(Entity);
+       .print("BDI_DECISION=repair_fallback entity=", Entity);
+       !failed(Entity, telemetry_block, stopped).
+
 +telemetry_sample(Entity, Attempt, Round, Decision, Time)
     : observing(Entity) & attempt_count(Entity, Attempt)
     & Decision \== allow & observation_open(Round, Time)
+    & (not repair_enabled(Entity) | repair_checked(Entity))
     <- -healthy_count(Entity, _);
        +healthy_count(Entity, 0);
        !reobserve(Entity, Round).
@@ -470,6 +513,11 @@ observation_open(Round, Time) :- observation_limit(Max) & Round < Max & observat
     : recovery_active(_, Entity)
     <- .print("BDI_RECOVERY=unverified entity=", Entity);
        !end(unknown, unverified).
++!observed(Entity, allow)
+    : workflow_active & candidate_repair_executed(Entity)
+    <- record_decision(Entity, repair_verified, 1);
+       .print("BDI_DECISION=resume_candidate entity=", Entity);
+       !run_pipeline.
 +!observed(Entity, Decision)
     : workflow_active
     <- .print("BDI_BELIEF=telemetry entity=", Entity, " decision=", Decision);

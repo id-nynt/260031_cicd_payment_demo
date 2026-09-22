@@ -12,7 +12,7 @@ This document explains the implementation in this repository. Use the [framework
 | [models/02_goal.yaml](../../bdi-cicd-framework/models/02_goal.yaml) | Engineer input: achievements and maintenance/avoidance rules |
 | [config/controller_policy.yaml](../../bdi-cicd-framework/config/controller_policy.yaml) | Explicit timing, retry safety, observation placement, recovery safeguards and thresholds |
 | [config/runtime_bindings.yaml](../../bdi-cicd-framework/config/runtime_bindings.yaml) | App readiness/Prometheus URLs, correlated queries and freshness |
-| [models/03_workflow_model.yaml](../../bdi-cicd-framework/models/03_workflow_model.yaml) | Generated schema-2 project contract; sole project-specific input to agent generation |
+| [models/03_workflow_model.yaml](../../bdi-cicd-framework/models/03_workflow_model.yaml) | Generated schema-3 repair contract; sole project-specific input to agent generation |
 | [bdi/controller_agent.asl](../../bdi-cicd-framework/bdi/controller_agent.asl) | Generated AgentSpeak beliefs/goals plus the executable generic policy |
 | [models/generation-manifest.json](../../bdi-cicd-framework/models/generation-manifest.json) | Required input, generator and artifact hashes; not a disposable build file |
 
@@ -47,7 +47,7 @@ py -3 -B bdi-cicd-framework/run_controller.py --validate-only
 py -3 -B bdi-cicd-framework/run_controller.py --gui --scenario healthy
 ```
 
-For another project, generation accepts `--project-dir`, `--pipeline`, `--goal`, `--policy` and `--bindings`; subsequent launches use that `--project-dir`. By default, model/config paths resolve under the chosen project directory. Custom source locations must be supplied explicitly. Generation manifest schema 2 hashes all four inputs; the workflow contract remains schema 2, with all settings resolved and no runtime profile overrides. Runtime rejects stale/missing/inconsistent artifacts with a regeneration message; it never silently migrates or regenerates them.
+For another project, generation accepts `--project-dir`, `--pipeline`, `--goal`, `--policy` and `--bindings`; subsequent launches use that `--project-dir`. By default, model/config paths resolve under the chosen project directory. Custom source locations must be supplied explicitly. Generation manifest schema 2 hashes all four inputs; repair-enabled workflow contracts use schema 3 (schema 2 remains supported without repair), with all settings resolved and no runtime profile overrides. Runtime rejects stale/missing/inconsistent artifacts with a regeneration message; it never silently migrates or regenerates them.
 
 App-only commits, fault-file changes and traffic-profile changes do not require regeneration. Changes to either model, either configuration file, generator code or the generic policy do. BDI snapshots all four validated inputs; conventional preparation copies its own frozen configuration and source snapshots from `ci-cd-conventional/`. The optional parity check compares them before a paired study. Pairing keys include their hashes as well as the resolved contract/policy. A runtime-only implementation change is distinct from a project-generation change.
 
@@ -110,16 +110,26 @@ The active generic plans use this progression:
 | Enough consecutive healthy samples | Accept health before the deadline and continue |
 | Persistent staging health failure/uncertainty | Stop promotion; production remains unchanged |
 | Persistent production health failure/uncertainty | Recover once from verified known-good source, then verify recovery |
+| Matching stopped candidate, dependency ready | Select one candidate restart; verify fresh correlated health before resuming `master_goal` |
+| Repair execution uncertain | End unknown/unresolved; settle the remote operation before rollback/reset |
 
 Current input values: one additional execution retry with a five-second delay; up to 36 observations five seconds apart within 180 seconds; two consecutive healthy samples; three reconciliation attempts five seconds apart. A bad/unavailable measurement resets the healthy count. The observation deadline starts with the first observation request and includes measurement time. Two healthy measurements can finish early: 180 seconds is a maximum, not a compulsory wait. Overlapping two-minute metric windows are not independent statistical samples.
 
 The adapter recognizes controlled transient failure only if the exact **Controlled transient failure** step failed. A locally expired polling wait is uncertain, not a confirmed remote timeout eligible for retry. The current Java entity polling limit defaults to 20 minutes; that is separate from the 30-minute production duration maintenance limit and the three-minute health observation limit.
 
+The optional schema-3 `candidate_repair` section extends the existing four-source compiler. 01 owns diagnostic/restart worker display names; policy owns one attempt, a 300-second decision budget and a 120-second probe window; bindings own the Docker Compose project/app/dependency. 02, normal entity/dependency topology, `master_goal` and the execution loop remain. Repair operations are not extra pipeline achievements or substitutes for rollback. Schema 2 remains valid when the extension is omitted from all three sources.
+
+At the first unhealthy/unknown production observation, the generated plans select diagnosis once. Java sends `diagnose_production` to the shared worker and converts its receipt to `candidate_diagnosed`. A stopped app with matching original deployment ID and ready database permits `restart_production`; a running app is reobserved, not restarted blindly. The mechanical script rechecks exact container identity immediately before `docker start`, probes normal payments for the full two-minute metric window, and retains a receipt. Java checks receipt correlation; the agent resets its healthy-sample count and observation window. Post-repair checks require current `/health.deploymentRunId`, fresh metrics filtered by the original deployment ID, and two healthy samples. The total repair decision budget still applies. A successful repair resumes the existing master goal; a failed/unverified repair permits verified rollback or stopping according to the existing recovery rules.
+
+Separate operation UUIDs and GitHub runs are retained in `candidate_repair_operations`; receipts/download diagnostics are saved under `operation-<UUID>/`. The original production job result is never rewritten by a restart. Unknown remote execution retains the adapter's durable pending record and prevents overlapping rollback; F3 in the manual reconciles it. Polling/approval waits consume the repair budget; bounded in-flight network/worker calls can add wall-clock overhead beyond the acceptance deadline. No JDK, Jason or Gradle version change is needed: the existing Java 21 adapter environment is retained.
+
+This initial mechanical capability supports payment production only. Supported probe windows are 120-300 seconds, matching the two-minute payment queries. It repairs a stopped process, not a code defect, database/host outage, missing container or ambiguous deployment. Conventional GitHub execution uses the same diagnostic/restart script and limits from its frozen configuration; its static health gate selects the corresponding action and the YAML retains rollback ownership. Live equality is therefore plausible and must be reported honestly.
+
 ### Success and failure goals
 
 `achieve(A)` supports `entity.status == success` and `entity.status == failure`. A failure goal requires an actual exact `failure`; rejected dispatch, uncertainty, timeout and controlled `transient_failure` do not satisfy it. The goal does not cause fault injection. An unexpected success is not repeatedly executed to manufacture a failure.
 
-A matching failure satisfies that entity's requested outcome without normal retry/automatic recovery. Dependencies still require success, and separately declared maintenance/avoidance rules still apply. Contradictory goals can therefore finish unmet. Use [staging_failure_goal.yaml](../../bdi-cicd-framework/examples/staging_failure_goal.yaml) for the isolated negative experiment in manual D1.
+A matching failure satisfies that entity's requested outcome without normal retry/automatic recovery. Dependencies still require success, and separately declared maintenance/avoidance rules still apply. Contradictory goals can therefore finish unmet. Use [staging_failure_goal.yaml](../../bdi-cicd-framework/examples/staging_failure_goal.yaml) for the isolated negative experiment in manual C7.
 
 Results include `requested_goals`, `achieved_goals`, `unmet_goals` and `goal_message`. Negative-goal campaigns have `negative_goal_experiment: true` and no `verified_releases`; they cannot certify a rollback baseline. An explicitly expected production failure may happen after the app changed and finish without automatic rollback; restore manually afterward. Unmet pursuit prints **Attempted but failed to achieve goals.**
 
@@ -141,7 +151,7 @@ This settles confirmed terminal execution but never resumes the campaign or clai
 
 An initial successful live `--baseline` campaign has no previous recovery source. Subsequent campaigns use `--known-good <v1-controller-result.json> --confirm-compatible-rollback`. The receipt must be achieved/live and match the project, repository, source SHA and required verified recovery environment. It is trusted operator evidence, not a signed attestation.
 
-Recovery rebuilds verified source, observes the restored execution identity and verifies health. It does not restore database history or promote an immutable image digest. The compatibility flag confirms that source rollback can use retained database state. Restoration ends `stopped / restored`, never candidate achievement. Current automatic rollback restores production only; manual B4 redeploys v1 through the whole pipeline to reset both environments.
+Recovery rebuilds verified source, observes the restored execution identity and verifies health. It does not restore database history or promote an immutable image digest. The compatibility flag confirms that source rollback can use retained database state. Restoration ends `stopped / restored`, never candidate achievement. Current automatic rollback restores production only; manual B3 redeploys v1 through the whole pipeline to reset both environments.
 
 <a id="payment-telemetry-and-controllable-traffic"></a>
 
@@ -226,7 +236,7 @@ Security auditing blocks high/critical production dependency advisories. Source 
 
 The primary conventional comparison is now [`.github/workflows/ci-cd.yml`](../../.github/workflows/ci-cd.yml), a manually dispatched GitHub Actions DAG. It calls `conventional-entity.yml` for bounded retries and reuses `entity-execution.yml` for execution. `ci-cd-conventional/native-experiment.py` validates its frozen configuration and receipt, evaluates bounded telemetry gates and writes evidence; it does not select the pipeline order or run Jason.
 
-Both approaches use the 11 cases in `experiments/scenarios.json`, equivalent reviewed policy, the same worker revision, release sources and traffic profiles. Conventional runtime does not import the BDI framework; its workflow sources and frozen configuration live in `ci-cd-conventional/`. GitHub installation copies remain in `.github/workflows/`. `run_experiment.py --mechanism bdi` coordinates one BDI trial. Native workflow dispatch coordinates one conventional trial. See the [comparison guide](../execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md) and [conventional manual](../execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md) for preparation, expected outcomes and measurement limitations.
+Both approaches use the 13 available cases in `experiments/scenarios.json`, equivalent reviewed policy, the same worker revision, release sources and traffic profiles. Conventional runtime does not import the BDI framework; its workflow sources and frozen configuration live in `ci-cd-conventional/`. GitHub installation copies remain in `.github/workflows/`. `run_experiment.py --mechanism bdi` coordinates one BDI trial. Native workflow dispatch coordinates one conventional trial. See the [comparison guide](../execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md) and [conventional manual](../execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md) for preparation, expected outcomes and measurement limitations.
 
 The older `run_controller.py --mechanism conventional` / `ConventionalPolicy` Java implementation remains a separate scripted-policy comparator for offline equivalence checks. Do not label its historical results as native GitHub workflow results.
 

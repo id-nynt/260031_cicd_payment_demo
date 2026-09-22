@@ -26,7 +26,7 @@ class WorkerContractTest(unittest.TestCase):
             self.assertEqual(job['job_name'], worker['jobs'][name]['name'])
             self.assertEqual("inputs.entity == '"+name+"'", worker['jobs'][name]['if'])
             self.assertNotIn('needs',worker['jobs'][name])
-        self.assertEqual(set(worker['jobs'])-{'report'},set(pipeline['jobs'])|set(pipeline['recovery']))
+        self.assertEqual(set(worker['jobs'])-{'report','candidate_operation'},set(pipeline['jobs'])|set(pipeline['recovery']))
         self.assertEqual('${{ always() && inputs.report_only == true }}',worker['jobs']['report']['if'])
         self.assertNotIn('report_only',worker['on']['workflow_dispatch']['inputs'])
         for name in pipeline['jobs']:

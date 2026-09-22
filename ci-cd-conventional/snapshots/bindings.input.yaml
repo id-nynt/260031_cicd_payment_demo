@@ -16,3 +16,9 @@ telemetry:
     availability_query: min(payment_service_ready{ci_run_id="{{run_id}}"})
     sample_age_seconds_query: time() - max(timestamp(payment_service_ready{ci_run_id="{{run_id}}"}))
   max_age_seconds: 30
+
+diagnostics:
+  production:
+    compose_project: payment-production
+    app_service: app
+    dependency_service: postgres

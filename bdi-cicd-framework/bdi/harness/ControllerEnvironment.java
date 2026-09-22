@@ -19,6 +19,12 @@ public final class ControllerEnvironment extends Environment {
     private final Map<String, EntityExecution.Result> latest = new LinkedHashMap<>();
     private Path resultFile;
     private String scenario;
+    private com.fasterxml.jackson.databind.JsonNode repairConfig;
+    private com.fasterxml.jackson.databind.JsonNode diagnosticBindings;
+    private final Map<String,Long> repairStarted = new LinkedHashMap<>();
+    private final Map<String,Boolean> repairCompleted = new LinkedHashMap<>();
+    private final Map<String,Object> repairEvidence = new LinkedHashMap<>();
+    private final java.util.Set<String> operationsStarted = new java.util.HashSet<>();
     private final Map<String, Integer> attempts = new LinkedHashMap<>();
     private final Map<String, Integer> observationRounds = new LinkedHashMap<>();
     private final Map<String, String> telemetry = new LinkedHashMap<>();
@@ -30,6 +36,9 @@ public final class ControllerEnvironment extends Environment {
         try {
             Path projectFile = Path.of(required("BDI_PROJECT_FILE"));
             controller = ControllerProjectConfig.load(projectFile);
+            var document=JSON.valueToTree(new org.yaml.snakeyaml.Yaml().load(Files.readString(projectFile)));
+            repairConfig=document.path("candidate_repair");
+            diagnosticBindings=document.path("bindings").path("diagnostics");
             resultFile = Path.of(value("BDI_RESULT_FILE", "build/controller-result.json"));
             journal = new StructuredEventLogger(Path.of(value("BDI_JOURNAL_FILE", "build/controller-journal.jsonl")));
             scenario = System.getenv("BDI_SCENARIO");
@@ -63,6 +72,8 @@ public final class ControllerEnvironment extends Environment {
                     yield true;
                 }
                 case "run_job" -> runJob(action);
+                case "diagnose_candidate" -> candidateOperation(action,false);
+                case "restart_candidate" -> candidateOperation(action,true);
                 case "observe_telemetry" -> observeTelemetry(action);
                 case "reconcile_job" -> reconcileJob(action);
                 case "accept_telemetry" -> {
@@ -82,6 +93,13 @@ public final class ControllerEnvironment extends Environment {
         } catch (Exception error) {
             journal.event("controller_action_error", null, Map.of("action", action.toString(),
                 "error", String.valueOf(error.getMessage())));
+            if (java.util.Set.of("diagnose_candidate","restart_candidate").contains(action.getFunctor()) && action.getArity() == 2) {
+                // An adapter exception cannot prove a remote operation has terminated.
+                String percept=action.getFunctor().equals("restart_candidate")?"candidate_restarted":"candidate_diagnosed";
+                addPercept(Literal.parseLiteral(percept+"("+atom(action,0)+","+integer(action,1)+",execution_unknown)"));
+                informAgsEnvironmentChanged();
+                return true;
+            }
             if (action.getFunctor().equals("run_job") && action.getArity() >= 2) {
                 addPercept(Literal.parseLiteral("status(" + atom(action, 0) + "," + integer(action, 1) + ",unknown)"));
                 informAgsEnvironmentChanged();
@@ -89,6 +107,70 @@ public final class ControllerEnvironment extends Environment {
             }
             return false;
         }
+    }
+
+    private boolean candidateOperation(Structure action, boolean restart) throws Exception {
+        String entity=atom(action,0);
+        int attempt=integer(action,1);
+        var rule=repairConfig.path(entity);
+        if (rule.isMissingNode() || !latest.containsKey(entity)) throw new IllegalArgumentException("Unconfigured repair target");
+        repairStarted.putIfAbsent(entity,System.nanoTime());
+        String outcome="unknown";
+        String operation=(restart?"restart_":"diagnose_")+entity;
+        if (attempt != 1 || !operationsStarted.add(operation)) throw new IllegalStateException("Repair operation already attempted or exceeds budget");
+        long remaining=rule.path("deadline_seconds").asLong()-(System.nanoTime()-repairStarted.get(entity))/1_000_000_000;
+        if (remaining <= 0) outcome="exhausted";
+        else if (scenario!=null && !scenario.isBlank()) {
+            journal.event(restart?"repair_started":"diagnosis_started",null,Map.of("entity",entity,"attempt",attempt,"deployment_execution_id",latest.get(entity).executionId()));
+            if (restart) outcome=scenario.equals("candidate_repair_unknown")?"execution_unknown":scenario.equals("candidate_restart_fails")?"failed":"executed";
+            else outcome=java.util.Set.of("candidate_stopped","candidate_restart_fails","candidate_repair_unknown").contains(scenario)?"app_stopped":"not_applicable";
+        } else {
+            var binding=diagnosticBindings.path(entity);
+            var inputs=Map.of("target_execution_id",latest.get(entity).executionId(),"diagnostic_binding",JSON.writeValueAsString(binding),
+                "verification_seconds",rule.path("verification_window_seconds").asText());
+            journal.event(restart?"repair_started":"diagnosis_started",null,Map.of("entity",entity,"attempt",attempt,
+                "deployment_execution_id",latest.get(entity).executionId()));
+            EntityExecution.Result operationResult=((GitHubEntityExecution)executor).executeOperation(operation,attempt,inputs,java.time.Duration.ofSeconds(remaining));
+            repairEvidence.put(operation,operationResult);
+            if (operationResult.status().equals("unknown")) outcome="execution_unknown";
+            else if (!operationResult.status().equals("success")) outcome="failed";
+            else {
+                try {
+                    var evidence=((GitHubEntityExecution)executor).operationEvidence(operationResult);
+                    outcome=classifyRepairEvidence(evidence,latest.get(entity).executionId(),restart);
+                } catch (Exception error) {
+                    journal.event("repair_evidence_error",null,Map.of("entity",entity,"reason",error.toString()));
+                }
+            }
+        }
+        if (restart && outcome.equals("executed")) {
+            repairCompleted.put(entity,true);
+            // Fresh verification samples get a new observation window, bounded by the total repair deadline.
+            observationRounds.remove(entity); observationStarted.remove(entity); telemetry.remove(entity);
+        }
+        journal.event(restart?"repair_finished":"diagnosis_finished",null,Map.of("entity",entity,"attempt",attempt,"status",outcome,
+            "deployment_execution_id",latest.get(entity).executionId()));
+        addPercept(Literal.parseLiteral((restart?"candidate_restarted":"candidate_diagnosed")+"("+entity+","+attempt+","+outcome+")"));
+        informAgsEnvironmentChanged();
+        return true;
+    }
+
+    static String classifyRepairEvidence(com.fasterxml.jackson.databind.JsonNode evidence,String expected,boolean restart) {
+        var before=evidence.path("before");
+        if (!expected.equals(evidence.path("expected_execution_id").asText())
+                || !expected.equals(before.path("deployment_execution_id").asText())
+                || before.path("container_id").asText().isBlank()
+                || !before.path("dependency_ready").isBoolean()
+                || !(restart?"restart":"diagnose").equals(evidence.path("action").asText())) return "unknown";
+        if (!restart) {
+            if (!"observed".equals(evidence.path("status").asText())
+                    || !java.util.Set.of("running","stopped").contains(before.path("app_state").asText())) return "unknown";
+            return before.path("app_state").asText().equals("stopped") && before.path("dependency_ready").asBoolean()?"app_stopped":"not_applicable";
+        }
+        String status=evidence.path("status").asText();
+        if (status.equals("executed") && (!expected.equals(evidence.path("after").path("deployment_execution_id").asText())
+                || !before.path("container_id").asText().equals(evidence.path("after").path("container_id").asText()))) return "unknown";
+        return java.util.Set.of("executed","failed","not_applicable").contains(status)?status:"unknown";
     }
 
     private boolean runJob(Structure action) throws Exception {
@@ -151,7 +233,8 @@ public final class ControllerEnvironment extends Environment {
             boolean recovery = controller.releaseSources().containsKey(entity);
             boolean protectedEntity = !recovery && controller.releaseSources().keySet().stream()
                 .anyMatch(r -> controller.environments().get(r).equals(controller.environments().get(entity)));
-            if (scenario.equals("rollback_unhealthy") && recovery) { decision = "block"; reason = "scenario_recovery_unhealthy"; }
+            if (java.util.Set.of("candidate_stopped","candidate_restart_fails","candidate_repair_unknown").contains(scenario) && entity.equals("production") && !repairCompleted.getOrDefault(entity,false)) { decision="block"; reason="scenario_candidate_stopped"; }
+            else if (scenario.equals("rollback_unhealthy") && recovery) { decision = "block"; reason = "scenario_recovery_unhealthy"; }
             else if (scenario.equals("rollback_unknown") && recovery) { decision = "unknown"; reason = "scenario_recovery_unavailable"; }
             else if (scenario.equals("production_unknown") && protectedEntity) { decision = "unknown"; reason = "scenario_production_unavailable"; }
             else if (protectedEntity && java.util.Set.of("production_unhealthy", "rollback_failure", "rollback_unknown", "rollback_unhealthy").contains(scenario)) {
@@ -172,7 +255,8 @@ public final class ControllerEnvironment extends Environment {
             EntityExecution.Result execution = latest.get(entity);
             String environment = controller.environments().get(entity);
             if (execution == null || environment == null) throw new IllegalStateException("No deployment identity/environment for " + entity);
-            measurement = new ProjectTelemetryProvider(telemetryProject, environment, entity, execution.executionId()).measure();
+            var provider = new ProjectTelemetryProvider(telemetryProject, environment, entity, execution.executionId());
+            measurement = repairCompleted.getOrDefault(entity,false) ? provider.measureRepair() : provider.measure();
             return publishMeasurement(entity, round, measurement, execution.executionId());
         }
         measurement = decision.equals("unknown")
@@ -185,6 +269,7 @@ public final class ControllerEnvironment extends Environment {
         int attempt = attempts.getOrDefault(entity, 0);
         long elapsed = (System.nanoTime() - observationStarted.get(entity)) / 1_000_000;
         if ("observation_deadline".equals(scenario)) elapsed = 3_600_001;
+        if (repairStarted.containsKey(entity) && (System.nanoTime()-repairStarted.get(entity))/1_000_000_000 >= repairConfig.path(entity).path("deadline_seconds").asInt()) elapsed=3_600_001;
         journal.event("observation_clock", null, Map.of("entity", entity, "round", round, "elapsed_ms", elapsed));
         journal.event("telemetry_measurement", null, Map.of("entity", entity, "attempt", attempt, "round", round,
             "execution_id", executionId, "data_status", m.dataStatus(), "readiness", m.readiness(),
@@ -214,6 +299,7 @@ public final class ControllerEnvironment extends Environment {
         result.put("known_good_sha", value("BDI_KNOWN_GOOD_SHA", ""));
         result.put("telemetry", telemetry);
         result.put("executions", latest);
+        result.put("candidate_repair_operations",repairEvidence);
         var requested = JSON.readTree(value("BDI_GOALS", "[]"));
         var healthGoals = JSON.readTree(value("BDI_HEALTH_GOALS", "[]"));
         java.util.List<String> achieved = new java.util.ArrayList<>();

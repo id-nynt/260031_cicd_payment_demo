@@ -46,11 +46,11 @@ jobs:
       - run: python ci-cd-conventional/configuration.py --check-bdi-parity
       - run: python -m unittest discover -s ci-cd-conventional/tests -v
       - run: python -m unittest discover -s experiments/tests -v
-      - run: python -m unittest discover -s bdi-cicd-framework/parser -p 'test_*.py' -v
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+      - run: python -m unittest discover -s bdi-cicd-framework/parser -p 'test_*.py' -v
       - name: Java adapters and telemetry tests
         working-directory: bdi-cicd-framework/bdi
         run: bash ./gradlew --no-daemon test

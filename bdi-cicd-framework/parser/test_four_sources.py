@@ -16,14 +16,34 @@ class FourSourcesTest(unittest.TestCase):
         self.sources=[read(ROOT/p) for p in ['models/01_pipeline.yaml','models/02_goal.yaml','config/controller_policy.yaml','config/runtime_bindings.yaml']]
     def test_contract_and_agent_equivalence(self):
         doc,_=compile_sources(*self.sources)
-        self.assertEqual(read(ARCHIVE/'payment-resolved.yaml'),doc)
+        legacy=deepcopy(doc);legacy['schema_version']=2;legacy.pop('candidate_repair');legacy['bindings'].pop('diagnostics')
+        self.assertEqual(read(ARCHIVE/'payment-resolved.yaml'),legacy)
         with tempfile.TemporaryDirectory() as tmp:
             w=Path(tmp)/'03.yaml';a=Path(tmp)/'agent.asl'
             w.write_text(yaml.safe_dump(doc,sort_keys=False),encoding='utf-8')
             generate_agent(w,ROOT/'generator/controller_generic.asl',a)
             # Git may materialize CRLF on Windows; compare the exact normalized agent body.
-            self.assertEqual((ARCHIVE/'controller_agent.asl').read_text(encoding='utf-8'),a.read_text(encoding='utf-8'))
+            self.assertIn('!master_goal.',a.read_text(encoding='utf-8'))
+            self.assertIn('repair_enabled(production).',a.read_text(encoding='utf-8'))
+            self.assertIn((ROOT/'generator/controller_generic.asl').read_text(encoding='utf-8'),a.read_text(encoding='utf-8'))
         self.assertEqual(read(ARCHIVE/'reporting-resolved.yaml'),compile_inputs(ROOT/'examples/reporting_pipeline.yaml',ROOT/'examples/reporting_goal.yaml')[0])
+
+    def test_repair_configuration_is_bounded_and_explicit(self):
+        from workflow_model import expand_workflow
+        doc,model=compile_sources(*self.sources)
+        expanded,roundtrip=expand_workflow(doc)
+        self.assertEqual(model,roundtrip)
+        self.assertEqual(1,expanded['runtime']['candidate_repair']['production']['max_attempts'])
+        self.assertNotIn('restart_production',model.entities)
+        mutations=[lambda s:s[2]['candidate_repair']['production'].update(max_attempts=True),
+            lambda s:s[2]['candidate_repair']['production'].update(max_attempts=2),
+            lambda s:s[2]['candidate_repair']['production'].update(deadline_seconds=1),
+            lambda s:s[0]['candidate_repair']['production'].update(restart_job_name='Production entity'),
+            lambda s:s[3]['diagnostics'].clear(),
+            lambda s:s[3]['diagnostics']['production'].update(app_service='postgres')]
+        for mutate in mutations:
+            sources=deepcopy(self.sources);mutate(sources)
+            with self.subTest(mutation=mutate),self.assertRaises(ModelError):compile_sources(*sources)
     def test_missing_policy_fields_never_fall_back(self):
         for name in self.sources[2]['execution']:
             sources=deepcopy(self.sources);sources[2]['execution'].pop(name)

@@ -2,9 +2,12 @@
 import hashlib
 import json
 
+OBSERVATION_DELAY_SECONDS = 15
+
+
 def protocol_key(case, seed, candidate, baseline, worker_sha, contract, policy, profile, input_hashes=None):
     values=dict(case=case,seed=seed,candidate=candidate,baseline=baseline,worker_sha=worker_sha,
-                contract=contract,policy=policy,profile=profile,pause_ms=60000,input_hashes=input_hashes)
+                contract=contract,policy=policy,profile=profile,pause_ms=OBSERVATION_DELAY_SECONDS * 1000,input_hashes=input_hashes)
     return hashlib.sha256(json.dumps(values,sort_keys=True).encode()).hexdigest()
 
 

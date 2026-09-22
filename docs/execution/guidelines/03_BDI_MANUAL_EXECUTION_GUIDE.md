@@ -509,16 +509,16 @@ $case = 'healthy'
 | `service-unavailable` | After production Compose deployment, stop only its app container | Readiness check fails; restore verified v1 and verify health |
 | `infrastructure-failure` | After staging deployment, stop only its PostgreSQL container | Readiness check fails; block promotion; production remains v1 |
 | `deployment-timeout` | Staging job sleeps 90s before deployment, with a 1-minute job deadline; repeat fault on retry | Confirm timeout, retry once, stop before production |
-| `staging-temporary` | Stage request-fault mode; 75s mixed errors, then normal traffic | Recheck; promote if health recovers within budget |
+| `staging-temporary` | Stage request-fault mode; 35s mixed errors, then normal traffic | Recheck; promote if health recovers within budget |
 | `staging-persistent` | Stage request-fault mode; persistent mixed errors | Exhaust bounded observations; block promotion |
-| `production-temporary` | Production request-fault mode; 75s mixed errors, then normal traffic | Recheck; accept v2 if health recovers within budget |
+| `production-temporary` | Production request-fault mode; 35s mixed errors, then normal traffic | Recheck; accept v2 if health recovers within budget |
 | `production-persistent` | Production request-fault mode; persistent mixed errors | Exhaust observations; restore and verify v1 |
 
 **Scope:** build/test failures are controlled job failures, not yet independent commits with compiler/test defects. “Service unavailable” means the deployed payment service; “infrastructure failure” means its staging database, not the entire host/cloud. The timeout is a controlled pre-deployment hang. A host loss, runner loss, deployment API outage and real network partition remain additional experiments; do not report these scoped faults as proving resilience to those broader failures.
 
 **Small initial study:** run `healthy`, `build-failure`, `candidate-stopped`, `production-persistent`, and `candidate-restart-fails` for both approaches, resetting between every trial. These cover normal delivery, deterministic stopping, repair that preserves v2, inapplicable repair, and failed repair with fallback. Add `production-temporary` for recovery without a restart. Predeclare repetitions and alternate approach order; all 13 cases are available, not mandatory.
 
-Traffic profiles use a fixed seed and bounded rates/jitter. Normally each staging/production gate gets continuous normal or selected fault traffic. For the two stopped-candidate cases, production cannot serve traffic before repair: both approaches keep the same 60-second pause, diagnose, and use the shared restart worker's normal payment probes for 120 seconds. Staging traffic remains automatic. The production evidence is the operation receipt/probe count and subsequent health observations, not a missing `-traffic` folder. The failed-restart case intentionally has no successful post-repair production probes. Rollback verifies its own deployment identity.
+Traffic profiles use a fixed seed and bounded rates/jitter. Normally each staging/production gate gets continuous normal or selected fault traffic. For the two stopped-candidate cases, production cannot serve traffic before repair: both approaches keep the same 15-second pause, diagnose, and use the shared restart worker's normal payment probes for 120 seconds. Staging traffic remains automatic. The production evidence is the operation receipt/probe count and subsequent health observations, not a missing `-traffic` folder. The failed-restart case intentionally has no successful post-repair production probes. Rollback verifies its own deployment identity.
 
 **Expected repair trace:** `diagnose_candidate` → `restart_candidate` → `verify_repair` → `resume_candidate` → `Master goal achieved`. Diagnosis only authorizes restart for a matching stopped app with a ready database. Persistent request errors in a running app do not justify restart. A known-terminal failure or exhausted verification can select verified rollback; uncertain remote execution ends `unknown / unresolved` and requires F3. Repair is a bounded subgoal inside the existing execution loop; it never changes `master_goal` or turns rollback into v2 success.
 
@@ -557,11 +557,11 @@ All profiles below are implemented. `healthy` sends normal fake payments; `idle`
 | `healthy` | About 3 normal payments/second, no injected errors |
 | `fluctuating` | Normal requests at changing rates: 1, 6, 2, then 4/second |
 | `burst` | Normal traffic peak; does not guarantee a failure |
-| `temporary-errors` | Production: 70% fault-header requests for 75 seconds, then normal traffic |
+| `temporary-errors` | Production: 70% fault-header requests for 35 seconds, then normal traffic |
 | `persistent-errors` | Production: sustained 70% fault-header requests |
 | `intermittent-errors` | Production: error/normal/error/normal phases |
 | `idle` | No payments from this client; insufficient telemetry is not proof of app failure |
-| `staging-temporary-errors` | Staging errors for 75 seconds, then normal traffic |
+| `staging-temporary-errors` | Staging errors for 35 seconds, then normal traffic |
 | `staging-persistent-errors` | Sustained staging errors; promotion should stop if health stays bad |
 
 Rates are targets with seeded timing variation and one request in flight. The profiles run for at most 600 seconds of active traffic, and stop earlier at campaign completion/recovery. Temporary faults do not guarantee recovery within the observation budget. For staging profiles the script selects staging/port 3001 automatically; other profiles select production/port 3000.
@@ -620,11 +620,11 @@ Wait for `WAITING` and leave this terminal running. The campaign folder may not 
     if (-not $sessionReady -or $trial.campaign -ne $candidateDir -or $trial.scenario -ne $trafficScenario) {
         throw 'Controller selection changed. Do not launch; stop the waiting client and prepare a fresh trial.'
     }
-    py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --confirm-compatible-rollback --pause-after "$($trial.entity)" --pause-ms 60000 --artifacts-dir "$candidateDir"
+    py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --confirm-compatible-rollback --pause-after "$($trial.entity)" --pause-ms 15000 --artifacts-dir "$candidateDir"
 }
 ```
 
-The client starts when the chosen environment reaches its 60-second pause and its deployment identity matches. Look for `STARTED`, `PHASE`, `ACTIVE`, and `HTTP201` for successful payments. Error profiles also produce `injected503`. Keep it running until the final result; it stops automatically on completion/recovery. If you stop it early, record that interruption.
+The client starts when the chosen environment reaches its 15-second pause and its deployment identity matches. Look for `STARTED`, `PHASE`, `ACTIVE`, and `HTTP201` for successful payments. Error profiles also produce `injected503`. Keep it running until the final result; it stops automatically on completion/recovery. If you stop it early, record that interruption.
 
 **Expected results:** healthy should finish `achieved / not_needed` with normal HTTP201 payments. Error profiles may reobserve, stop promotion, or restore v1 according to the observed health and budget; keep the actual result even if it differs from the hypothesis. The console is saved automatically.
 
@@ -691,7 +691,7 @@ Then run this execution block unchanged:
 
 **Start:** v1 running. Prepare Observation and Traffic PowerShell windows **before launching**. Read all of this step first. Enabling `request_faults` does not itself create errors.
 
-**Why traffic must continue during this release-verification experiment:** this script is the client sending payment requests. Without `--continuous`, it sends six requests and exits; the app itself can remain ready. The two-minute latency query needs recent payment samples. Once requests stop, the histogram rate can become zero and p95 undefined, so the controller cannot confirm healthy telemetry. Stopping errors must therefore be followed immediately by **normal traffic**, not silence.
+**Why traffic must continue during this release-verification experiment:** this script is the client sending payment requests. Without `--continuous`, it sends six requests and exits; the app itself can remain ready. The 30-second latency query needs recent payment samples. Once requests stop, the histogram rate can become zero and p95 undefined, so the controller cannot confirm healthy telemetry. Stopping errors must therefore be followed immediately by **normal traffic**, not silence.
 
 Use the direct `node` commands below. In the observed Windows invocation, the npm wrapper did not forward `--continuous`. Direct invocation removes that argument-forwarding dependency. Do not change missing metrics to zero or extend the observation budget just to conceal missing traffic.
 
@@ -708,7 +708,7 @@ Use the direct `node` commands below. In the observed Windows invocation, the np
     Set-Content -LiteralPath $faultFile -Value 'production.experiment_mode=request_faults' -Encoding ascii
     $env:BDI_EXECUTION_PLAN = $faultFile
     $candidateDir
-    py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --confirm-compatible-rollback --pause-after production --pause-ms 60000 --artifacts-dir "$candidateDir"
+    py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --confirm-compatible-rollback --pause-after production --pause-ms 15000 --artifacts-dir "$candidateDir"
 }
 ```
 
@@ -736,10 +736,10 @@ Use the direct `node` commands below. In the observed Windows invocation, the np
 **Expected start signal in Observation PowerShell** (field order can differ):
 
 ```json
-{"event":"controller_pause","after_entity":"production","milliseconds":60000}
+{"event":"controller_pause","after_entity":"production","milliseconds":15000}
 ```
 
-This excerpt identifies a 60-second pause that resumes automatically. It is not a prompt awaiting input. Watch the current campaign's new event, not a pause from a previous journal. If the event is already more than 60 seconds old, inspect the current outcome before proceeding; do not guess from `run entity=production`, which only means dispatch started.
+This excerpt identifies a 15-second pause that resumes automatically. It is not a prompt awaiting input. Watch the current campaign's new event, not a pause from a previous journal. If the event is already more than 15 seconds old, inspect the current outcome before proceeding; do not guess from `run entity=production`, which only means dispatch started.
 
 **Actions 3 - at `controller_pause` with `after_entity: production`:** immediately run in Traffic PowerShell:
 
@@ -773,7 +773,7 @@ This excerpt identifies a 60-second pause that resumes automatically. It is not 
 node scripts/generate-experiment-traffic.mjs normal 6 --continuous
 ```
 
-- This sends successful requests while the two-minute metric window clears. Do not wait another two minutes before starting normal traffic.
+- This sends successful requests while the 30-second metric window clears. Do not wait another 30 seconds before starting normal traffic.
 
 **Normal-traffic checkpoint:**
 
@@ -812,7 +812,7 @@ node scripts/generate-experiment-traffic.mjs normal 6 --continuous
     Set-Content -LiteralPath $faultFile -Value 'production.experiment_mode=request_faults' -Encoding ascii
     $env:BDI_EXECUTION_PLAN = $faultFile
     $candidateDir
-    py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --confirm-compatible-rollback --pause-after production --pause-ms 60000 --artifacts-dir "$candidateDir"
+    py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --confirm-compatible-rollback --pause-after production --pause-ms 15000 --artifacts-dir "$candidateDir"
 }
 ```
 
@@ -821,7 +821,7 @@ node scripts/generate-experiment-traffic.mjs normal 6 --continuous
 - Release and directory assignments select published v2 and new evidence.
 - `$faultFile` gives this campaign its own file; `Set-Content` enables request faults.
 - The plan assignment selects it; printing the directory lets you follow the correct journal.
-- The launcher starts the campaign and gives the same 60-second production pause.
+- The launcher starts the campaign and gives the same 15-second production pause.
 
 Follow **C4 Actions 2 and 3** to watch the journal and start error traffic at the pause. This time **keep errors running throughout the observation period**. When MAS prints `BDI_DECISION=rollback` or the journal records `bdi_recovery_decision`, stop error traffic with Ctrl+C.
 

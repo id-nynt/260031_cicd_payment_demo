@@ -68,8 +68,8 @@
       }
     },
     "metrics": {
-      "error_rate_query": "(sum(rate(payment_http_errors_total{ci_run_id=\"{{run_id}}\",route=\"/payments\",status_code=~\"5..\"}[2m])) or vector(0)) / clamp_min(sum(rate(payment_http_requests_total{ci_run_id=\"{{run_id}}\",route=\"/payments\"}[2m])), 0.001)",
-      "latency_p95_ms_query": "histogram_quantile(0.95, sum by (le) (rate(payment_http_request_duration_milliseconds_bucket{ci_run_id=\"{{run_id}}\",route=\"/payments\"}[2m])))",
+      "error_rate_query": "(sum(rate(payment_http_errors_total{ci_run_id=\"{{run_id}}\",route=\"/payments\",status_code=~\"5..\"}[30s])) or vector(0)) / clamp_min(sum(rate(payment_http_requests_total{ci_run_id=\"{{run_id}}\",route=\"/payments\"}[30s])), 0.001)",
+      "latency_p95_ms_query": "histogram_quantile(0.95, sum by (le) (rate(payment_http_request_duration_milliseconds_bucket{ci_run_id=\"{{run_id}}\",route=\"/payments\"}[30s])))",
       "availability_query": "min(payment_service_ready{ci_run_id=\"{{run_id}}\"})",
       "sample_age_seconds_query": "time() - max(timestamp(payment_service_ready{ci_run_id=\"{{run_id}}\"}))"
     },
@@ -86,7 +86,7 @@
       }
     }
   },
-  "contract_sha256": "f6eb4040bd7a8816ddc0515080f0004917125ccc2d17523f635df40189a77555",
+  "contract_sha256": "4640aedb0da541ed70b30d2d6390743ed2d47da4438c4b87a90a0225e6077092",
   "configuration_inputs": {
     "pipeline": {
       "path": "models/01_pipeline.yaml",
@@ -102,7 +102,7 @@
     },
     "bindings": {
       "path": "config/runtime_bindings.yaml",
-      "sha256": "8ffaf46474e07750ea85b0070c039e1a92eac645ca1a8b641d28447f49775e48"
+      "sha256": "55e0d65489ca606a5776993eba4a7c6ad39d0ead99ad64de47ebf81e33218b2e"
     }
   }
 }

@@ -286,7 +286,7 @@ def validate_candidate_repair(doc, repairs, diagnostics):
         # First implementation deliberately bounds repair to one idempotent restart.
         if type(rule['max_attempts']) is not int or rule['max_attempts'] != 1: raise ModelError('Candidate repair supports one restart')
         integer(rule['deadline_seconds'], 1, 600)
-        # Payment queries use a two-minute rolling window; flush pre-repair history.
+        # Keep the conservative repair-probe minimum independent of shorter experiment metric windows.
         integer(rule['verification_window_seconds'], 120, 300)
         if rule['deadline_seconds'] < rule['verification_window_seconds']: raise ModelError('Repair deadline shorter than verification window')
         binding=diagnostics[entity]

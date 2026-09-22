@@ -135,6 +135,24 @@ class NativeWorkflowTest(unittest.TestCase):
             self.assertIn("'transient_failure'",condition);self.assertIn("'timeout'",condition)
             self.assertNotIn("'unknown'",condition)
         self.assertFalse(any(s.get('id')=='retry' for s in doc['jobs']['rollback']['steps']))
+    def test_short_timing_observes_fault_then_two_healthy_samples(self):
+        from experiments.experiment_protocol import OBSERVATION_DELAY_SECONDS
+        self.assertEqual(15,OBSERVATION_DELAY_SECONDS)
+        profile=json.loads((ROOT/'scripts/traffic-scenarios/temporary-errors.json').read_text())
+        self.assertEqual(35,profile['phases'][0]['seconds'])
+        self.assertTrue(all('[30s]' in self.doc['bindings']['metrics'][name] for name in ('error_rate_query','latency_p95_ms_query')))
+        elapsed=[float(OBSERVATION_DELAY_SECONDS)];seen=[]
+        good=dict(data_status='fresh',readiness='ready',availability=1,error_rate=0,latency_p95_ms=10)
+        def sample():return dict(good,error_rate=.7 if elapsed[0]<65 else 0)
+        def sleep(seconds):elapsed[0]+=seconds
+        from unittest.mock import Mock
+        repair=Mock()
+        self.assertEqual('allow',native.observe(self.policy,sample,lambda r,v:seen.append((elapsed[0],v)),clock=lambda:elapsed[0],sleep=sleep,repair=repair))
+        self.assertLess(seen[0][0],35)
+        self.assertGreater(seen[0][1]['error_rate'],.05)
+        self.assertEqual([0,0],[v['error_rate'] for _,v in seen[-2:]])
+        self.assertEqual(70,elapsed[0]);repair.assert_not_called()
+
     def test_ready_degradation_reobserves_without_repair(self):
         policy=copy.deepcopy(self.policy);policy['execution'].update(observation_attempts=4,observation_interval_seconds=0)
         good=dict(data_status='fresh',readiness='ready',availability=1,error_rate=0,latency_p95_ms=10)

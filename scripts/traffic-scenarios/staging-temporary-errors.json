@@ -1,16 +1,16 @@
 {
   "name": "staging-temporary-errors",
-  "description": "Temporary staging errors clear, allowing promotion if verification succeeds.",
+  "description": "35 seconds of mixed request faults; observations begin after 15 seconds, followed by normal traffic and a 30-second metric window.",
   "seed": 42,
   "jitter": 0.25,
   "phases": [
     {
-      "seconds": 75,
+      "seconds": 35,
       "requests_per_second": 4,
       "error_fraction": 0.7
     },
     {
-      "seconds": 525,
+      "seconds": 565,
       "requests_per_second": 4,
       "error_fraction": 0
     }

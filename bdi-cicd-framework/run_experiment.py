@@ -15,7 +15,7 @@ from project_artifacts import ROOT, validate, digest, ModelError
 from run_controller import conventional_policy, known_good_sha, validate_live_environment
 from workflow_model import runtime_settings
 from experiment_metrics import extract
-from experiment_protocol import protocol_key, traffic_targets
+from experiment_protocol import protocol_key, traffic_targets, OBSERVATION_DELAY_SECONDS
 from experiments.control_revision import verify_control_revision
 
 CATALOG = json.loads((ROOT.parent/'experiments/scenarios.json').read_text())
@@ -76,7 +76,7 @@ def main():
         ROOT.parent/'scripts/run-traffic-scenario.mjs', ROOT.parent/'scripts/candidate-repair.py', *sorted((ROOT/'bdi/harness').glob('*.java'))]}
     comparison = dict(case=args.case, seed=args.seed, candidate=args.release_sha, baseline=baseline_sha,
         repository=env['GITHUB_REPOSITORY'], worker=env['BDI_WORKFLOW_REF'], worker_sha=worker_sha, contract=digest(ROOT/'models/03_workflow_model.yaml'),
-        policy=policy, profile=digest(traffic_profile) if traffic_profile else None, pause_ms=60000,
+        policy=policy, profile=digest(traffic_profile) if traffic_profile else None, pause_ms=OBSERVATION_DELAY_SECONDS * 1000,
         sources=sources)
     plan = dict(schema_version=2, prepared_at=datetime.now(timezone.utc).isoformat(), mechanism=args.mechanism,
         case=args.case, seed=args.seed, campaign=str(campaign), thresholds=policy['thresholds'],
@@ -93,7 +93,7 @@ def main():
     if args.prepare_only:
         print('Prepared only. No controller or traffic launched. Use a NEW path for the live launch.'); return 0
     command = [sys.executable,'-B',str(ROOT/'run_controller.py'),'--mechanism',args.mechanism,'--known-good',str(args.known_good.resolve()),
-        '--confirm-compatible-rollback','--artifacts-dir',str(campaign),'--pause-after','staging,production','--pause-ms','60000']
+        '--confirm-compatible-rollback','--artifacts-dir',str(campaign),'--pause-after','staging,production','--pause-ms',str(OBSERVATION_DELAY_SECONDS * 1000)]
     traffic = []
     traffic_logs = []
     process = None

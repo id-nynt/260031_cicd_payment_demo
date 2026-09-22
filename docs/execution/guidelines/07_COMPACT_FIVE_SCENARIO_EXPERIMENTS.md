@@ -10,7 +10,7 @@ This guide is for your existing setup and release pair. Open **Docker Desktop**,
 |---|---|---|---|
 | 1 | 1 | `healthy` | Baseline/control: v2 delivered; both health gates accepted; normal payment traffic |
 | 2 | 3 | `test-failure` | Deterministic test failure: safe stop, no production deployment, reset v1 remains |
-| 3 | 8 | `production-temporary` | 75 seconds of mixed request errors, then normal traffic: bounded reobservation through the two-minute metric window, then two healthy observations and continued v2 |
+| 3 | 8 | `production-temporary` | 35 seconds of mixed request errors, then normal traffic: bounded reobservation through the 30-second metric window, then two healthy observations and continued v2 |
 | 4 | 9 | `production-persistent` | Sustained request errors: bounded observations, then verified rollback to v1 |
 | 5 | 7 | `candidate-stopped` | Matching production app stopped after deployment succeeds: diagnose, one restart, fresh verification, continue v2 |
 
@@ -18,7 +18,9 @@ These are expected responses to inspect, not guaranteed results. Preserve unexpe
 
 **Default workload:** one repetition = **10 measured candidate runs**, plus v1 resets and a baseline only if no receipt exists. This is a small descriptive study/pilot, not statistical proof of superiority. If time permits, choose more repetitions **before creating the schedule**. Three repetitions mean 30 candidate runs. Each case runs BDI then conventional in odd repetitions; order reverses in even repetitions. Never run the two approaches concurrently.
 
-**Do not shorten observation/repair budgets to save time.** Reduce repetitions or cases only through an explicitly declared new study. Normal verification uses two consecutive healthy samples; repair retains its 120-second probe window and 300-second decision budget. Runner queues and approval waits can add substantial runtime.
+**Matched timing:** 35 seconds of temporary faults, observation starts after a 15-second deployment pause, 30-second rolling error/latency queries, five-second observation spacing and two consecutive healthy samples. Prometheus scrape and app metric export intervals remain five seconds. The rolling window retains earlier faults, so passing is not expected immediately at second 35; allow the window to clear while normal traffic continues. Start traffic clients before the pause.
+
+**Do not shorten observation/repair budgets to save time.** The 180-second observation budget remains; repair probes/decision budgets are unchanged. A timing change requires a newly published control revision and a new study; do not mix results with the old 75/60/120-second protocol. Normal verification uses two consecutive healthy samples; repair retains its 120-second probe window and 300-second decision budget. Runner queues and approval waits can add substantial runtime.
 
 | Your current state | Start here |
 |---|---|
@@ -29,6 +31,14 @@ These are expected responses to inspect, not guaranteed results. Preserve unexpe
 | All 10 scheduled runs finalised | Step 11 |
 
 Manual choices are separate from execution blocks. Paste complete `. { ... }` blocks. Stop after a red error; do not continue with stale variables.
+
+## Optional handoff: manual first two cases, automated remaining cases
+
+Use **one study**, one repetition and seed 42 throughout. Follow Steps 1-9 manually for trials **001-004**: healthy BDI, healthy conventional, test-failure BDI, test-failure conventional. A red test-failure run is expected, but it still requires collection, final-state capture, `record_trial.py`, and reset. After trial 004, complete Step 9 and verify both environments at v1. Stop before dispatching trial 005.
+
+Before handoff, evaluate the study (the evaluator command in Step 11 may be used mid-study, but the completion guard will correctly report incomplete). Expect four recorded/eligible trials and two matched pairs; trials 005-010 are pending. If the first four are ineligible, explain/correct evidence through documented amendments before treating them as valid comparisons. Keep the saved pointer, records and reset receipts.
+
+The execution agent must read this guide, load Step 2 and **Step 3.2 only**, confirm the first four records and unused reset, then resume Step 5 at trial 005. Do not create another schedule, overwrite records, repeat completed trials or assume an existing `started.json` is safe to dispatch again. It completes trials 005-010, records each and resets after each, including the final trial; then evaluates and reports the full study. This handoff changes the operator, not the experiment configuration. Human interventions during measured execution must be recorded honestly; routine setup/collection is excluded.
 
 ## Step 1. Publish the reviewed control update once
 

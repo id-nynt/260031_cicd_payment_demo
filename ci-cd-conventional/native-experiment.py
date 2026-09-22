@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT/'ci-cd-conventional'))
 from configuration import load_configuration, digest, known_good_sha
 from experiments.experiment_metrics import extract
-from experiments.experiment_protocol import protocol_key, traffic_targets
+from experiments.experiment_protocol import protocol_key, traffic_targets, OBSERVATION_DELAY_SECONDS
 
 CATALOG = json.loads((ROOT/'experiments/scenarios.json').read_text())
 
@@ -66,7 +66,7 @@ def prepare(directory):
         if api('commits/'+good)['sha'] != good: raise ValueError('Known-good source not published')
     comparison = dict(case=case, seed=seed, candidate=sha, baseline=good, policy=policy,
         worker_sha=os.environ['GITHUB_SHA'], contract_sha256=config['contract_sha256'])
-    write(directory/'plan.json', dict(schema_version=2, case=case, seed=seed, mechanism='github-actions', comparison=comparison,
+    write(directory/'plan.json', dict(schema_version=2, pause_ms=OBSERVATION_DELAY_SECONDS * 1000, case=case, seed=seed, mechanism='github-actions', comparison=comparison,
         thresholds=policy['thresholds'], traffic_targets=traffic_targets(case, CATALOG[case]), traffic_required=bool(CATALOG[case]['profile']),
         fault_expected=bool(CATALOG[case]['profile'] and 'errors' in CATALOG[case]['profile']),
         comparison_key=None, native_workflow=True, workflow_layout='six-jobs-v1', repository=os.environ['GITHUB_REPOSITORY'], configuration_inputs=config['configuration_inputs'],
@@ -145,13 +145,13 @@ def gate(directory, entity, execution_id, sha, scenario, seed, execution_directo
     emit(events,'execution_configuration',entity=entity,execution_id=execution_id,release_sha=sha)
     try:
         if entity in ['staging','production']:
-            emit(events,'deployment_ready',after_entity=entity,milliseconds=60000)
+            emit(events,'deployment_ready',after_entity=entity,milliseconds=OBSERVATION_DELAY_SECONDS * 1000)
             target = traffic_targets(scenario, selected).get(entity)
             if target:
                 traffic_log = (directory/'traffic-console.log').open('w', encoding='utf-8')
                 traffic=subprocess.Popen(['node',str(ROOT/'scripts/run-traffic-scenario.mjs'),'--campaign',str(directory),
                     '--scenario',target['profile'],'--entity',entity,'--seed',str(seed),'--output',str(directory)+'-traffic'], stdout=traffic_log, stderr=subprocess.STDOUT)
-            time.sleep(60)
+            time.sleep(OBSERVATION_DELAY_SECONDS)
         def record(round_number, value):
             emit(events,'observation',entity=entity,round=round_number,**value)
             print(f'OBSERVE {entity} round={round_number} data={value["data_status"]} error_rate={value["error_rate"]}',flush=True)

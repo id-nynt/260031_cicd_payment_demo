@@ -2,6 +2,8 @@
 
 Read this after either manual. A candidate deployment, a safe stop, and restoration of v1 are different outcomes. Keep raw evidence even when the experiment fails, is cancelled, or lacks enough evidence to classify.
 
+For the labelled app pair, record `/health.appVersion` and a refreshed checkout screenshot alongside `deploymentRunId`, the receipt and source SHA. The page banner and startup log show v1/v2 immediately, but a label alone does not uniquely identify a commit or prove health. New app commits require a new baseline receipt and pair selection; follow [the returning-user guide](06_REFRESH_VERSION_PAIR.md).
+
 ## 1. Find the trial and preserve the whole bundle
 
 | Approach | Location | First files to inspect |

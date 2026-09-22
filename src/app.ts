@@ -11,6 +11,7 @@ import { checkoutPage, receiptPage } from './ui.js';
 import { paymentPage } from './payment-page.js';
 import { createTelemetry } from './telemetry.js';
 import { createExperiment } from './experiment.js';
+import { APP_VERSION, releaseBanner } from './release.js';
 
 const paymentInput = z.object({
   amount: z.number().int().positive(),
@@ -35,22 +36,22 @@ export function buildApp(config: Config) {
 
   app.register(rawBody, { field: 'rawBody', global: false, encoding: false, runFirst: true });
   app.get('/', async (_request, reply) => reply.redirect('/checkout'));
-  app.get('/checkout', async (_request, reply) => reply.type('text/html').send(checkoutPage));
+  app.get('/checkout', async (_request, reply) => reply.type('text/html').header('cache-control', 'no-store').send(checkoutPage));
   app.get('/payment', async (_request, reply) => reply.type('text/html').header('cache-control', 'no-store').send(paymentPage));
-  app.get('/receipt', async (_request, reply) => reply.type('text/html').send(receiptPage));
-  app.get('/config', async () => ({ providers: allowedProviders.filter((name) => name !== 'stripe' || Boolean(providers.stripe)), stripeReady: Boolean(providers.stripe), publishableKey: providers.stripe ? config.STRIPE_PUBLISHABLE_KEY : null, merchantName: config.MERCHANT_NAME }));
+  app.get('/receipt', async (_request, reply) => reply.type('text/html').header('cache-control', 'no-store').send(receiptPage));
+  app.get('/config', async (_request, reply) => reply.header('cache-control', 'no-store').send({ appVersion: APP_VERSION, providers: allowedProviders.filter((name) => name !== 'stripe' || Boolean(providers.stripe)), stripeReady: Boolean(providers.stripe), publishableKey: providers.stripe ? config.STRIPE_PUBLISHABLE_KEY : null, merchantName: config.MERCHANT_NAME }));
   app.get('/legacy', async (_request, reply) => reply.type('text/html').send(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Payment Service</title><style>
+<title>Payment Service ${APP_VERSION}</title><style>
 body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:760px;margin:48px auto;padding:0 24px;color:#172033;background:#f7f9fc}
 main{background:white;border:1px solid #e3e8f0;border-radius:16px;padding:32px;box-shadow:0 8px 30px #17203312}h1{margin-top:0}code{background:#eef2f7;padding:3px 6px;border-radius:5px}a{color:#155eef;text-decoration:none}a:hover{text-decoration:underline}.badge{display:inline-block;background:#e8f7ee;color:#137333;border-radius:999px;padding:5px 10px;font-size:14px}
-</style></head><body><main><span class="badge">Payment API online</span><h1>Payment Service</h1>
+</style></head><body><main>${releaseBanner}<span class="badge">Payment API online</span><h1>Payment Service ${APP_VERSION}</h1>
 <p>A small payment API running with a safe test provider. Use the API endpoints below to create and inspect payments.</p>
 <h2>Checks</h2><ul><li><a href="/health"><code>/health</code></a> — process health</li><li><a href="/ready"><code>/ready</code></a> — database readiness</li></ul>
 <h2>API</h2><p><code>POST /payments</code> creates a payment. It requires an <code>Idempotency-Key</code> header.</p>
 <p>Amounts are expressed in the smallest currency unit. For example, <code>2500 AUD</code> means AUD 25.00.</p>
 </main></body></html>`));
-  app.get('/health', async () => ({ status: 'ok', deploymentRunId: config.CI_RUN_ID, experimentMode: config.EXPERIMENT_MODE }));
+  app.get('/health', async (_request, reply) => reply.header('cache-control', 'no-store').send({ status: 'ok', appVersion: APP_VERSION, deploymentRunId: config.CI_RUN_ID, experimentMode: config.EXPERIMENT_MODE }));
   app.get('/ready', async (_request, reply) => {
     if (!experiment.isReady) return reply.code(503).send({ error: 'experiment_unhealthy', message: 'Service is intentionally not ready' });
     try { await pool.query('SELECT 1'); return { status: 'ready' }; }

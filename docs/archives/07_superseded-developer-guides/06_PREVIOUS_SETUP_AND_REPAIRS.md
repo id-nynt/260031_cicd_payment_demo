@@ -1,6 +1,8 @@
+> **Historical document ? superseded.** Preserved for design/review history. Do not execute its setup, repair or publication instructions as the current procedure. Read the [maintained documentation](../../execution/guidelines/01_ENVIRONMENT_CHECKLIST.md) instead.
+
 # One-time setup and troubleshooting
 
-Start with [Part A of the manual guide](03_BDI_MANUAL_EXECUTION_GUIDE.md#part-a---setup-and-separate-system-checks) for the complete beginner walkthrough. This page is a supplementary setup and troubleshooting reference. Preparation does not count as a v2 deployment experiment. Commands are PowerShell at the current controller checkout unless marked Linux runner.
+Start with [Part A of the manual guide](../../execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#part-a---setup-and-separate-system-checks) for the complete beginner walkthrough. This page is a supplementary setup and troubleshooting reference. Preparation does not count as a v2 deployment experiment. Commands are PowerShell at the current controller checkout unless marked Linux runner.
 
 ## Tools and local app check
 

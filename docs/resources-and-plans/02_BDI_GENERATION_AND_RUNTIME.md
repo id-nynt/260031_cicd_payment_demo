@@ -49,7 +49,7 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --scenario healthy
 
 For another project, generation accepts `--project-dir`, `--pipeline`, `--goal`, `--policy` and `--bindings`; subsequent launches use that `--project-dir`. By default, model/config paths resolve under the chosen project directory. Custom source locations must be supplied explicitly. Generation manifest schema 2 hashes all four inputs; the workflow contract remains schema 2, with all settings resolved and no runtime profile overrides. Runtime rejects stale/missing/inconsistent artifacts with a regeneration message; it never silently migrates or regenerates them.
 
-App-only commits, fault-file changes and traffic-profile changes do not require regeneration. Changes to either model, either configuration file, generator code or the generic policy do. BDI snapshots all four inputs; native preparation snapshots the same validated sources. Pairing keys include their hashes as well as the resolved contract/policy. A runtime-only implementation change is distinct from a project-generation change.
+App-only commits, fault-file changes and traffic-profile changes do not require regeneration. Changes to either model, either configuration file, generator code or the generic policy do. BDI snapshots all four validated inputs; conventional preparation copies its own frozen configuration and source snapshots from `ci-cd-conventional/`. The optional parity check compares them before a paired study. Pairing keys include their hashes as well as the resolved contract/policy. A runtime-only implementation change is distinct from a project-generation change.
 
 ## 3. Mapping the workflow model to agent beliefs
 
@@ -155,7 +155,7 @@ The [app config](../../src/config.ts), [instrumentation](../../src/telemetry.ts)
 | Production/recovery | 3000 | 9090 | 9464 | 5432 |
 | Optional local rehearsal | 3002 | 9092 | 9466 | 5434 |
 
-`/ready` reports readiness via HTTP 200/503. `/health` reports `deploymentRunId` and `experimentMode`; the ID is an execution UUID, not a source SHA. Campaign receipts map execution IDs to source revisions.
+`/ready` reports readiness via HTTP 200/503. `/health` reports `appVersion` from the source-controlled `src/release.ts`, plus `deploymentRunId` and `experimentMode`; the ID is an execution UUID, not a source SHA. The version label is visible before a payment on each main UI page and in startup logs. Campaign receipts map execution IDs to source revisions.
 
 `config/runtime_bindings.yaml` filters PromQL with `ci_run_id="{{run_id}}"`. It derives error fraction from `payment_http_errors_total` / `payment_http_requests_total`, p95 milliseconds from `payment_http_request_duration_milliseconds_bucket`, and readiness/sample age from `payment_service_ready`. Request metrics use a two-minute window. Source sample age is limited to 30 seconds. `config/controller_policy.yaml` rejects error fractions above 0.05 and p95 above 500 ms. The adapter rejects missing, stale or nonfinite measurements; Jason decides what those observations mean for the campaign.
 
@@ -224,9 +224,9 @@ Security auditing blocks high/critical production dependency advisories. Source 
 
 ## Comparative execution extension
 
-The primary conventional comparison is now [`.github/workflows/ci-cd.yml`](../../.github/workflows/ci-cd.yml), a manually dispatched GitHub Actions DAG. It calls `conventional-entity.yml` for bounded retries and reuses `entity-execution.yml` for execution. `scripts/native-experiment.py` validates the supported payment contract/receipt, evaluates bounded telemetry gates and writes evidence; it does not select the pipeline order or run Jason.
+The primary conventional comparison is now [`.github/workflows/ci-cd.yml`](../../.github/workflows/ci-cd.yml), a manually dispatched GitHub Actions DAG. It calls `conventional-entity.yml` for bounded retries and reuses `entity-execution.yml` for execution. `ci-cd-conventional/native-experiment.py` validates its frozen configuration and receipt, evaluates bounded telemetry gates and writes evidence; it does not select the pipeline order or run Jason.
 
-Both approaches use the 11 cases in `scripts/experiment-scenarios.json`, the saved workflow contract, the same worker revision, release sources and traffic profiles. `run_experiment.py --mechanism bdi` coordinates one BDI trial. Native workflow dispatch coordinates one conventional trial. See the [comparison guide](../execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md) and [conventional manual](../execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md) for preparation, expected outcomes and measurement limitations.
+Both approaches use the 11 cases in `experiments/scenarios.json`, equivalent reviewed policy, the same worker revision, release sources and traffic profiles. Conventional runtime does not import the BDI framework; its workflow sources and frozen configuration live in `ci-cd-conventional/`. GitHub installation copies remain in `.github/workflows/`. `run_experiment.py --mechanism bdi` coordinates one BDI trial. Native workflow dispatch coordinates one conventional trial. See the [comparison guide](../execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md) and [conventional manual](../execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md) for preparation, expected outcomes and measurement limitations.
 
 The older `run_controller.py --mechanism conventional` / `ConventionalPolicy` Java implementation remains a separate scripted-policy comparator for offline equivalence checks. Do not label its historical results as native GitHub workflow results.
 

@@ -37,6 +37,7 @@ jobs:
       - run: npm ci
       - run: npm run db:migrate
       - run: npm run lint && npm test && npm run build
+      - run: npm run test:traffic
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

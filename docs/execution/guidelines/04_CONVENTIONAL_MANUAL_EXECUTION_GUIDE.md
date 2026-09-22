@@ -2,6 +2,8 @@
 
 This is a standalone GitHub Actions route. No Java, Jason, BDI controller, generation or BDI baseline receipt is required. Use the root payment app unchanged and the implementation in [ci-cd-conventional/](../../../ci-cd-conventional/README.md). The five named stages are **build → test → security → staging → production**. Preparation, bounded health gates, rollback and evidence are supporting jobs, retained to provide a realistic conventional baseline.
 
+**Returning after the app-version update:** start with [Refresh the version pair](06_REFRESH_VERSION_PAIR.md). You can reuse your tools and runner, but need new application tags and a receipt for the updated v1 SHA. Then resume this guide at step 2, skip step 3 only if that new baseline is already verified, and use steps 4-5 for each trial.
+
 ## 1. One-time setup and publication
 
 Install Git, GitHub CLI, Python 3.12, Node 22 and Docker Desktop with WSL integration. Use PowerShell in the repository root. The dedicated Linux deployment runner needs Docker Compose, curl and outbound access for setup actions; label it `self-hosted`, `linux`, `payment-deploy`. Both deployment environments must use the same Docker engine. To register a new runner, follow repository Settings → Actions → Runners → New self-hosted runner. Configure GitHub environments `staging` and `production`; record any approval waits.
@@ -26,19 +28,20 @@ Workflow sources live in `ci-cd-conventional/workflows/`; GitHub installation co
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$env:GITHUB_REPOSITORY = 'id-nynt/260031_cicd_payment_demo'
-$workerRef = 'comparison-worker-20260922-separated' # your newly published tag
-$v1Sha = (git rev-parse 'v1^{commit}').Trim()
-if ($LASTEXITCODE -ne 0) { throw 'Resolve published v1' }
-$v2Sha = (git rev-parse 'manual-20260921-055936-v2^{commit}').Trim()
-if ($LASTEXITCODE -ne 0) { throw 'Resolve published v2' }
+$pairFile = 'REPLACE_WITH_ABSOLUTE_PATH_TO_RELEASE_PAIR_JSON'
+$pair = Get-Content -LiteralPath $pairFile -Raw | ConvertFrom-Json
+$env:GITHUB_REPOSITORY = $pair.repository
+$workerRef = $pair.worker_ref
+$v1Sha = $pair.v1_sha
+$v2Sha = $pair.v2_sha
+$knownGood = $pair.known_good_receipt
 git ls-remote --exit-code origin "refs/tags/$workerRef"
 if ($LASTEXITCODE -ne 0) { throw 'Publish the control tag first' }
 gh auth status
 if ($LASTEXITCODE -ne 0) { throw 'Authenticate before dispatch' }
 ```
 
-Existing v1 is `caa26dada2a15b807c325e2d931ee123a206ece8`; v2 is `22a263c6f9b8939fb3ac3d5f300ccb3cf5c58f2d`. If selecting other versions, use them for both approaches and record their UI difference. Worker revision and application revision are independent: application jobs check out `release_sha`.
+The pair JSON stores the new immutable application SHAs and common worker revision. Do not substitute the historical `v1` tag or prior v2 SHA: those commits lack the new version banner. Application jobs check out `release_sha`, so the source label follows deployment and rollback automatically.
 
 Start Docker Desktop, then in a separate WSL/Ubuntu terminal:
 
@@ -53,7 +56,7 @@ Keep it listening; do not start another listener if the runner service already r
 
 ## 3. Establish v1 independently of BDI
 
-Skip this only if you already have a successful live v1 receipt from either approach for this repository/environment. A receipt proves a past deployment; step 4 still resets current state.
+Skip this only if you have a successful live receipt for **this pair's exact new v1 SHA** from either approach for this repository/environment. A receipt proves a past deployment; step 4 still resets current state.
 
 ```powershell
 $payload = @{
@@ -78,6 +81,8 @@ if ($baseline.mode -ne 'github' -or $baseline.outcome -ne 'achieved' -or $baseli
     -not $baseline.verified_releases.staging.github_run_id -or -not $baseline.verified_releases.production.github_run_id) {
   throw 'Baseline is not verified'
 }
+$pair.known_good_receipt = $knownGood
+$pair | ConvertTo-Json | Set-Content -LiteralPath $pairFile -Encoding utf8
 $knownGood
 ```
 
@@ -107,7 +112,7 @@ Invoke-RestMethod http://127.0.0.1:3000/health
 Invoke-RestMethod http://127.0.0.1:3000/ready
 ```
 
-Check `/checkout` at both ports displays v1. Health's `deploymentRunId` must match reset evidence; it is not a source SHA. Starting old containers is not a verified reset.
+Refresh `/checkout` at both ports: the banner must immediately show **Payment Service v1** and `/health.appVersion` must be `v1`. No payment is needed to see the label. Health's `deploymentRunId` must match reset evidence; it is not a source SHA. Starting old containers is not a verified reset.
 
 ## 5. Manually launch one measured trial
 

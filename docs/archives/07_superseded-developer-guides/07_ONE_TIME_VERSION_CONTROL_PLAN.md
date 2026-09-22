@@ -1,3 +1,5 @@
+> **Historical document ? superseded.** Preserved for design/review history. Do not execute its setup, repair or publication instructions as the current procedure. Read the [maintained documentation](../../resources-and-plans/03_VERSION_CONTROL_WORKFLOW.md) instead.
+
 # Version control for the CI/CD experiment
 
 Do not push everything blindly. At the time of this review, Git reported 305 working-tree entries, including 262 under `docs/`. Many are the old and new paths of the same documentation/evidence files. Staging both sides allows Git to report renames; ignore rules should not conceal those moves.
@@ -55,7 +57,7 @@ git diff --cached --check
 
 `-A -- docs` stages old deletions and their new paths together. `R...` entries indicate detected renames; heavily edited documents may still appear as delete/add. Review both. The explicit deleted native test and scenario catalog have replacements in `ci-cd-conventional/tests/` and `experiments/scenarios.json`.
 
-Review the staged content in Source Control or `git diff --cached`. In particular, `docs/resources-and-plans/06_WORKING_NOTES.md` preserves earlier user edits as well as the move; it is not necessarily a pure rename.
+Review the staged content in Source Control or `git diff --cached`. In particular, `docs/execution/guidelines/00_README.md` preserves earlier user edits as well as the move; it is not necessarily a pure rename.
 
 Leave the following earlier changes out until you decide they are intentional:
 
@@ -94,4 +96,4 @@ After merging/registering the workflows on the default branch, create a new immu
 
 Use `git status --short`, inspect the staged diff, and commit source/config/docs changes separately from deliberately curated research evidence. Use `git check-ignore -v PATH` to find the matching rule when a file is missing from Source Control. Never use `git add -f` merely to make ignored local results appear without reviewing what they contain.
 
-[Resources and plans](00_README.md) · [Execution guidelines](../execution/guidelines/00_README.md)
+[Resources and plans](../../resources-and-plans/00_README.md) · [Execution guidelines](../../execution/guidelines/00_README.md)

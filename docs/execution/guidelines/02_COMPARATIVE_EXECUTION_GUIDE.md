@@ -54,7 +54,7 @@ Native reuse uses an explicit status output: failed execution steps may have a t
 |---|---|
 | Printed local campaign directory | Run artifacts: `native-prepare`, `native-*-health`, `native-result` |
 | Controller result/journal and common events | Same result/common-event schema plus GitHub job records |
-| Sibling `*-experiment/plan.json` | Preparation plan and persistent input/contract/manifest snapshots |
+| Sibling `*-experiment/plan.json` | Preparation plan, conventional config, frozen input/contract snapshots and workflow copies |
 | Sibling `*-traffic/` plus `*-traffic-<other-stage>/` | Gate artifact contains profile, requests/transitions and traffic summary |
 | Automatic `experiment-metrics.json` | Automatic `native-result/result/experiment-metrics.json` |
 
@@ -62,7 +62,7 @@ Record candidate-delivery rate separately from restoration rate, containment, re
 
 `protocol_key` compares case, seed, candidate, baseline, worker commit, contract, policy, all four input hashes and traffic profile. Match it across the native/BDI pair. The older `comparison_key` belongs to the scripted-controller comparison; do not use it to pair native trials. A matching key cannot certify database state, queue load or actual timing.
 
-Use the [results inspection guide](05_EXPERIMENT_RESULTS_GUIDE.md) for collection, fields, line filters and combined CSV output. New BDI results live under `experiments/results/bdi/`; downloaded native results live under `experiments/results/conventional/`. Keep all sibling experiment/traffic directories. Historical folders are not moved.
+Use the [results inspection guide](05_EXPERIMENT_RESULTS_GUIDE.md) for collection, fields, line filters and combined CSV output. New BDI results live under `experiments/results/bdi/`; downloaded native results live under `experiments/results/conventional/`. Keep all sibling experiment/traffic directories. Historical verification evidence is under `docs/archives/06_experiment-records/`.
 
 Timing limitations: BDI action duration includes adapter-observed dispatch/poll waits; native job duration comes from GitHub job start/end. These are not identical execution-cost measures. Native recovery timing includes GitHub job scheduling. Report whole-trial elapsed time plus raw GitHub timestamps separately; do not present summed entity duration as billed runner cost. The native gate is scheduled as a separate self-hosted job, whereas BDI observes locally: measure this scheduling overhead, and retain actual traffic/observation timestamps.
 

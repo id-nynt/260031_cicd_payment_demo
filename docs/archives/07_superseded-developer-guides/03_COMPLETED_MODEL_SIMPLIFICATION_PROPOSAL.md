@@ -1,10 +1,12 @@
+> **Historical document ? superseded.** Preserved for design/review history. Do not execute its setup, repair or publication instructions as the current procedure. Read the [maintained documentation](../../resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md) instead.
+
 # Proposal: simplify the editable BDI models
 
-**Design proposal, implemented 22 September 2026.** The four-source layout is now supported; see [the migration record](05_BDI_FOUR_SOURCE_MIGRATION.md) for verification and remaining live pilots. The assessment and execution plan below are retained as the design rationale.
+**Design proposal, implemented 22 September 2026.** The four-source layout is now supported; see [the migration record](04_FOUR_SOURCE_MIGRATION_RECORD.md) for verification and remaining live pilots. The assessment and execution plan below are retained as the design rationale.
 
 ## 1. What the archives establish
 
-Reviewed [archived pipeline](../../archives/01_pipeline.yaml), [archived goals](../../archives/02_goal.yaml) and [archived workflow model](../../archives/03_workflow_model.yaml), alongside the current compiler, artifact validator and Java runtime reader.
+Reviewed [archived pipeline](../../../archives/01_pipeline.yaml), [archived goals](../../../archives/02_goal.yaml) and [archived workflow model](../../../archives/03_workflow_model.yaml), alongside the current compiler, artifact validator and Java runtime reader.
 
 - The original pipeline exposes only `execution.max_retries`; health checks and monitoring appear as job steps, with their implementation delegated to scripts.
 - The archive does not define observation budgets, metric queries or thresholds: their omission does not establish how those scripts would decide health, and its referenced build/deploy/monitor shell scripts are not present in the current `scripts/` directory.

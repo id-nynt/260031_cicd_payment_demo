@@ -1,5 +1,8 @@
 # Payment Service
 
+The app now shows its source-controlled **v1/v2** banner on checkout, payment and receipt pages, in `/health.appVersion`, and in startup logs. This checkout is the new **v1** source. Existing users should start with [Refresh the version pair](docs/execution/guidelines/06_REFRESH_VERSION_PAIR.md) to publish fresh tags and establish a new baseline receipt; old tags do not gain the banner.
+
+
 Documentation: [reading guide](docs/00_README.md).
 
 Current experiment entry points: [BDI manual](docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md), [standalone conventional manual](docs/execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md), and [results inspection](docs/execution/guidelines/05_EXPERIMENT_RESULTS_GUIDE.md). Conventional code/workflow sources are in `ci-cd-conventional/`; shared scenarios, metrics and new result directories are in `experiments/`. The root application and existing v1/v2 revisions remain shared.

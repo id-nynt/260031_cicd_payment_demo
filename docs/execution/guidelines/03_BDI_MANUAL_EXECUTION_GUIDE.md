@@ -2,11 +2,11 @@
 
 **Configuration lifecycle:** edit the two models plus `bdi-cicd-framework/config/controller_policy.yaml` and `runtime_bindings.yaml`; regenerate explicitly after changing any of them. Missing policy fields fail validation. Campaign startup reuses the saved schema-2 contract and agent; the BDI campaign never regenerates them. Conventional has its own frozen configuration; verify parity before paired trials. Publish the complete migrated control revision for native trials and select the same revision for BDI; existing application v1/v2 tags and verified release receipts remain usable.
 
-Run commands yourself, one step at a time. C0-C5 retain manual execution/injection; C6 manually launches one comparative trial with automatic fault timing, traffic and evidence. This guide uses the existing payment repository, published worker/v2 tags and verified v1 receipt. Replace those selections only when intentionally starting a different experiment.
+**Returning after the app-version update:** start at [Refresh the version pair, step 1](06_REFRESH_VERSION_PAIR.md#1-review-and-publish-the-new-v1-source). Keep your existing tools/runner, but create new labelled v1/v2 commits and a fresh v1 receipt. Then return to B1-B4 and C6.
+
+Run commands yourself, one step at a time. C0-C5 retain manual execution/injection; C6 manually launches one comparative trial with automatic fault timing, traffic and evidence. This guide loads the current immutable application/control selections and verified v1 receipt from the saved release-pair JSON.
 
 For the research comparison, use the [comparative execution guide](02_COMPARATIVE_EXECUTION_GUIDE.md): one manually launched trial with automatic fault setup, traffic timing and metric extraction, supporting BDI and the native GitHub Actions pipeline. Both approaches have the same 11-case catalog; use C6 below for paired trials. The conventional activation walkthrough is [here](04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md). The steps below remain available for individual/manual experiments.
-
-New comparison trials store evidence under `experiments/results/bdi/`; historical runs remain in `bdi-cicd-framework/runs/`. Follow the [results inspection guide](05_EXPERIMENT_RESULTS_GUIDE.md) to retain console, journal, traffic and GitHub evidence. The conventional project is now independent in `ci-cd-conventional/`; BDI orchestration remains this guide's Jason agent.
 
 New comparison trials store evidence under `experiments/results/bdi/`; historical runs remain in `bdi-cicd-framework/runs/`. Follow the [results inspection guide](05_EXPERIMENT_RESULTS_GUIDE.md) to retain console, journal, traffic and GitHub evidence. The conventional project is now independent in `ci-cd-conventional/`; BDI orchestration remains this guide's Jason agent.
 
@@ -158,66 +158,11 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --scenario healthy
 
 **Cleanup:** close MAS Console after the final result. Gradle's **75% EXECUTING** while the completed GUI remains open is normal. Regenerate only after changing inputs/generator/policy, not before each campaign. Keep generated files with their matching configuration revision.
 
-### A4. Check the saved source versions
+### A4. Select the current version pair
 
-**Start:** Controller PowerShell and GitHub web. The existing experiment already has v1, a visible v2 and a worker tag; reuse them for C0-C5. For C6 comparison trials, publish/select a new control revision containing the four-source migration using the linked conventional guide; the old worker tag does not gain new files when your local checkout changes.
+Use the [version-pair refresh guide](06_REFRESH_VERSION_PAIR.md) to create and publish labelled v1/v2 commits, freeze the common control tag, and record their SHAs in a local pair JSON. This is also the route for existing users who have completed the old setup. Do not move the historical `v1` tag or reuse an old receipt for the new v1 source.
 
-**Actions:** run:
-
-```powershell
-git show -s --oneline 'v1^{commit}'
-git show -s --oneline 'manual-20260921-055936-v2^{commit}'
-git ls-remote origin 'refs/tags/v1' 'refs/tags/v1^{}' 'refs/tags/manual-20260921-055936-v2' 'refs/tags/bdi-worker-20260921-052412'
-```
-
-**Explanation:**
-
-- The two `git show` commands display stable v1 and the existing UI-change v2.
-- `git ls-remote` checks the published refs. For annotated v1, compare the peeled `^{}` line with the commit SHA.
-
-**Expected results:**
-
-- v1: `caa26dada2a15b807c325e2d931ee123a206ece8`.
-- Existing v2: `22a263c6f9b8939fb3ac3d5f300ccb3cf5c58f2d`.
-- GitHub's worker tag contains `.github/workflows/entity-execution.yml` with rollback, transient failure and request-fault support.
-- The workflow also exists on the default branch so GitHub accepts dispatches.
-
-**Cleanup:** none. Do not move/recreate these tags. A local documentation commit is not automatically a published candidate.
-
-**Only when creating a different v2:** edit receipt text in `src/ui.ts`, then review and publish the intended app change:
-
-```powershell
-npm run lint
-if ($LASTEXITCODE -ne 0) { throw 'Lint failed' }
-npm test
-if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
-npm run build
-if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
-git add src/ui.ts
-git diff --cached
-```
-
-- Each `npm` command checks the new app; each guard stops on failure.
-- `git add` stages only the UI file; `git diff` lets you review everything staged before committing.
-
-After reviewing the staged changes:
-
-```powershell
-git commit -m 'Update experiment receipt UI'
-if ($LASTEXITCODE -ne 0) { throw 'Commit failed' }
-$newV2Tag = 'manual-' + (Get-Date -Format yyyyMMdd-HHmmss) + '-v2'
-git tag $newV2Tag
-if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed' }
-git push origin "refs/tags/$newV2Tag"
-if ($LASTEXITCODE -ne 0) { throw 'Publication failed; keep this tag and resolve access' }
-$newV2Tag
-```
-
-- `git commit` records the reviewed change; `$newV2Tag` creates a unique name.
-- `git tag` saves that revision; `git push` publishes it without moving old tags.
-- The guards prevent continuing after failure; the last line prints the tag to use in B2.
-
-**Expected:** the new tag appears on GitHub; production still runs its previous version. Change B2's v2 tag selection for future runs. No agent regeneration is needed for a UI-only change.
+For an already prepared pair, locate its saved JSON path. B2 loads the repository, worker, source SHAs and verified receipt from it. First-baseline setup is F1 (or refresh guide step 4) if that pair has no receipt yet. Neither app-label changes nor selecting a different app SHA requires agent regeneration.
 
 ## B. Setup before every run
 
@@ -266,19 +211,21 @@ Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
 Remove-Item Env:GH_TOKEN,Env:GITHUB_TOKEN,Env:GITHUB_API_URL -ErrorAction SilentlyContinue
 Remove-Item Env:BDI_EXECUTION_PLAN,Env:BDI_SCENARIO,Env:BDI_READY_URL,Env:BDI_PROMETHEUS_URL -ErrorAction SilentlyContinue
 Remove-Item Env:BDI_PAUSE_AFTER_ENTITY,Env:BDI_PAUSE_MILLISECONDS,Env:BDI_POLL_SECONDS,Env:BDI_ENTITY_TIMEOUT_MINUTES -ErrorAction SilentlyContinue
-$env:GITHUB_REPOSITORY = 'id-nynt/260031_cicd_payment_demo'
+$pairFile = 'REPLACE_WITH_ABSOLUTE_PATH_TO_RELEASE_PAIR_JSON'
+$pair = Get-Content -LiteralPath $pairFile -Raw | ConvertFrom-Json
+$env:GITHUB_REPOSITORY = $pair.repository
 $env:GITHUB_TOKEN = gh auth token --hostname github.com
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) { throw 'Repeat A1 GitHub login' }
-$env:BDI_WORKFLOW_REF = 'bdi-worker-20260921-052412'
-$v2Tag = 'manual-20260921-055936-v2'
-$v2Sha = git rev-parse "$v2Tag^{commit}"
-if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the selected v2 tag' }
-$v2Sha = $v2Sha.Trim()
+$env:BDI_WORKFLOW_REF = $pair.worker_ref
+$v1Tag = $pair.v1_tag
+$v2Tag = $pair.v2_tag
+$v2Sha = $pair.v2_sha
 $env:BDI_RELEASE_SHA = $v2Sha
-$knownGood = 'C:\NHI\2026_IT-Project\260031_payment-repair\bdi-cicd-framework\runs\20260921-055346-143-v1\controller-result.json'
+$knownGood = $pair.known_good_receipt
+if ([string]::IsNullOrWhiteSpace($knownGood)) { throw 'Establish this pair baseline using refresh guide step 4 or F1' }
 $baseline = Get-Content -LiteralPath $knownGood -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
 if ($baseline.mode -ne 'github' -or $baseline.outcome -ne 'achieved' -or
-    $baseline.repository -ne $env:GITHUB_REPOSITORY -or
+    $baseline.repository -ne $env:GITHUB_REPOSITORY -or $baseline.release_sha -ne $pair.v1_sha -or
     $baseline.verified_releases.production.release_sha -ne $baseline.release_sha -or
     -not $baseline.verified_releases.production.github_run_id) { throw 'Select the verified live v1 receipt' }
 $v1Sha = $baseline.release_sha
@@ -293,7 +240,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Resolve artifact consistency before launching'
 - The three `Remove-Item` commands clear stale authentication overrides, faults, telemetry overrides and timing settings; they do not delete evidence or containers.
 - Repository and worker assignments select the existing GitHub integration.
 - `gh auth token` loads the stored credential without printing it; its guard detects missing login.
-- `$v2Tag`, `git rev-parse`, its guard and `Trim` resolve the published candidate explicitly, rather than using local HEAD.
+- The saved pair supplies the new v1/v2 tags, candidate SHA and control revision. Do not fall back to historical example tags or local HEAD.
 - `BDI_RELEASE_SHA` selects the candidate source for dispatch.
 - `$knownGood` selects the saved receipt; `Get-Content` reads it; the receipt guard checks successful live production evidence.
 - `$v1Sha` comes from that receipt, not from a lost variable in another window.
@@ -328,12 +275,12 @@ Invoke-RestMethod http://localhost:3000/health
 
 **Expected results:**
 
-- Browser: `http://localhost:3000/checkout` is production; `http://localhost:3001/checkout` is staging.
-- Make a **new** fake payment to see the receipt title: v2 says `Payment receipt - v2`. An already-open receipt page may show old content.
+- Browser: `http://localhost:3000/checkout` is production; `http://localhost:3001/checkout` is staging. Refresh both pages after deployment.
+- The banner immediately shows **Payment Service v1** or **Payment Service v2**; no payment is needed. `/health.appVersion` reports the same source label. A browser tab opened before deployment may show the previous release until refreshed.
 - Prometheus opens at ports 9090 (production) and 9091 (staging).
 - `/health.deploymentRunId` is an execution UUID, not a Git SHA. Match it to `executions.production.executionId` or `executions.staging.executionId` in the relevant campaign result, then read that result's `release_sha`.
 
-**Cleanup/decision:** if both are verified v1 in normal mode, skip B4. If either is v2, unhealthy, absent, has a fault mode, or its identity is uncertain, perform B4. Starting Play alone does not prove you restored v1.
+**Cleanup/decision:** for a measured C6 trial, perform B4 before every trial and retain its reset evidence. For an individual manual demonstration, an already verified v1 in normal mode can be reused; if either environment is uncertain, perform B4. Starting Play alone does not prove you restored v1.
 
 ### B4. Restore both environments to verified v1 when needed
 
@@ -754,13 +701,13 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --known-good "$knownGood" --
 
 ### C6. Matched comparison: all 11 scenarios
 
-**Start:** complete A1-A3 and B1-B4. Publish/select the new worker revision using [conventional guide steps 1-2](04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md). Existing worker tags support the older manual examples but do not contain the new service/database/timeout controls.
+**Start:** one-time setup is already complete, and B1-B4 has restored the selected pair's v1. Use the pair created by the [returning-user procedure](06_REFRESH_VERSION_PAIR.md); B2 must load its new worker ref and baseline receipt. Do not repeat tool installation for each pair.
 
-**Actions ? Controller PowerShell:** retain the verified `$knownGood` path and `$v2Sha` from B2; explicitly replace B2's old worker selection. This launches one BDI trial, with automatic fault timing and traffic:
+**Actions - Controller PowerShell:** retain the pair, verified `$knownGood` path and `$v2Sha` loaded in B2. This launches one BDI trial, with automatic fault timing and traffic:
 
 ```powershell
-$env:GITHUB_REPOSITORY = 'id-nynt/260031_cicd_payment_demo'
-$workerRef = 'comparison-worker-20260922-separated'
+$env:GITHUB_REPOSITORY = $pair.repository
+$workerRef = $pair.worker_ref # loaded in B2; same control revision as conventional
 $env:BDI_WORKFLOW_REF = $workerRef
 Remove-Item Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
 Remove-Item Env:BDI_PAUSE_AFTER_ENTITY -ErrorAction SilentlyContinue
@@ -774,8 +721,6 @@ py -3 -B bdi-cicd-framework/run_controller.py --validate-only
 if ($LASTEXITCODE -ne 0) { throw 'Resolve artifact consistency before launching' }
 py -3 ci-cd-conventional/configuration.py --check-bdi-parity
 if ($LASTEXITCODE -ne 0) { throw 'Paired configurations differ' }
-py -3 ci-cd-conventional/configuration.py --check-bdi-parity
-if ($LASTEXITCODE -ne 0) { throw 'Paired configurations differ' }
 py -3 -B bdi-cicd-framework/run_experiment.py --mechanism bdi --case $case --release-sha "$v2Sha" --known-good "$knownGood" --confirm-compatible-rollback --seed 42
 ```
 
@@ -787,7 +732,7 @@ py -3 -B bdi-cicd-framework/run_experiment.py --mechanism bdi --case $case --rel
 
 **Expected results:** `Master goal started` and `BDI_DECISION` output; selected-entity runs on GitHub; traffic `STARTED`/`PHASE` messages for traffic scenarios; a campaign directory under `experiments/results/bdi/`, its experiment plan directory, and separate target/background traffic directories (clients exit without payments if their stage is never reached). Read `controller-result.json` and `experiment-metrics.json`. Use the shared scenario table for expected v2 delivery, v1 restoration or safe stopping. Missing fault evidence invalidates a claimed fault trial.
 
-**Reverse/cleanup:** wait for terminal remote execution, stop any residual traffic, then restore both environments to v1 using B4. Reselect the new worker tag after B2/B4. Launch the conventional counterpart with the same case/seed/v2/receipt. Do not edit or recreate the v2 tag between trials.
+**Reverse/cleanup:** wait for terminal remote execution, stop any residual traffic, then restore both environments to v1 using B4. Keep the same pair selections after B2/B4. Launch the conventional counterpart with the same case/seed/v2/receipt. Do not edit or recreate the v2 tag between trials.
 
 ## D. Optional goal experiment
 
@@ -868,19 +813,19 @@ Remove-Item Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
 
 ### F1. Establish v1 only if no verified baseline receipt exists
 
-**Start:** A1-A4 and B1 complete. Existing users with the saved successful receipt should skip this. Controller PowerShell, normal success-goal project:
+**Start:** A1-A4 and B1 complete. Skip this only if the receipt verifies the selected pair's exact v1 SHA. Existing users need a fresh baseline after updating the v1 source. Controller PowerShell, normal success-goal project:
 
 ```powershell
 Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
 Remove-Item Env:GH_TOKEN,Env:GITHUB_TOKEN,Env:GITHUB_API_URL -ErrorAction SilentlyContinue
 Remove-Item Env:BDI_EXECUTION_PLAN,Env:BDI_SCENARIO,Env:BDI_READY_URL,Env:BDI_PROMETHEUS_URL,Env:BDI_PAUSE_AFTER_ENTITY,Env:BDI_PAUSE_MILLISECONDS -ErrorAction SilentlyContinue
-$env:GITHUB_REPOSITORY = 'id-nynt/260031_cicd_payment_demo'
+$pairFile = 'REPLACE_WITH_ABSOLUTE_PATH_TO_RELEASE_PAIR_JSON'
+$pair = Get-Content -LiteralPath $pairFile -Raw | ConvertFrom-Json
+$env:GITHUB_REPOSITORY = $pair.repository
 $env:GITHUB_TOKEN = gh auth token --hostname github.com
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) { throw 'Complete GitHub login in A1' }
-$env:BDI_WORKFLOW_REF = 'bdi-worker-20260921-052412'
-$v1Sha = git rev-parse 'v1^{commit}'
-if ($LASTEXITCODE -ne 0) { throw 'Select and publish stable v1 before continuing' }
-$v1Sha = $v1Sha.Trim()
+$env:BDI_WORKFLOW_REF = $pair.worker_ref
+$v1Sha = $pair.v1_sha
 $env:BDI_RELEASE_SHA = $v1Sha
 $baselineDir = 'bdi-cicd-framework/runs/' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '-v1'
 $baselineDir
@@ -893,7 +838,7 @@ py -3 -B bdi-cicd-framework/run_controller.py --gui --baseline --artifacts-dir "
 
 - `Set-Location` selects the checkout; the removal commands clear prior credential/fault/pause overrides.
 - Repository, token and worker assignments establish the connection; the token guard stops if login is absent.
-- `git rev-parse`, its guard and `Trim` resolve stable v1; `BDI_RELEASE_SHA` selects it.
+- The saved pair selects the newly labelled v1 SHA; `BDI_RELEASE_SHA` selects it for deployment.
 - The directory assignment and display give this baseline fresh evidence.
 - Validation and its guard check the generated project; `--baseline` explicitly starts with no rollback source.
 
@@ -904,13 +849,15 @@ $baseline = Get-Content "$baselineDir/controller-result.json" -Raw -ErrorAction 
 if ($baseline.mode -ne 'github' -or $baseline.outcome -ne 'achieved' -or $baseline.release_sha -ne $v1Sha -or
     -not $baseline.verified_releases.production.github_run_id -or -not $baseline.verified_releases.staging.github_run_id) { throw 'Baseline not verified; inspect its journal' }
 $knownGood = (Resolve-Path "$baselineDir/controller-result.json").Path
+$pair.known_good_receipt = $knownGood
+$pair | ConvertTo-Json | Set-Content -LiteralPath $pairFile -Encoding utf8
 $knownGood
 ```
 
 - `Get-Content` reads the receipt; the guard requires live success at v1 with both verified environments.
 - `Resolve-Path` saves the full receipt path; the final line displays it.
 
-**Cleanup:** put that exact path into B2's `$knownGood` assignment for future sessions. Keep the receipt and containers. Do not use a simulation, build-only or negative-goal result as the baseline.
+**Cleanup:** B2 loads that receipt from the updated pair JSON. Verify both `/health.appVersion` values are `v1` and identities match the receipt, as in refresh guide step 4. Keep the receipt and containers. Do not use a simulation, build-only or negative-goal result as the baseline.
 
 ### F2. Diagnose common mistakes
 
@@ -961,7 +908,7 @@ py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only
 
 **Cleanup:** once resolved, check the app in B3, restore v1 with B4 if needed, and use a new campaign directory. Never manually delete pending state to force progress.
 
-Further reference: [framework customization](../../../bdi-cicd-framework/README.md), [generation and runtime policy](../../resources-and-plans/03_BDI_GENERATION_AND_RUNTIME.md), [setup details](01_BDI_SETUP.md). The previous manual is retained in [the manual archive](../../archives/04_manual-guides/01_BDI_MANUAL_EXECUTION_GUIDE-before-session-rewrite.md) for history; use this guide's current steps.
+Further reference: [framework customization](../../../bdi-cicd-framework/README.md), [generation and runtime policy](../../resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md), [setup details](01_ENVIRONMENT_CHECKLIST.md). The superseded previous manual is retained in [the manual archive](../../archives/04_manual-guides/01_BDI_MANUAL_EXECUTION_GUIDE-before-session-rewrite.md) for history; use this guide's current steps.
 
 
 ### F4. Idle application versus insufficient telemetry
@@ -974,8 +921,8 @@ For these experiments, synthetic normal payments supply verification evidence ev
 
 A future idle-aware policy should distinguish `insufficient_request_samples` from `telemetry_transport_failure`, check exporter freshness/readiness separately, and request bounded synthetic probes before deciding whether verification must stop or recover. That is a contract/agent/environment policy change, not something this traffic client silently changes. The current observation and recovery policy remains intact.
 
-## Migration verification and live checkpoints
+## Historical verification and current live checkpoints
 
-The four-source migration preserved the payment contract values and generated agent. The [verification record](../../archives/06_experiment-records/four-source-migration-2026-09-22/00_README.md) includes 35 actual Jason simulations and eight paired simulations covering successful delivery, retries, uncertain execution and verified recovery. These are offline checks; they do not prove current GitHub credentials, runner availability or Docker health.
+The historical four-source migration preserved the payment contract values and generated agent at that revision. The [verification record](../../archives/06_experiment-records/four-source-migration-2026-09-22/00_README.md) includes 35 actual Jason simulations and eight paired simulations covering successful delivery, retries, uncertain execution and verified recovery. These are offline checks; they do not prove current GitHub credentials, runner availability or Docker health.
 
-Before freezing a new experiment revision, run C6 for `healthy`, `transient-test-failure` and `production-persistent`, paired with the conventional approach using the same published control revision. Reset both environments to v1 between trials. Expect healthy delivery, successful delivery after the transient retry, and stopped candidate delivery with verified v1 restoration respectively; retain E1 evidence and the common experiment metrics. Follow the [migration record](../../resources-and-plans/05_BDI_FOUR_SOURCE_MIGRATION.md) for the remaining live pilot checklist.
+Before freezing a new experiment revision, run C6 for `healthy`, `transient-test-failure` and `production-persistent`, paired with the conventional approach using the same published control revision. Reset both environments to v1 between trials. Expect healthy delivery, successful delivery after the transient retry, and stopped candidate delivery with verified v1 restoration respectively; retain E1 evidence and the common experiment metrics. Use the [current study plan](../../resources-and-plans/01_EXPERIMENT_PLAN.md) and [comparative protocol](02_COMPARATIVE_EXECUTION_GUIDE.md#verification-before-live-experiments) for the live pilot checklist; the migration record is historical evidence only.

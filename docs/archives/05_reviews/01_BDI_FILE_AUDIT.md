@@ -119,9 +119,9 @@ Current Jason policy owns retry/reobservation/recovery and threshold classificat
 | [00_PLAN.md](../../resources-and-plans/01_EXPERIMENT_PLAN.md), [PROJECT.md](../../../PROJECT.md) | Earlier planning/design material. Candidates to label/archive more clearly; not runtime dependencies. |
 | [BDI_LIVE_MANUAL_DEMO.md](../02_pre-policy-refactor/05_BDI_LIVE_MANUAL_DEMO.md) | Short redirect to the current manual. Small intentional compatibility document, not harmful duplication. |
 | [.github/workflows/README-legacy-ci-cd.md](../../../.github/workflows/README-legacy-ci-cd.md) | Markdown pointer explaining current selected-entity workflows; despite its name it is not an active workflow or an old YAML pipeline. |
-| [NOTE.md](../../resources-and-plans/06_WORKING_NOTES.md) | User notes/style reference with uncommitted additions. Preserve; do not classify personal research notes as generated clutter. |
+| [NOTE.md](../../execution/guidelines/00_README.md) | User notes/style reference with uncommitted additions. Preserve; do not classify personal research notes as generated clutter. |
 
-The archive README also contains an old sentence about generating workflow/agent per campaign. The authoritative lifecycle is now in [BDI_GENERATION_AND_RUNTIME.md](../../resources-and-plans/03_BDI_GENERATION_AND_RUNTIME.md). This audit records the stale guidance without rewriting the historical archive.
+The archive README also contains an old sentence about generating workflow/agent per campaign. The authoritative lifecycle is now in [BDI_GENERATION_AND_RUNTIME.md](../../resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md). This audit records the stale guidance without rewriting the historical archive.
 
 ## 7. Generated or similar-looking files that must stay
 

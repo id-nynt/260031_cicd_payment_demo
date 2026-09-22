@@ -39,7 +39,7 @@ Step 3 tests a separate local app on port 3002; step 7 tests Jason with simulate
 
 Steps 10–12 deploy and verify v1; steps 13–14 deploy v2. Watch Jason's decisions, the selected GitHub Actions jobs, and the app/telemetry on staging 3001 and production 3000. Steps 15–16 are separate fault/recovery campaigns. Use step 17 whenever execution is uncertain, before starting another campaign. Step 18 explains how to repeat using the same source versions and a fresh evidence directory.
 
-The [generation and runtime explanation](../../resources-and-plans/03_BDI_GENERATION_AND_RUNTIME.md) links the inputs, generators, outputs, environment and telemetry sources. This guide uses the implemented job-level design. Embedded GitHub steps in `01_pipeline.yaml` are a proposed extension, not current syntax.
+The [generation and runtime explanation](../../resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md) links the inputs, generators, outputs, environment and telemetry sources. This guide uses the implemented job-level design. Embedded GitHub steps in `01_pipeline.yaml` are a proposed extension, not current syntax.
 
 **PowerShell** commands run at the repository root in a dedicated controller checkout, outside the runner's `_work` directory and execution slot. **Runner terminal** commands run on the Linux deployment runner. The examples assume Windows can reach the runner's services through localhost; verify this if using WSL/Docker Desktop.
 

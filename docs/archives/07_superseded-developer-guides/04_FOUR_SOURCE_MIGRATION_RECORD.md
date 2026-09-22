@@ -1,6 +1,8 @@
+> **Historical document ? superseded.** Preserved for design/review history. Do not execute its setup, repair or publication instructions as the current procedure. Read the [maintained documentation](../../resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md) instead.
+
 # Four-source migration: implementation record
 
-The proposal in [BDI_MODEL_SIMPLIFICATION_PROPOSAL.md](04_BDI_MODEL_SIMPLIFICATION_PROPOSAL.md) is implemented. The payment policy has been relocated, not changed; the generated AgentSpeak file is byte-identical to its pre-migration version.
+The proposal in [BDI_MODEL_SIMPLIFICATION_PROPOSAL.md](../../resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md) is implemented. The payment policy has been relocated, not changed; the generated AgentSpeak file is byte-identical to its pre-migration version.
 
 ## Files engineers edit
 
@@ -36,19 +38,19 @@ The reporting example has its own explicit `examples/config/` files; no payment 
 
 ## Preservation and verification
 
-Pre-migration masters and generated artifacts are retained in [the archive](../archives/03_model-inputs-before-four-source/00_README.md). Historical campaign evidence was not changed. The payment agent SHA-256 remains `13053a85e5c7746429c720ca13fc9aa95c77af7acb1ab43fcf9c9b6a10b97a43`.
+Pre-migration masters and generated artifacts are retained in [the archive](../03_model-inputs-before-four-source/00_README.md). Historical campaign evidence was not changed. The payment agent SHA-256 remains `13053a85e5c7746429c720ca13fc9aa95c77af7acb1ab43fcf9c9b6a10b97a43`.
 
 - Migration tests compare both payment and reporting resolved contracts with archived originals and compare the complete payment agent body (normalizing Git checkout line endings). The current generated file also matches the archived original byte-for-byte.
 - Failure tests cover missing/stale profiles, conflicting fields, duplicate YAML keys, invalid references/thresholds, retry safety and recovery invariants; runtime snapshot tests verify campaign reuse without regeneration.
 - Native preparation tests verify four-source snapshots and the common pairing key without contacting GitHub.
-- Passed: 65 Python tests, 40 Java tests (unchanged task up-to-date), 14 traffic tests, 35 actual Jason simulations and eight paired simulations; four workflows passed Actionlint and 40 documentation PowerShell blocks passed syntax checks. See the [verification record](../archives/06_experiment-records/four-source-migration-2026-09-22/00_README.md).
+- Passed: 65 Python tests, 40 Java tests (unchanged task up-to-date), 14 traffic tests, 35 actual Jason simulations and eight paired simulations; four workflows passed Actionlint and 40 documentation PowerShell blocks passed syntax checks. See the [verification record](../06_experiment-records/four-source-migration-2026-09-22/00_README.md).
 
 ## Next: manual live pilots, not automatic deployment
 
 The persistent project artifacts have already been regenerated for this migration; no extra generation is needed unless you edit a source again. This development task does not publish workflows, deploy the app or freeze a release tag.
 
 1. Publish the complete migrated control revision through your normal review process, then select the same newly published worker revision for both approaches; do not move existing v1/v2 tags.
-2. Follow [conventional setup steps 1-4](../execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md) and the BDI manual to start Docker/runner, load credentials and restore both environments to verified v1.
-3. Pilot `healthy`, `transient-test-failure` and `production-persistent` for **both** mechanisms using the same v2, known-good receipt and seed; use [BDI C6](../execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#c6-matched-comparison-all-11-scenarios) and [conventional step 5](../execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md#5-choose-one-scenario-and-launch-the-conventional-pipeline).
+2. Follow [conventional setup steps 1-4](../../execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md) and the BDI manual to start Docker/runner, load credentials and restore both environments to verified v1.
+3. Pilot `healthy`, `transient-test-failure` and `production-persistent` for **both** mechanisms using the same v2, known-good receipt and seed; use [BDI C6](../../execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#c6-matched-comparison-all-11-scenarios) and [conventional step 5](../../execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md#5-choose-one-scenario-and-launch-the-conventional-pipeline).
 4. Reset v1 between every trial, inspect actual fault exposure and all four source snapshots, compare `protocol_key`, and distinguish v2 delivery from verified v1 restoration.
 5. Freeze the experiment revision only after these live pilots pass; offline simulations do not establish live GitHub/Docker success.

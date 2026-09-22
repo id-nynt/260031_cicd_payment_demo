@@ -3,6 +3,18 @@ run-name: bdi-${{ inputs.execution_id }}
 'on':
   workflow_call:
     inputs:
+      diagnostic_binding:
+        type: string
+        required: false
+        default: '{}'
+      target_execution_id:
+        type: string
+        required: false
+        default: ''
+      verification_seconds:
+        type: string
+        required: false
+        default: '120'
       entity:
         type: string
         required: true
@@ -37,6 +49,18 @@ run-name: bdi-${{ inputs.execution_id }}
         value: ${{ jobs.report.outputs.status }}
   workflow_dispatch:
     inputs:
+      diagnostic_binding:
+        type: string
+        required: false
+        default: '{}'
+      target_execution_id:
+        type: string
+        required: false
+        default: ''
+      verification_seconds:
+        type: string
+        required: false
+        default: '120'
       entity:
         description: Logical entity selected by the BDI agent
         required: true
@@ -48,6 +72,8 @@ run-name: bdi-${{ inputs.execution_id }}
           - staging
           - production
           - rollback
+          - diagnose_production
+          - restart_production
       campaign_id:
         description: Controller campaign correlation ID
         required: true
@@ -76,6 +102,7 @@ run-name: bdi-${{ inputs.execution_id }}
           - service_unavailable
           - infrastructure_failure
           - deployment_timeout
+          - candidate_stopped
       experiment_mode:
         description: Payment behavior for the selected demo deployment
         required: true
@@ -315,6 +342,9 @@ jobs:
             docker compose exec -T -e PAYMENT_BASE_URL=http://127.0.0.1:3000 app node --input-type=module - "$EXPERIMENT_MODE" 6 < scripts/generate-experiment-traffic.mjs
             sleep 5
           done
+      - name: Inject stopped candidate after successful deployment
+        if: inputs.failure_mode == 'candidate_stopped'
+        run: docker compose stop app
     continue-on-error: ${{ inputs.report_only == true }}
   rollback:
     name: Rollback entity
@@ -369,6 +399,41 @@ jobs:
             sleep 5
           done
     continue-on-error: ${{ inputs.report_only == true }}
+  candidate_operation:
+    name: ${{ inputs.entity == 'diagnose_production' && 'Diagnose candidate' || 'Restart candidate' }}
+    if: inputs.entity == 'diagnose_production' || inputs.entity == 'restart_production'
+    runs-on: [self-hosted, linux, payment-deploy]
+    timeout-minutes: 5
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute mechanical candidate operation
+        env:
+          ENTITY: ${{ inputs.entity }}
+          EXPECTED: ${{ inputs.target_execution_id }}
+          DIAGNOSTIC_BINDING: ${{ inputs.diagnostic_binding }}
+          WINDOW: ${{ inputs.verification_seconds }}
+          FAILURE_MODE: ${{ inputs.failure_mode }}
+        run: |
+          action=diagnose
+          args=()
+          if [ "$ENTITY" = restart_production ]; then action=restart; fi
+          if [ "$FAILURE_MODE" = force_failure ]; then args+=(--inject-restart-failure); fi
+          python scripts/candidate-repair.py "$action" --bindings "$DIAGNOSTIC_BINDING" --expected "$EXPECTED" --verification-seconds "$WINDOW" --output evidence/receipt.json "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repair-${{ inputs.execution_id }}
+          path: evidence/receipt.json
+          if-no-files-found: error
   report:
     if: ${{ always() && inputs.report_only == true }}
     needs:

@@ -1,3 +1,5 @@
+> **Historical document ? superseded.** Preserved for design/review history. Do not execute its setup, repair or publication instructions as the current procedure. Read the [maintained documentation](../../execution/guidelines/00_README.md) instead.
+
 # Payment service
 
 ## 1. Local run

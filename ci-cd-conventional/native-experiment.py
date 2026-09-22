@@ -85,12 +85,14 @@ def prepare(directory):
     output('known_good_sha', good)
 
 
-def measure(bindings, entity, execution_id, get=None):
+def measure(bindings, entity, execution_id, get=None, verify_identity=False):
     endpoints = bindings['environments']['production' if entity=='rollback' else entity]
     def fetch(url):
         with urllib.request.urlopen(url, timeout=5) as r: return json.load(r)
     get = get or fetch
     try:
+        if verify_identity and get(urllib.parse.urljoin(endpoints['ready_url'],'/health')).get('deploymentRunId') != execution_id:
+            raise ValueError('Candidate deployment identity mismatch')
         get(endpoints['ready_url'])
         values = {}
         for key, query in bindings['metrics'].items():
@@ -115,13 +117,24 @@ def healthy(sample, thresholds):
     return (sample['data_status']=='fresh' and sample['readiness']=='ready' and sample['availability']>=1
         and sample['error_rate']<=thresholds['error_rate_high_gt'] and sample['latency_p95_ms']<=thresholds['latency_p95_ms_high_gt'])
 
-def observe(policy, sample, record, clock=time.monotonic, sleep=time.sleep):
+def observe(policy, sample, record, clock=time.monotonic, sleep=time.sleep, repair=None, deadline_limit=lambda: float("inf")):
     execution=policy['execution']; deadline=clock()+execution['observation_timeout_seconds']; consecutive=0; value={}
-    for round_number in range(1,execution['observation_attempts']+1):
-        if clock()>=deadline: break
+    round_number=0
+    while round_number<execution['observation_attempts']:
+        if clock()>=min(deadline,deadline_limit()): break
+        round_number+=1
         value=sample(); record(round_number,value)
+        if repair is not None and not healthy(value,policy['thresholds']):
+            result=repair()
+            repair=None
+            if result == 'executed':
+                consecutive=0
+                round_number=0
+                deadline=clock()+execution['observation_timeout_seconds']
+                continue
+            if result in ('failed','unknown','exhausted'): return 'block'
         consecutive=consecutive+1 if healthy(value,policy['thresholds']) else 0
-        if clock()>=deadline: break
+        if clock()>=min(deadline,deadline_limit()): break
         if consecutive>=execution['healthy_observations']: return 'allow'
         if round_number<execution['observation_attempts']: sleep(min(execution['observation_interval_seconds'],max(0,deadline-clock())))
     return 'block' if value.get('data_status') == 'fresh' and not healthy(value,policy['thresholds']) else 'unknown'
@@ -134,8 +147,9 @@ def gate(directory, entity, execution_id, sha, scenario, seed):
     try:
         if entity in ['staging','production']:
             emit(events,'deployment_ready',after_entity=entity,milliseconds=60000)
-            traffic=subprocess.Popen(['node',str(ROOT/'scripts/run-traffic-scenario.mjs'),'--campaign',str(directory),
-                '--scenario',selected['profile'] if selected['entity']==entity and selected['profile'] else 'healthy','--entity',entity,'--seed',str(seed),'--output',str(directory)+'-traffic'])
+            if not (entity=='production' and scenario in ('candidate-stopped','candidate-restart-fails')):
+                traffic=subprocess.Popen(['node',str(ROOT/'scripts/run-traffic-scenario.mjs'),'--campaign',str(directory),
+                    '--scenario',selected['profile'] if selected['entity']==entity and selected['profile'] else 'healthy','--entity',entity,'--seed',str(seed),'--output',str(directory)+'-traffic'])
             time.sleep(60)
         def record(round_number, value):
             emit(events,'observation',entity=entity,round=round_number,**value)
@@ -152,7 +166,43 @@ def gate(directory, entity, execution_id, sha, scenario, seed):
             if duration>policy['max_production_ms']:
                 emit(events,'maintenance_violation',entity=entity,duration_ms=duration)
                 raise ValueError('Production exceeded duration constraint')
-        decision=observe(policy,lambda:measure(doc['bindings'],entity,execution_id),record)
+        repair_start=[None]; repaired=[False]
+        def repair():
+            rule=policy['candidate_repair'][entity]
+            binding=doc['bindings']['diagnostics'][entity]
+            repair_start[0]=time.monotonic()
+            def operation(action):
+                receipt=directory/(action+'-receipt.json')
+                emit(events,'repair_started' if action=='restart' else 'diagnosis_started',entity=entity,attempt=1,deployment_execution_id=execution_id)
+                command=[sys.executable,str(ROOT/'scripts/candidate-repair.py'),action,
+                    '--project',binding['compose_project'],'--app',binding['app_service'],'--dependency',binding['dependency_service'],
+                    '--expected',execution_id,'--verification-seconds',str(rule['verification_window_seconds']),'--output',str(receipt)]
+                if action=='restart' and scenario=='candidate-restart-fails':command.append('--inject-restart-failure')
+                process=subprocess.run(command)
+                evidence=json.loads(receipt.read_text()) if receipt.exists() else {'status':'unknown'}
+                if process.returncode!=0:evidence['status']='unknown'
+                emit(events,'repair_finished' if action=='restart' else 'diagnosis_finished',entity=entity,attempt=1,status=evidence['status'],
+                    deployment_execution_id=execution_id,app_state=evidence.get('before',{}).get('app_state'),dependency_ready=evidence.get('before',{}).get('dependency_ready'))
+                return evidence
+            diagnosis=operation('diagnose')
+            if diagnosis['status']!='observed': return 'unknown'
+            if diagnosis['before']['app_state'] not in ('running','stopped'):return 'unknown'
+            if diagnosis['before']['app_state']!='stopped' or not diagnosis['before']['dependency_ready']:return 'not_applicable'
+            if time.monotonic()-repair_start[0]>=rule['deadline_seconds']:return 'exhausted'
+            status=operation('restart')['status']
+            repaired[0]=status=='executed'
+            # A selected repair that could not execute falls back; only a diagnostic
+            # not_applicable result resumes passive observation.
+            return status if status in ('executed','failed') else 'unknown'
+        def sample():
+            if repair_start[0] is not None and time.monotonic()-repair_start[0]>=policy['candidate_repair'][entity]['deadline_seconds']:
+                return dict(data_status='unavailable',readiness='unknown',error_rate=0,latency_p95_ms=0,availability=0)
+            return measure(doc['bindings'],entity,execution_id,verify_identity=repaired[0])
+        decision=observe(policy,sample,record,repair=repair if entity in policy.get('candidate_repair',{}) else None,
+            deadline_limit=lambda: repair_start[0]+policy['candidate_repair'][entity]['deadline_seconds'] if repair_start[0] is not None else float('inf'))
+        restart_receipt=directory/'restart-receipt.json'
+        if decision=='allow' and restart_receipt.exists() and json.loads(restart_receipt.read_text())['status']=='executed':
+            emit(events,'decision',entity=entity,decision='repair_verified',counter=1)
         emit(events,'health_accepted',entity=entity,decision=decision)
         write(directory/'gate-result.json',dict(entity=entity,decision=decision,execution_id=execution_id,release_sha=sha))
         output('decision',decision)

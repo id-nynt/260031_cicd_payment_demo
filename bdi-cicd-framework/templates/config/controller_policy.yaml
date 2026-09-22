@@ -33,3 +33,9 @@ recovery_policy:
 telemetry_constraints:
   error_rate_high_gt: 0.05
   latency_p95_ms_high_gt: 500
+# Optional repair policy; requires matching 01 capability and bindings.diagnostics:
+# candidate_repair:
+#   production:
+#     max_attempts: 1
+#     deadline_seconds: 300
+#     verification_window_seconds: 120  # 120-300; payment queries use two minutes

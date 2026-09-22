@@ -12,6 +12,24 @@ from experiments.collect import main as collect
 
 
 class ResultsTest(unittest.TestCase):
+    def test_repair_metrics_need_verified_candidate_not_rollback(self):
+        from experiments.experiment_metrics import extract
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)/'trial';directory.mkdir()
+            plan=Path(str(directory)+'-experiment');plan.mkdir()
+            (plan/'plan.json').write_text(json.dumps(dict(case='candidate-stopped',traffic_required=False)))
+            result=dict(mode='github',outcome='achieved',release_sha='v2',verified_releases={'production':{'release_sha':'v2','execution_id':'id'}})
+            events=[dict(event=name,timestamp=f'2026-01-01T00:00:{i:02}Z',**fields) for i,(name,fields) in enumerate([
+                ('campaign_started',{}),('diagnosis_finished',dict(status='app_stopped')),('repair_started',{}),
+                ('repair_finished',dict(status='executed')),('decision',dict(decision='repair_verified')),('campaign_finished',{})])]
+            (directory/'experiment-events.jsonl').write_text('\n'.join(json.dumps(e) for e in events))
+            (directory/'controller-result.json').write_text(json.dumps(result))
+            row=extract(directory)
+            self.assertTrue(row['candidate_repaired']);self.assertEqual(0,row['retries']);self.assertEqual(2,row['candidate_repair_seconds'])
+            result.update(outcome='stopped',recovery_outcome='restored',telemetry={'rollback':'allow'})
+            (directory/'controller-result.json').write_text(json.dumps(result))
+            row=extract(directory)
+            self.assertFalse(row['candidate_delivered']);self.assertFalse(row['candidate_repaired']);self.assertTrue(row['service_restored'])
     def test_collector_preserves_missing_artifacts_and_running_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp)/'trial'

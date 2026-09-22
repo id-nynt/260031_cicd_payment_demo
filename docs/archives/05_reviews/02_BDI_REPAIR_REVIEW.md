@@ -1,4 +1,4 @@
-> Historical repair review. Its validation counts and advisory-audit notes describe earlier commits. Current policy and validation are documented in [generation/runtime](../../resources-and-plans/03_BDI_GENERATION_AND_RUNTIME.md) and [policy validation](../06_experiment-records/policy-2026-09-21/00_README.md).
+> Historical repair review. Its validation counts and advisory-audit notes describe earlier commits. Current policy and validation are documented in [generation/runtime](../../resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md) and [policy validation](../06_experiment-records/policy-2026-09-21/00_README.md).
 
 # Repair base review
 

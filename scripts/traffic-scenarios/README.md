@@ -1,6 +1,6 @@
 # Campaign-linked traffic profiles
 
-Run from the repository root with Node 22+. Use [manual guide C0](../../docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#c0-scenario-driven-traffic-recommended-for-repeatable-timing) for complete controller setup. Keep the original `generate-experiment-traffic.mjs` for manual traffic.
+Run from the repository root with Node 22+. Use [manual guide C2](../../docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#c0-scenario-driven-traffic-recommended-for-repeatable-timing) for complete controller setup. Keep the original `generate-experiment-traffic.mjs` for manual traffic.
 
 ```powershell
 node scripts/run-traffic-scenario.mjs --campaign bdi-cicd-framework/runs/YOUR-NEW-CAMPAIGN --scenario temporary-errors --seed 42
@@ -42,7 +42,7 @@ node --test scripts/tests/traffic-scenario.test.mjs
 
 ## Staging failure cases
 
-Use manual guide **C0-S** for ready-to-copy setup and launch commands. Both staging profiles declare `"entity": "staging"`; the CLI defaults to port 3001 and rejects an entity override that disagrees with the profile.
+Use manual guide **C2** for ready-to-copy setup and launch commands. Both staging profiles declare `"entity": "staging"`; the CLI defaults to port 3001 and rejects an entity override that disagrees with the profile.
 
 ```powershell
 node scripts/run-traffic-scenario.mjs --campaign YOUR-NEW-CAMPAIGN --scenario staging-temporary-errors

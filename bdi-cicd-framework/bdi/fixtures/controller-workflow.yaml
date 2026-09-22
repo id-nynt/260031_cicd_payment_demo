@@ -1,4 +1,5 @@
-schema_version: 2
+# Generated from 01_pipeline.yaml, 02_goal.yaml, controller_policy.yaml and runtime_bindings.yaml; do not edit.
+schema_version: 3
 workflow:
   name: Payment service release with BDI recovery
   entities(E):
@@ -55,11 +56,11 @@ execution:
   max_retries: 1
   observation_attempts: 36
   observation_interval_seconds: 5
-  reconciliation_attempts: 3
-  reconciliation_interval_seconds: 5
-  retry_interval_seconds: 5
   observation_timeout_seconds: 180
   healthy_observations: 2
+  retry_interval_seconds: 5
+  reconciliation_attempts: 3
+  reconciliation_interval_seconds: 5
   retry_safe:
   - build
   - test
@@ -121,3 +122,15 @@ bindings:
   thresholds:
     error_rate_high_gt: 0.05
     latency_p95_ms_high_gt: 500
+  diagnostics:
+    production:
+      compose_project: payment-production
+      app_service: app
+      dependency_service: postgres
+candidate_repair:
+  production:
+    diagnose_job_name: Diagnose candidate
+    restart_job_name: Restart candidate
+    max_attempts: 1
+    deadline_seconds: 300
+    verification_window_seconds: 120

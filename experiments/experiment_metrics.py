@@ -51,7 +51,18 @@ def extract(directory):
     interventions = read(Path(str(directory) + '-experiment') / 'interventions.json')
     mode = result.get('mode')
     if mode != 'github': reasons.append('not_live_execution')
-    row = dict(campaign=str(directory.resolve()), mechanism=manifest.get('mechanism'), case=plan.get('case'), seed=plan.get('seed'),
+    repair_actions=[e for e in events if e['event']=='repair_started']
+    repair_verified=next((e for e in events if e['event']=='decision' and e.get('decision')=='repair_verified'),None)
+    if plan.get('case') in ('candidate-stopped','candidate-restart-fails') and not any(
+            e['event']=='diagnosis_finished' and (e.get('status')=='app_stopped' or
+            (e.get('app_state')=='stopped' and e.get('dependency_ready') is True)) for e in events):
+        reasons.append('stopped_candidate_fault_not_observed')
+    row = dict(repair_attempts=len(repair_actions), diagnoses=sum(e['event']=='diagnosis_started' for e in events),
+        candidate_repaired=bool(delivery and repair_verified and repair_actions and any(
+            e['event']=='repair_finished' and e.get('status')=='executed' for e in events)),
+        candidate_repair_seconds=duration(repair_actions[0] if repair_actions else None,repair_verified),
+        repair_failures=sum(e['event']=='repair_finished' and e.get('status')!='executed' for e in events),
+        campaign=str(directory.resolve()), mechanism=manifest.get('mechanism'), case=plan.get('case'), seed=plan.get('seed'),
         comparison_key=plan.get('comparison_key'), protocol_key=plan.get('protocol_key'), mode=mode, outcome=result.get('outcome'), recovery_outcome=result.get('recovery_outcome'),
         candidate_delivered=delivery, service_restored=bool(restored), production_dispatched=any(e.get('entity')=='production' for e in actions),
         runtime_seconds=duration(started, finished), time_to_candidate_seconds=duration(started, finished) if delivery else None,
@@ -66,7 +77,8 @@ def extract(directory):
         human_interventions=len(interventions) if isinstance(interventions,list) else None,
         validation_issues=reasons, eligible_for_comparison=not reasons)
     # These are protocol expectations, not an independent oracle proving application correctness.
-    expectations = {'healthy': delivery, 'transient-test-failure': delivery and row['retries'] == 1,
+    expectations = {'candidate-stopped':delivery and row['candidate_repaired'] and row['repair_attempts']==1,
+        'candidate-restart-fails':bool(restored) and row['repair_attempts']==1 and not delivery, 'healthy': delivery, 'transient-test-failure': delivery and row['retries'] == 1,
         'build-failure': not row['production_dispatched'] and result.get('outcome') == 'stopped' and result.get('executions', {}).get('build', {}).get('status') == 'failure',
         'staging-persistent': not row['production_dispatched'] and result.get('outcome') == 'stopped',
         'test-failure': not row['production_dispatched'] and result.get('executions',{}).get('test',{}).get('status')=='failure',

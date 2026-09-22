@@ -118,3 +118,7 @@ bindings:
   thresholds:
     error_rate_high_gt: 0.05
     latency_p95_ms_high_gt: 500
+# This reference omits optional repair and therefore uses schema 2.
+# Enabling candidate_repair in 01/policy and diagnostics in bindings generates
+# schema 3, with resolved candidate_repair plus bindings.diagnostics sections.
+# It does not add normal pipeline achievements; master_goal remains unchanged.

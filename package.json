@@ -13,6 +13,7 @@
     "lint": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "test:traffic": "node --test scripts/tests/traffic-scenario.test.mjs",
     "test:watch": "vitest",
     "traffic:demo": "node scripts/generate-demo-traffic.mjs",
     "traffic:experiment": "node scripts/generate-experiment-traffic.mjs",

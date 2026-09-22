@@ -8,6 +8,6 @@ All offline checks passed: 65 Python tests, 40 Java tests (unchanged Gradle test
 
 Payment and reporting contracts equal their archived pre-migration contracts. The payment agent is byte-identical. Missing/stale profiles, invalid settings and provenance mismatches are covered by tests.
 
-These results do not represent live native GitHub Actions or Docker deployments, and do not demonstrate BDI superiority. Live paired healthy, transient and rollback pilots remain required before freezing the experiment revision; follow the [migration record](../../../resources-and-plans/05_BDI_FOUR_SOURCE_MIGRATION.md).
+These results do not represent live native GitHub Actions or Docker deployments, and do not demonstrate BDI superiority. Live paired healthy, transient and rollback pilots remain required before freezing the experiment revision; follow the [migration record](../../07_superseded-developer-guides/04_FOUR_SOURCE_MIGRATION_RECORD.md).
 
 Full local simulation evidence remains under the ignored `bdi-cicd-framework/bdi/build/four-source-jason-20260922/` and `four-source-comparison-20260922/` directories. Historical campaign evidence was preserved.

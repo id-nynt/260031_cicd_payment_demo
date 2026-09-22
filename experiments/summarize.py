@@ -34,12 +34,18 @@ def summarize(root, candidate=None):
         recovered = [r for r in valid if r.get('service_restored')]
         recovery_attempted = [r for r in valid if r.get('rollback_attempts', 0) > 0]
         times = [r['recovery_seconds'] for r in recovered if r.get('recovery_seconds') is not None]
+        repairs=[r for r in valid if r.get('repair_attempts',0)>0]
+        repaired=[r for r in repairs if r.get('candidate_repaired')]
+        repair_times=[r['candidate_repair_seconds'] for r in repaired if r.get('candidate_repair_seconds') is not None]
         summary.append(dict(mechanism=mechanism, case=case, recorded=len(trials), eligible=len(valid),
             excluded=len(trials)-len(valid), delivered=sum(bool(r.get('candidate_delivered')) for r in valid),
             delivery_rate=sum(bool(r.get('candidate_delivered')) for r in valid)/len(valid) if valid else None,
             recovery_attempted=len(recovery_attempted), restored=len(recovered),
             restoration_rate=len(recovered)/len(recovery_attempted) if recovery_attempted else None,
             mean_recovery_seconds=mean(times) if times else None,
+            repair_attempted=len(repairs), candidate_repaired=len(repaired),
+            candidate_repair_rate=len(repaired)/len(repairs) if repairs else None,
+            mean_candidate_repair_seconds=mean(repair_times) if repair_times else None,
             mean_retries=mean(r['retries'] for r in valid) if valid else None))
     pairs = {}
     for row in rows:

@@ -71,7 +71,7 @@ py -3 -m pip install PyYAML==6.0.3
 npm ci
 ```
 
-**Expected result:** Python, JDK 21 or newer, Node 22 or newer, GitHub CLI and Docker respond. Remote is `id-nynt/260031_cicd_payment_demo`. Start from `repair/bdi-canonical-controller`; B3 later creates a candidate branch. Preserve existing edits, including `docs/resources-and-plans/06_WORKING_NOTES.md`.
+**Expected result:** Python, JDK 21 or newer, Node 22 or newer, GitHub CLI and Docker respond. Remote is `id-nynt/260031_cicd_payment_demo`. Start from `repair/bdi-canonical-controller`; B3 later creates a candidate branch. Preserve existing edits, including `docs/execution/guidelines/00_README.md`.
 
 ### A2. Test the app separately on port 3002
 

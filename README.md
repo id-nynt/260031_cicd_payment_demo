@@ -1,11 +1,14 @@
 # Payment Service
 
+The app shows its source-controlled **v1/v2** banner on checkout, payment and receipt pages, in `/health.appVersion`, and in startup logs. This checkout contains **v2**. The candidate-repair update leaves payment code unchanged: users with the labelled app pair should start with [BDI manual A4.4](docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#a44-update-only-the-control-revision-retaining-an-existing-app-pair) to publish a new control revision while retaining their app SHAs. New users follow the same manual from A1.
+
+
 Documentation: [reading guide](docs/00_README.md).
 
 Current experiment entry points: [BDI manual](docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md), [standalone conventional manual](docs/execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md), and [results inspection](docs/execution/guidelines/05_EXPERIMENT_RESULTS_GUIDE.md). Conventional code/workflow sources are in `ci-cd-conventional/`; shared scenarios, metrics and new result directories are in `experiments/`. The root application and existing v1/v2 revisions remain shared.
 
 
-A small payment-service demonstration that can run locally, in Docker, on a VM, or through a GitHub Actions CI/CD pipeline. Its research controller can generate a Jason BDI agent from two canonical pipeline and goal inputs; that agent selects each CI/CD entity while GitHub Actions executes the selected work.
+A small payment-service demonstration that can run locally, in Docker, on a VM, or through a GitHub Actions CI/CD pipeline. Its research controller generates a Jason BDI agent from four sources: pipeline, goals, controller policy and runtime bindings. The agent selects each CI/CD entity and bounded candidate repair while GitHub Actions executes the selected work. The conventional approach has the same shared repair capabilities for comparison.
 
 Start with the current controller guide; older audit/demo documents describe historical iterations.
 

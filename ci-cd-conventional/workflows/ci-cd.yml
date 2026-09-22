@@ -13,6 +13,8 @@ run-name: conventional-${{ inputs.scenario }}-${{ inputs.release_sha }}
         type: choice
         options:
         - healthy
+        - candidate-stopped
+        - candidate-restart-fails
         - build-failure
         - test-failure
         - transient-test-failure
@@ -136,7 +138,7 @@ jobs:
     with:
       entity: production
       release_sha: ${{ inputs.release_sha }}
-      failure_mode: ${{ inputs.scenario == 'service-unavailable' && 'service_unavailable' || 'none' }}
+      failure_mode: ${{ inputs.scenario == 'service-unavailable' && 'service_unavailable' || (inputs.scenario == 'candidate-stopped' || inputs.scenario == 'candidate-restart-fails') && 'candidate_stopped' || 'none' }}
       experiment_mode: ${{ (inputs.scenario == 'production-temporary' || inputs.scenario == 'production-persistent') && 'request_faults' || 'normal' }}
   production_health:
     needs:

@@ -28,3 +28,8 @@ recovery:
     job_name: Rollback entity
     environment: production
     from: production
+# Optional payment-worker extension (omit for other projects unless adapters support it):
+# candidate_repair:
+#   production:
+#     diagnose_job_name: Diagnose candidate
+#     restart_job_name: Restart candidate

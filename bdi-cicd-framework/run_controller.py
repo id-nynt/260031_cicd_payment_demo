@@ -21,6 +21,19 @@ import shutil
 from workflow_model import runtime_settings
 
 
+def run_with_console_log(command, *, cwd, env, log_path: Path) -> int:
+    """Keep live console output and durable evidence for GUI and terminal runs."""
+    with log_path.open("w", encoding="utf-8") as log:
+        with subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                              errors="replace") as process:
+            for line in process.stdout:
+                log.write(line)
+                log.flush()
+                print(line, end="", flush=True)
+            return process.wait()
+
+
 def load_mapping(path: Path) -> dict:
     value = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -82,7 +95,8 @@ def conventional_policy(document):
         raise ModelError('Conventional baseline requires the payment maintenance/avoidance rules')
     return {'execution': document['execution'], 'max_production_ms': int(duration[0][1]),
             'thresholds': document['bindings']['thresholds'],
-            'recovery_triggers': document['recovery_policy']['rollback']['run_after']}
+            'recovery_triggers': document['recovery_policy']['rollback']['run_after'],
+            **({'candidate_repair':document['candidate_repair']} if 'candidate_repair' in document else {})}
 
 
 def main() -> int:
@@ -92,7 +106,7 @@ def main() -> int:
     parser.add_argument("--scenario", choices=["healthy", "staging_failure", "transient_test_failure", "exhausted_test_failure",
                                                 "telemetry_block", "telemetry_unknown", "telemetry_delayed", "telemetry_transient", "production_transient", "telemetry_flapping", "observation_deadline", "deterministic_test_failure", "dispatch_rejected", "production_retry",
                                                 "production_failure", "production_unhealthy", "production_unknown",
-                                                "rollback_failure", "rollback_unknown", "rollback_unhealthy", "execution_uncertain", "reconciled_success", "reconciled_failure"])
+                                                "rollback_failure", "rollback_unknown", "rollback_unhealthy", "execution_uncertain", "reconciled_success", "reconciled_failure", "candidate_stopped", "candidate_restart_fails", "candidate_repair_unknown"])
     parser.add_argument("--known-good", type=Path, help="achieved live campaign result verifying the baseline release")
     parser.add_argument("--baseline", action="store_true", help="explicit first baseline run without prior recovery release")
     parser.add_argument("--confirm-compatible-rollback", action="store_true", help="confirm source rollback is compatible with retained database schema/data")
@@ -117,6 +131,8 @@ def main() -> int:
     document, model, generation, inputs = validate(args.project_dir)
     project = runtime_settings(document)
     baseline_policy = conventional_policy(document) if args.mechanism == 'conventional' else None
+    if baseline_policy and document.get('candidate_repair') and not args.scenario and not args.validate_only:
+        raise ModelError('Candidate repair comparison requires native ci-cd-conventional workflows; the legacy Java conventional harness is simulation-only for this contract')
     conventional_scenarios = {'healthy', 'transient_test_failure', 'exhausted_test_failure', 'deterministic_test_failure',
         'staging_failure', 'production_failure', 'dispatch_rejected', 'execution_uncertain', 'reconciled_success',
         'reconciled_failure', 'production_retry', 'production_unhealthy', 'telemetry_block', 'telemetry_transient', 'production_transient'}
@@ -235,12 +251,13 @@ def main() -> int:
     wrapper = ROOT / "bdi" / ("gradlew.bat" if os.name == "nt" else "gradlew")
     # The repository wrapper may be checked out without an executable bit.
     command = ([str(wrapper)] if os.name == "nt" else ["bash", str(wrapper)]) + ["--no-daemon", "runConventional" if args.mechanism == "conventional" else "runController"]
-    process = subprocess.run(command, cwd=ROOT / "bdi", env=environment)
+    returncode = run_with_console_log(command, cwd=ROOT / "bdi", env=environment,
+                                      log_path=artifacts / "controller-console.log")
     result_path = Path(environment["BDI_RESULT_FILE"])
     if not result_path.exists():
-        return process.returncode or 2
+        return returncode or 2
     if args.reconcile_only:
-        return process.returncode
+        return returncode
     outcome = json.loads(result_path.read_text(encoding="utf-8")).get("outcome", "unknown")
     return {"achieved": 0, "stopped": 1, "unknown": 2}.get(outcome, 2)
 

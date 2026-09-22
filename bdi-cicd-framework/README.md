@@ -37,7 +37,11 @@ run_controller.py -> ControllerMain -> ControllerEnvironment -> Jason
 Jason action -> Java GitHub adapter -> selected worker job -> correlated observations
 ```
 
-The current policy retries only eligible transient failures/timeouts on retry-safe jobs within budget. Ordinary failures stop or recover. Bad telemetry causes bounded reobservation; enough consecutive healthy samples allow progress. Unknown execution must be reconciled before redispatch. Recovery uses a verified known-good release and verifies its health; restoration never counts as candidate delivery.
+The current policy retries only eligible transient failures/timeouts on retry-safe jobs within budget. Ordinary failures stop or recover. Bad telemetry causes bounded reobservation; enough consecutive healthy samples allow progress. The payment production capability can also diagnose a deployed candidate, restart its matching stopped app once when the database is ready, then verify fresh, correlated health before resuming `!master_goal`. Unknown execution must be reconciled before redispatch. Recovery uses a verified known-good release and verifies its health; restoration never counts as candidate delivery.
+
+Candidate repair is declared in 01 (`candidate_repair` job mappings), policy (one attempt, 300-second decision budget, 120-second probe window), and bindings (`diagnostics` Docker project/app/dependency). 02 and the normal execution loop remain unchanged. Java transports observations and executes decisions; the agent selects diagnosis/restart/verification/fallback. The shared `scripts/candidate-repair.py` refuses identity mismatches and rechecks the container before mutation. Its action receipt is not proof of healthy delivery: the agent then requires two fresh samples and a live `/health.deploymentRunId` match. The conventional gate has the same capability and limits.
+
+This optional extension currently supports the payment production worker and its two-minute metric window (verification window 120-300 seconds). Other projects may omit all three repair sections and retain schema 2; adding other repair targets requires a corresponding worker/adapter implementation. Restart repairs a stopped process; it does not fix application defects, an unavailable database or a lost host.
 
 `entity.status == failure` is supported for negative experiments. It requires an actual matching failure, does not manufacture one, and produces no known-good release receipt. Goals remain subject to dependencies and constraints; impossible goals end unmet.
 
@@ -61,7 +65,7 @@ The input YAML does not implement shell commands or create runners. Adapt [.gith
 - Retain the dispatch interface (`entity`, `campaign_id`, `execution_id`, `attempt`, `release_sha`, `failure_mode`, `experiment_mode`) and `run-name: bdi-${{ inputs.execution_id }}` for correlation.
 - Match entity choices and job display names to 01. Gate each job with `if: inputs.entity == '<entity>'`; let Jason order jobs rather than a worker `needs` chain.
 - Check out the supplied `release_sha`. Keep actual `steps`, `services`, runner labels and deployment commands in this worker, not input 01.
-- Supply the execution UUID to the deployed app (the example uses `CI_RUN_ID`). Expose readiness (HTTP 200 when ready, 503 when not ready) and export metrics labeled with that execution identity. See the [telemetry integration details](../docs/resources-and-plans/03_BDI_GENERATION_AND_RUNTIME.md#payment-telemetry-and-controllable-traffic) and existing adapters before replacing the app's telemetry.
+- Supply the execution UUID to the deployed app (the example uses `CI_RUN_ID`). Expose readiness (HTTP 200 when ready, 503 when not ready) and export metrics labeled with that execution identity. See the [telemetry integration details](../docs/resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md#payment-telemetry-and-controllable-traffic) and existing adapters before replacing the app's telemetry.
 - Implement recovery using the supplied known-good SHA. Confirm database compatibility; source rollback does not undo database changes.
 
 Publish the worker and candidate source before live use. Make the dispatch workflow available on the repository default branch and select an existing published worker ref. Deployment runner labels must match the worker and the runner must stay online. Build/test jobs may use hosted runners while deployment jobs use your self-hosted runner.
@@ -84,7 +88,7 @@ python bdi-cicd-framework/generate_project.py --project-dir projects/my-app --pi
 python bdi-cicd-framework/run_controller.py --project-dir projects/my-app --validate-only
 ```
 
-Use the same `--project-dir` on subsequent commands for that configuration. Changing any of the four sources requires explicit regeneration; the manifest records all four hashes. Workflow schema 2 and the sole-saved-03 agent input contract remain unchanged.
+Use the same `--project-dir` on subsequent commands for that configuration. Changing any of the four sources requires explicit regeneration; the manifest records all four hashes. Repair-enabled contracts use schema 3; schema 2 remains accepted without repair. The saved-03 generation workflow and four sources of truth remain unchanged.
 
 ## 4. Optionally test without deployment
 
@@ -128,6 +132,6 @@ Only confirm compatible rollback when the retained database is compatible with t
 
 If interrupted, close the old console and run `python bdi-cicd-framework/run_controller.py --reconcile-only` with the same project and GitHub configuration. It checks the old remote execution, without resuming or dispatching. Do not delete pending records or start overlapping campaigns to bypass uncertainty.
 
-For the payment demo's detailed setup, traffic experiments and v1 restoration, follow the [manual guide](../docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md). For supported policy, telemetry contracts and implementation details, read [generation and runtime](../docs/resources-and-plans/03_BDI_GENERATION_AND_RUNTIME.md).
+For the payment demo's detailed setup, traffic experiments and v1 restoration, follow the [manual guide](../docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md). For supported policy, telemetry contracts and implementation details, read [generation and runtime](../docs/resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md).
 
-For matched BDI versus conventional trials with automatic traffic and metrics, see the [comparative execution guide](../docs/execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md). The conventional entry is [ci-cd.yml](../.github/workflows/ci-cd.yml), activated manually; follow its [manual guide](../docs/execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md). Both approaches support the same 11 scenarios.
+For matched BDI versus conventional trials with automatic traffic and metrics, see the [comparative execution guide](../docs/execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md). The conventional entry is [ci-cd.yml](../.github/workflows/ci-cd.yml), activated manually; follow its [manual guide](../docs/execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md). Both approaches support the same 13 scenarios, including `candidate-stopped` and `candidate-restart-fails`. Returning users retain existing app SHAs and publish a new control revision using [manual A4.4](../docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#a44-update-only-the-control-revision-retaining-an-existing-app-pair).

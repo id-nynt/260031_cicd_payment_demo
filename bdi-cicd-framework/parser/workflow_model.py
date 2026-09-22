@@ -267,8 +267,54 @@ def resolve_documents(pipeline, goals, policy, bindings):
     return p,g
 
 
+def validate_candidate_repair(doc, repairs, diagnostics):
+    if not isinstance(repairs, dict) or not isinstance(diagnostics, dict) or set(repairs) != set(diagnostics):
+        raise ModelError('Candidate repair and diagnostics must name the same entities')
+    names = set(doc['bindings']['controller']['jobs'].values())
+    for entity, rule in repairs.items():
+        if entity != 'production': raise ModelError('Shared worker currently supports candidate repair only in production')
+        if {f'diagnose_{entity}',f'restart_{entity}'} & set(doc['workflow']['entities(E)']):
+            raise ModelError('Repair operation identifiers must not overlap pipeline entities')
+        keys(rule, {'diagnose_job_name','restart_job_name','max_attempts','deadline_seconds','verification_window_seconds'},
+             {'diagnose_job_name','restart_job_name','max_attempts','deadline_seconds','verification_window_seconds'})
+        if entity not in doc['observation_schema']['after'] or entity in {e['to'] for e in doc['workflow']['recovery(R)']}:
+            raise ModelError('Repair target must be a post-verified normal deployment')
+        for key in ('diagnose_job_name','restart_job_name'):
+            value=rule[key]
+            if not isinstance(value,str) or not value.strip() or value in names: raise ModelError('Repair job names must be unique')
+            names.add(value)
+        # First implementation deliberately bounds repair to one idempotent restart.
+        if type(rule['max_attempts']) is not int or rule['max_attempts'] != 1: raise ModelError('Candidate repair supports one restart')
+        integer(rule['deadline_seconds'], 1, 600)
+        # Payment queries use a two-minute rolling window; flush pre-repair history.
+        integer(rule['verification_window_seconds'], 120, 300)
+        if rule['deadline_seconds'] < rule['verification_window_seconds']: raise ModelError('Repair deadline shorter than verification window')
+        binding=diagnostics[entity]
+        keys(binding, {'compose_project','app_service','dependency_service'}, {'compose_project','app_service','dependency_service'})
+        if any(not isinstance(v,str) or not re.fullmatch('[a-zA-Z0-9_-]+',v) for v in binding.values()):
+            raise ModelError('Invalid diagnostic Docker binding')
+        if binding['app_service']==binding['dependency_service']: raise ModelError('App and dependency must differ')
+
+
 def compile_sources(pipeline, goals, policy, bindings):
-    return compile_documents(*resolve_documents(pipeline,goals,policy,bindings))
+    pipeline,policy,bindings=map(deepcopy,(pipeline,policy,bindings))
+    actions=pipeline.pop('candidate_repair', {})
+    rules=policy.pop('candidate_repair', {})
+    diagnostics=bindings.pop('diagnostics', {})
+    if not isinstance(actions,dict) or not isinstance(rules,dict) or set(actions)!=set(rules):
+        raise ModelError('Candidate repair policy must match capabilities')
+    merged={}
+    for entity in actions:
+        keys(actions[entity], {'diagnose_job_name','restart_job_name'}, {'diagnose_job_name','restart_job_name'})
+        keys(rules[entity], {'max_attempts','deadline_seconds','verification_window_seconds'}, {'max_attempts','deadline_seconds','verification_window_seconds'})
+        merged[entity]={**actions[entity],**rules[entity]}
+    doc,model=compile_documents(*resolve_documents(pipeline,goals,policy,bindings))
+    validate_candidate_repair(doc,merged,diagnostics)
+    if merged:
+        doc['schema_version']=3
+        doc['candidate_repair']=merged
+        doc['bindings']['diagnostics']=diagnostics
+    return doc,model
 
 
 def configuration_paths(pipeline, policy=None, bindings=None):
@@ -284,6 +330,17 @@ def compile_inputs(pipeline, goals, policy=None, bindings=None):
 
 
 def expand_workflow(doc):
+    if type(doc.get('schema_version')) is int and doc['schema_version'] == 3:
+        base=deepcopy(doc)
+        repairs=base.pop('candidate_repair', None)
+        diagnostics=base.get('bindings',{}).pop('diagnostics', None)
+        base['schema_version']=2
+        expanded,model=expand_workflow(base)
+        validate_candidate_repair(base,repairs,diagnostics)
+        if not repairs: raise ModelError('Schema 3 requires explicit candidate repair capabilities')
+        expanded['runtime']['candidate_repair']=deepcopy(repairs)
+        expanded['runtime']['diagnostics']=deepcopy(diagnostics)
+        return expanded,model
     if type(doc.get('schema_version')) is not int or doc['schema_version'] != 2:
         raise ModelError('Unsupported workflow schema; explicitly regenerate project artifacts for schema 2')
     fields = {'schema_version','workflow','goals','execution','observation_schema','recovery_policy','bindings'}
@@ -366,6 +423,8 @@ def render_agent(workflow, template):
     if 'thresholds' in expanded['runtime']:
         facts+=f"error_rate_limit({expanded['runtime']['thresholds']['error_rate_high_gt']}).\n"
         facts+=f"latency_limit({expanded['runtime']['thresholds']['latency_p95_ms_high_gt']}).\n"
+    for entity,rule in doc.get('candidate_repair',{}).items():
+        facts+=f'repair_enabled({entity}).\nrepair_limit({entity}, {rule["max_attempts"]}).\n'
     return facts+'\n'+Path(template).read_text(encoding='utf-8'), doc, model
 
 

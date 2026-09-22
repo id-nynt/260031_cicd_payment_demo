@@ -28,7 +28,16 @@
       "telemetry_block",
       "telemetry_unknown",
       "maintenance_violation"
-    ]
+    ],
+    "candidate_repair": {
+      "production": {
+        "diagnose_job_name": "Diagnose candidate",
+        "restart_job_name": "Restart candidate",
+        "max_attempts": 1,
+        "deadline_seconds": 300,
+        "verification_window_seconds": 120
+      }
+    }
   },
   "bindings": {
     "project": "payment-service",
@@ -68,13 +77,20 @@
     "thresholds": {
       "error_rate_high_gt": 0.05,
       "latency_p95_ms_high_gt": 500
+    },
+    "diagnostics": {
+      "production": {
+        "compose_project": "payment-production",
+        "app_service": "app",
+        "dependency_service": "postgres"
+      }
     }
   },
-  "contract_sha256": "c324fa03f9e9b1651fe2c26ec421f157dd95eb149a8e4cacfdcf6dfd135bb7d0",
+  "contract_sha256": "f6eb4040bd7a8816ddc0515080f0004917125ccc2d17523f635df40189a77555",
   "configuration_inputs": {
     "pipeline": {
       "path": "models/01_pipeline.yaml",
-      "sha256": "dd5d37cc061def5b9e546467b31c3c5f4c853fa9ebd9ed40b1316b0bc5b9e2b6"
+      "sha256": "d14932789210c23524d64c43abc7eeebc82b4744dc76a28831eecfa4449091d1"
     },
     "goal": {
       "path": "models/02_goal.yaml",
@@ -82,11 +98,11 @@
     },
     "policy": {
       "path": "config/controller_policy.yaml",
-      "sha256": "275eab0b7691390b274e2cd6131841a7ed1f430580b92e063b1c454fd73302c4"
+      "sha256": "c339fcec957bcae975e6d556c59bc6bef9d8b1ad3d335d94ec8580d0aeba697f"
     },
     "bindings": {
       "path": "config/runtime_bindings.yaml",
-      "sha256": "1cc2152837f04e91c18b06fe43b41ab0b395b02eb4002b363a6fc1286e70a79d"
+      "sha256": "8ffaf46474e07750ea85b0070c039e1a92eac645ca1a8b641d28447f49775e48"
     }
   }
 }

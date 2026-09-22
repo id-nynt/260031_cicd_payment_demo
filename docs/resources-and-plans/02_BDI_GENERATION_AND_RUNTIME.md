@@ -84,16 +84,21 @@ Validation resolves and recompiles all four sources, compares the saved contract
 
 Static beliefs describe the project: entities, dependencies, required jobs, achievement predicates, recovery mappings, thresholds and limits. Runtime beliefs track attempts, running/terminal work, phase results, observations and workflow state. Java publishes attempt-qualified `status`, `duration`, `reconciled` and round-qualified `telemetry_measurement` percepts. The execution UUID additionally correlates GitHub and deployed-app measurements.
 
-The active generic plans use this progression:
+The active generic plans use four named stages, entered through the existing master goal:
 
 ```text
 !master_goal -> !need_achieve(Entity, Desired) -> !run_pipeline
-  -> !run_entity(Entity) -> run_job(Entity, Attempt)
-  -> correlated status/duration -> phase_result(Entity, success | failure)
-  -> maintenance, avoidance and required health checks
-  -> next eligible entity, retry, reobserve, reconcile, recover or stop
-  -> !check_master_goal -> achieved / stopped / unknown
+  1. !check_post_observations: finish required checks of previous successful jobs
+  2. !check_pre_observations: check the next eligible job's observation requirements
+  3. !run_entity(Entity): increment the attempt and call run_job(Entity, Attempt)
+     [wait for matching status/duration percepts, then handle the result]
+  4. !assess_goals: check completion, or return to stage 1
+     -> !check_master_goal -> achieved only after all required checks
 ```
+
+These are event-driven stages, not four unconditional consecutive calls. Job and observation callbacks resume the loop; a final job still needs its post-observations. Existing accepted telemetry may satisfy a precondition. Failure handlers may retry within budget, diagnose/repair, select verified rollback, reconcile uncertain execution, or stop. A recovery job uses the same execution action but is outside the normal scheduling loop.
+
+`phase_result(Entity, execution_failed)` is the internal unsuccessful-attempt marker. `phase_result(Entity, failure)` is reserved for an observed failure explicitly requested by a negative achievement; it does not describe ordinary fault injection. Java result statuses and source goal syntax are unchanged. The console's `BDI_STAGE=1/2/3/4` lines make progression visible; they are not additional retries or experiment outcomes.
 
 `phase_result(Entity, success)` alone is not verified delivery. Required health must also be accepted before progression/achievement. MAS exposes `workflow_active`, `workflow_started`, `workflow_stopped`, `workflow_completed` and `master_goal_achieved` as the corresponding plans run. The console/journal preserve decisions; the mind inspector shows current beliefs, which can change quickly.
 

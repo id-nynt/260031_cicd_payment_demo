@@ -30,6 +30,11 @@ Inputs **01, 02, controller_policy and runtime_bindings are the four configurati
 
 The generator emits static beliefs for entities, dependencies, capabilities, budgets and goal predicates. During execution the agent receives attempt-correlated status, duration and telemetry beliefs, and tracks attempts and workflow state. Its `!master_goal` pursues the declared achievements through the plans in [generator/controller_generic.asl](generator/controller_generic.asl). The older `bdi_generic.asl` is not the active policy.
 
+The generated agent now makes four stages explicit: `!check_post_observations` (previous jobs), `!check_pre_observations` (next eligible job), `!run_entity` (increment and dispatch), and `!assess_goals` (complete or reconsider). `!run_pipeline` is their event-driven entry point. Java actions publish percepts; the agent waits for matching result handlers to resume, rather than assuming an action call has already established success. Required final-job health is verified before completion. Console lines `BDI_STAGE=1` through `BDI_STAGE=4` expose the sequence; observation callbacks may repeat earlier stages.
+
+The internal unsuccessful-attempt marker is `phase_result(Entity, execution_failed)`. The distinct `phase_result(Entity, failure)` still means an actual failure explicitly requested by a negative achievement. Neither the Java status vocabulary nor the source goal syntax changes. The frozen [pre-refactor policy](bdi/fixtures/controller_generic_pre_sequence.asl) and [original generated agent](bdi/fixtures/controller_agent_pre_sequence.asl) are regression references, not a second active configuration. The [sequence sample](bdi/controller_agent_sequence_sample.asl) remains a review-only snapshot; always generate the operational agent through the normal workflow.
+
+
 ```text
 01 + 02 + controller_policy + runtime_bindings -> generate_project.py / parser/workflow_model.py -> saved 03
 saved 03 + controller_generic.asl -> bdi/controller_agent.asl + manifest
@@ -40,6 +45,9 @@ Jason action -> Java GitHub adapter -> selected worker job -> correlated observa
 The current policy retries only eligible transient failures/timeouts on retry-safe jobs within budget. Ordinary failures stop or recover. Bad telemetry causes bounded reobservation; enough consecutive healthy samples allow progress. The payment production capability can also diagnose a deployed candidate, restart its matching stopped app once when the database is ready, then verify fresh, correlated health before resuming `!master_goal`. Unknown execution must be reconciled before redispatch. Recovery uses a verified known-good release and verifies its health; restoration never counts as candidate delivery.
 
 Candidate repair is declared in 01 (`candidate_repair` job mappings), policy (one attempt, 300-second decision budget, 120-second probe window), and bindings (`diagnostics` Docker project/app/dependency). 02 and the normal execution loop remain unchanged. Java transports observations and executes decisions; the agent selects diagnosis/restart/verification/fallback. The shared `scripts/candidate-repair.py` refuses identity mismatches and rechecks the container before mutation. Its action receipt is not proof of healthy delivery: the agent then requires two fresh samples and a live `/health.deploymentRunId` match. The conventional gate has the same capability and limits.
+
+The resilience hypothesis concerns decisions under changing runtime conditions: reobserve a temporarily unhealthy running app, restart an identified stopped candidate when applicable, verify fresh evidence before accepting recovery, and restore v1 if candidate recovery cannot be established safely. These choices remain in the agent's plans after the stage refactor. Do not weaken the conventional policy or give BDI extra recovery capabilities to obtain a difference. Offline behavioural equivalence checks establish that the refactor preserved these decisions; matched live trials establish whether either mechanism has better outcomes or costs.
+
 
 This optional extension currently supports the payment production worker and its two-minute metric window (verification window 120-300 seconds). Other projects may omit all three repair sections and retain schema 2; adding other repair targets requires a corresponding worker/adapter implementation. Restart repairs a stopped process; it does not fix application defects, an unavailable database or a lost host.
 
@@ -97,7 +105,7 @@ python bdi-cicd-framework/run_controller.py --scenario healthy --gui
 python -m unittest discover -s bdi-cicd-framework/parser -p 'test_*.py'
 ```
 
-**Expected:** the simulation opens MAS Console and shows decisions and a final outcome; success goals compatible with the healthy scenario should be achieved. Tests check the compiler and artifact contracts. Simulation does not prove that your real worker, runner or telemetry works. The [reporting example](examples/reporting_pipeline.yaml) demonstrates another topology; it is not a deployed application.
+**Expected:** the simulation opens MAS Console and shows decisions and a final outcome; success goals compatible with the healthy scenario should be achieved. Tests check the compiler and artifact contracts. Simulation does not prove that your real worker, runner or telemetry works. The [four-stage refactor verification](../experiments/SEQUENCE_REFACTOR_VERIFICATION.md) records the preserved reference and 38 offline behavioural comparisons, including adaptive repair and recovery. The [reporting example](examples/reporting_pipeline.yaml) demonstrates another topology; it is not a deployed application.
 
 ## 5. Start a real deployment
 

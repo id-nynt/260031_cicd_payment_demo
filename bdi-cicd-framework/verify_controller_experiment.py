@@ -11,6 +11,9 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 NORMAL = ["build", "test", "security", "staging", "production"]
 CASES = [
+    ("candidate_stopped", "candidate_stopped", NORMAL, "achieved", "not_needed", []),
+    ("candidate_restart_fails", "candidate_restart_fails", NORMAL + ["rollback"], "stopped", "restored", []),
+    ("candidate_repair_unknown", "candidate_repair_unknown", NORMAL, "unknown", "unresolved", []),
     ("unreachable_goals", "staging_failure", NORMAL[:-1], "stopped", "not_needed", []),
 
     ("negative_execution_uncertain", "execution_uncertain", NORMAL, "unknown", "unresolved", []),
@@ -57,7 +60,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "bdi/build" / ("recovery-suite-" + uuid.uuid4().hex[:8]))
     parser.add_argument("--case", action="append", choices=[case[0] for case in CASES], help="run only named cases")
+    parser.add_argument("--compare", type=Path, help="reference summary.json; compare behaviour, excluding timestamps and IDs")
     args = parser.parse_args()
+    reference = {row['case']: row for row in json.loads(args.compare.read_text(encoding='utf-8'))} if args.compare else None
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     # Shortened waits only for this local matrix. The normal live manifest stays unchanged.
@@ -151,12 +156,52 @@ def main():
             paused = next(e for e in events if e["event"] == "controller_pause")
             successor = next(e for e in events if e["event"] == "entity_execution_started" and e["entity"] == "staging")
             assert (datetime.fromisoformat(successor["timestamp"]) - datetime.fromisoformat(paused["timestamp"])).total_seconds() >= 0.70
+        assert result['mode'] == 'scenario', (name, 'must remain offline')
+        assert not any(e['event'] == 'controller_action_error' for e in events), (name, 'environment action error')
+        # A successful worker is not sufficient: promotion must wait for accepted health.
+        for index, event in enumerate(events):
+            if event['event'] == 'entity_execution_started' and event['entity'] == 'production':
+                assert any(e['event'] == 'health_accepted' and e.get('entity') == 'staging'
+                           and e.get('decision') == 'allow' for e in events[:index]), (name, 'premature promotion')
+        if name in ('candidate_stopped', 'candidate_restart_fails', 'candidate_repair_unknown'):
+            assert sum(e['event'] == 'repair_started' for e in events) == 1, (name, 'bounded repair')
+        if name == 'candidate_stopped':
+            repair = next(i for i,e in enumerate(events) if e['event'] == 'repair_started')
+            verified = next(i for i,e in enumerate(events) if e.get('decision') == 'repair_verified')
+            assert repair < verified
+            assert any(e['event'] == 'telemetry_measurement' and e['entity'] == 'production'
+                       for e in events[repair+1:verified]), (name, 'repair requires new observations')
+        if name == 'production_unhealthy':
+            assert not any(e['event'] == 'repair_started' for e in events), (name, 'running app must not restart')
+        executions = {}
+        for event in events:
+            if event['event'] == 'entity_execution_finished':
+                executions[event['entity']] = event['execution_id']
+            if event['event'] == 'telemetry_measurement':
+                assert event['execution_id'] == executions[event['entity']], (name, 'stale deployment observation')
+        if 'BDI_STAGE=' in console:
+            assert 'BDI_STAGE=1' in console and 'BDI_STAGE=2' in console and 'BDI_STAGE=3' in console
+            if outcome == 'achieved':
+                assert 'BDI_STAGE=4' in console, (name, 'missing goal assessment')
+            assert console.index('BDI_STAGE=1') < console.index('BDI_STAGE=2') < console.index('BDI_STAGE=3')
+        assert 'No applicable plan' not in console and 'Could not finish intention' not in console, (name, 'unhandled agent event')
         ids = [e["execution_id"] for e in events if e["event"] == "entity_execution_finished"]
         assert len(ids) == len(set(ids))
         rows.append({"case": name, "expected": expected, "actual": actual, "outcome": outcome,
                      "recovery": recovery, "telemetry": result["telemetry"], "execution_ids": ids,
                      "achieved_goals": result["achieved_goals"], "unmet_goals": result["unmet_goals"],
                      "manifest": json.loads((directory / "generation-manifest.json").read_text(encoding="utf-8"))})
+        if reference is not None:
+            reference_events = [json.loads(line) for line in
+                (args.compare.parent / name / 'controller-journal.jsonl').read_text(encoding='utf-8').splitlines()]
+            def decisions(trace):
+                return [(e['event'], e.get('entity'), e.get('decision'), e.get('attempt'),
+                         e.get('source'), e.get('recovery'), e.get('reason')) for e in trace
+                        if e['event'] in ('bdi_decision', 'bdi_recovery_decision')]
+            assert decisions(events) == decisions(reference_events), (name, 'decision sequence changed')
+            assert name in reference, (name, 'missing reference case')
+            for field in ('actual', 'outcome', 'recovery', 'telemetry', 'achieved_goals', 'unmet_goals'):
+                assert rows[-1][field] == reference[name][field], (name, field, 'reference behaviour changed')
         (output / "summary.json").write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
         print(f"PASS {name}: {','.join(actual)} -> {outcome}/{recovery}", flush=True)
     print(f"Local scenario evidence: {output}")

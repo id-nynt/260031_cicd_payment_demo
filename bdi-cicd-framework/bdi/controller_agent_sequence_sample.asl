@@ -1,4 +1,32 @@
-// Generated solely from the validated workflow model; do not edit.
+// REVIEW SAMPLE ONLY - not selected by controller.mas2j or the generator.
+// Read the numbered sections below to follow the supervisor's execution sequence.
+// The facts are a snapshot of the CURRENT GENERATED agent, not a new source of truth.
+// The four source files and their normal generation workflow remain authoritative.
+// This sample is self-contained and uses the existing ControllerEnvironment actions.
+// It is not automatically regenerated: future model changes require a refreshed snapshot.
+// Do not replace the live generated agent with this review sample without validation.
+//
+// READING MAP
+// A. Generated static beliefs and initial dynamic counters.
+// B. Dependency, eligibility, safety and goal rules.
+// C. master_goal starts the event-driven execution loop.
+// 1. check_post_observations: verify previous successful jobs before proceeding.
+// 2. check_pre_observations: check observations needed by the next eligible job.
+// 3. run_entity: increment attempts and request execution from Java.
+// 4. assess_goals: reconsider completion after results, or continue the loop.
+// Job/observation actions deliver later percepts; calling an action alone does NOT
+// mean its result has been processed. Result handlers resume the loop explicitly.
+// Final-job post-observations are still required before master_goal can succeed.
+// Recovery runs outside normal scheduling; restoring v1 never achieves v2 delivery.
+//
+// TERMINOLOGY
+// phase_result(E, success): successful execution.
+// phase_result(E, failure): observed failure explicitly requested by a negative goal.
+// phase_result(E, execution_failed): unsuccessful attempt requiring policy handling.
+// Only the internal marker is renamed; Java status values and goal values are unchanged.
+// In the current model the achievement goals request SUCCESS, not failure.
+//
+// A. GENERATED BELIEF SNAPSHOT
 
 entity(build).
 entity(test).
@@ -68,11 +96,8 @@ latency_limit(500).
 repair_enabled(production).
 repair_limit(production, 1).
 
-// Project-specific beliefs above are generated solely from 03_workflow_model.yaml.
-// Generic event-driven plans: post-observations -> pre-observations -> dispatch -> assess.
-// Java actions publish later percepts. Result handlers, not action return alone,
-// resume the loop. Final-job post-observations remain mandatory for achievement.
-// Internal execution_failed is distinct from an explicitly requested failure goal.
+// B. RULES AND DYNAMIC WORKFLOW STATE
+// Remaining code is adapted from controller_generic.asl for this sample only.
 workflow_active.
 
 // ======================
@@ -198,7 +223,7 @@ all_goals_satisfied :-
     <- .print("Achievement pending: ", Entity, " = ", Desired).
 
 // ======================
-// EXECUTION LOOP: enter stage 1, then advance only when its checks permit it.
+// C. EXECUTION LOOP: enter stage 1, then advance only when its checks permit it.
 // ======================
 +!run_pipeline
     : not workflow_active
@@ -208,8 +233,7 @@ all_goals_satisfied :-
     <- true.
 +!run_pipeline
     : workflow_active & not running(_) & not observing(_)
-    <- .print("BDI_STAGE=1 post_observations");
-       !check_post_observations.
+    <- !check_post_observations.
 
 // ======================
 // 1. CHECK POST-OBSERVATIONS OF PREVIOUS JOBS
@@ -233,8 +257,7 @@ all_goals_satisfied :-
     : workflow_active
       & not (required(Entity) & phase_result(Entity, success)
              & verify_after(Entity) & not telemetry(Entity, allow))
-    <- .print("BDI_STAGE=2 pre_observations");
-       !check_pre_observations.
+    <- !check_pre_observations.
 
 // ======================
 // 2. CHECK PRE-OBSERVATIONS OF THE NEXT JOB
@@ -273,8 +296,7 @@ all_goals_satisfied :-
 +!run_entity(Entity)
     : entity(Entity) & not running(_) & not terminal(Entity)
       & attempt_count(Entity, PreviousAttempts)
-    <- .print("BDI_STAGE=3 execute entity=", Entity);
-       Attempt = PreviousAttempts + 1;
+    <- Attempt = PreviousAttempts + 1;
        -attempt_count(Entity, PreviousAttempts);
        +attempt_count(Entity, Attempt);
        -phase_result(Entity, _);
@@ -297,12 +319,10 @@ all_goals_satisfied :-
     <- true.
 +!assess_goals
     : workflow_active & all_goals_satisfied
-    <- .print("BDI_STAGE=4 assess_goals");
-       !check_master_goal.
+    <- !check_master_goal.
 +!assess_goals
     : workflow_active & not all_goals_satisfied
-    <- .print("BDI_STAGE=4 assess_goals");
-       !run_pipeline.
+    <- !run_pipeline.
 
 // ======================
 // OBSERVATIONS -> PHASE RESULTS

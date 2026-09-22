@@ -92,3 +92,6 @@ The research conclusion must follow repeated paired results. If rates match, rep
 Offline checks cover workflow syntax, shared scenario/worker contracts, bounded telemetry, malformed/stale samples, pairing keys, existing Java policies/adapters and traffic scheduling. They do **not** validate real GitHub scheduling, reusable-workflow failure propagation or actual Docker recovery.
 
 Next pilot: healthy pair, candidate-stopped pair, then failed-repair and persistent-production pairs; inspect original deployment identity, diagnosis/restart receipts, fresh verification and restoration before collecting the predeclared repeated dataset. Existing app pairs can use a newly published control revision via BDI manual A4.4. No new live comparative trials have been run as part of this implementation.
+
+
+Current support scripts store a per-environment `traffic_targets` plan and validate `traffic_by_entity` evidence for gates actually reached. Before new trials, publish a reviewed control revision and use the full control-file check in [guide 06, Step 3](06_PAIRED_EXPERIMENTS_END_TO_END.md). This includes the refactored agent and metric/traffic scripts; checking only the worker YAML is insufficient. Existing app SHAs remain valid. For the complete sequential run, collection, evaluation and reset procedure, use guide 06.

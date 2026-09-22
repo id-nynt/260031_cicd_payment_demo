@@ -2,6 +2,8 @@
 
 Start with the execution guidelines to run the experiments. File numbers indicate reading order within each folder; the two execution manuals are alternative routes.
 
+**Complete RQ1 study in one document:** [06 End-to-end paired experiments](execution/guidelines/06_PAIRED_EXPERIMENTS_END_TO_END.md) combines both approaches, all scenarios, preparation/reset, evidence and final evaluation. Start there for a sequential paired study; the earlier guides remain focused references.
+
 **BDI readers need one operational document:** [03 BDI complete manual](execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md). New users start at A; users with a completed pair/baseline start at B. Pair refresh is included in A4, and baseline setup in F1. The old split guides are archived.
 
 | Folder | Read it for |
@@ -10,7 +12,7 @@ Start with the execution guidelines to run the experiments. File numbers indicat
 | [Resources and plans](resources-and-plans/00_README.md) | Current study plan, one generation/runtime reference and reusable version-control workflow |
 | [Archives](archives/00_README.md) | Superseded documentation, legacy snapshots, reviews and historical experiment evidence |
 
-For a first paired experiment, read guidelines **01 → 02**, follow **03** for BDI or **04** for conventional, then use **05** to inspect the results. The conventional manual includes its own setup, so conventional-only readers can start at **04**.
+For the full paired experiment, use **06** alone. For background or an individual mechanism, **01 → 02**, **03** (BDI) / **04** (conventional), and **05** (results) remain available. Conventional-only readers can start at **04**.
 
 Commands in the guides still run from the repository root unless explicitly stated otherwise. New experiment results remain in root `experiments/results/`; the records under `docs/archives/` are historical.
 

@@ -5,6 +5,8 @@ The app shows its source-controlled **v1/v2** banner on checkout, payment and re
 
 Documentation: [reading guide](docs/00_README.md).
 
+For all RQ1 experiments in one sequential document, use [the end-to-end paired experiment guide](docs/execution/guidelines/06_PAIRED_EXPERIMENTS_END_TO_END.md): setup, both approaches, all 13 cases, resets, saved evidence and offline paired evaluation.
+
 Current experiment entry points: [BDI manual](docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md), [standalone conventional manual](docs/execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md), and [results inspection](docs/execution/guidelines/05_EXPERIMENT_RESULTS_GUIDE.md). Conventional code/workflow sources are in `ci-cd-conventional/`; shared scenarios, metrics and new result directories are in `experiments/`. The root application and existing v1/v2 revisions remain shared.
 
 

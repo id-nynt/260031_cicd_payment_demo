@@ -6,7 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 export function validateProfile(p) {
-  if (!p || typeof p.name !== 'string' || !Number.isInteger(p.seed) ||
+  if (!p || typeof p.name !== 'string' || !Number.isInteger(p.seed) || p.seed < 0 || p.seed > 4294967295 ||
       !Number.isFinite(p.jitter) || p.jitter < 0 || p.jitter > 0.5 ||
       !Array.isArray(p.phases) || !p.phases.length) throw new Error('Invalid profile name, seed, jitter or phases');
   if (p.entity !== undefined && !['staging', 'production'].includes(p.entity)) throw new Error('Invalid profile entity');

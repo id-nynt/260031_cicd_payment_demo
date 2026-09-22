@@ -8,7 +8,7 @@ This is the single operational guide for BDI setup, baseline, runtime preparatio
 |---|---|
 | New computer / first experiment | **A1-A4**, then **F1** to establish the pair baseline, then **B1-B3** |
 | Tools ready, but you need a new v1/v2 pair after an app change | **A4**, then **F1**, then **B1-B3** |
-| Existing pair and baseline, upgrading to candidate repair (this update) | **A3 validation**, **A4.4** once, then **B1-B3**; app commits remain unchanged |
+| Existing pair and baseline, updating the agent/control revision | **A3 validation**, **A4.4** once, then **B1-B3**; app commits remain unchanged |
 | Existing pair and successful v1 baseline already saved, control revision unchanged | **B1-B3**; skip A and F1 |
 | Both environments just passed B3/E reset in this session | Choose **one** scenario in **C** |
 | A scenario just finished | **D** save/inspect evidence, then **E** reset to v1 |
@@ -487,6 +487,9 @@ Keep `$knownGood` as the original pair baseline. Do not replace it with a v2 res
 <a id="c6-matched-comparison-all-11-scenarios"></a>
 ### C1. Matched research scenarios with automatic timing and evidence
 
+The launcher verifies the published worker commit against the current agent, generator, adapters, workers, traffic profiles and metric scripts before dispatch. After this refactor/support update, publish a new reviewed control revision through A4.4; retain existing v1/v2 app SHAs. An old tag does not acquire local fixes. `--prepare-only` writes an offline plan; it neither resolves publication nor authorizes reuse of that directory for a live run.
+
+
 **Open:** Controller PowerShell and the repository GitHub **Actions** page. Docker/runner remain running; no separate Traffic terminal or MAS GUI is required. B3 must have verified v1.
 
 **Manual selection only:** run this short block separately. Change `healthy` to one shared case when you are ready for a different trial.
@@ -934,6 +937,10 @@ Most evidence is already written automatically. Do not manually copy JSON output
 | Route C1 derived metrics | `<campaign>/experiment-metrics.json` |
 | Downloaded diagnosis/restart receipts, Docker identity and probe counts | `<campaign>/operation-<operation UUID>/receipt.json`; `download.log` reports download problems |
 | Traffic settings, requests, summary | Sibling `<campaign>-traffic*` folders |
+
+**Automatic C1 evidence:** `<candidateDir>-experiment/plan.json` declares `traffic_targets`. Every reached staging/production gate needs matching profile, seed, execution ID, release SHA and successful traffic evidence. Build/test failures before deployment legitimately have no traffic; stopped-candidate production uses repair probes instead. Inspect `traffic_by_entity` in `experiment-metrics.json`. The launcher also saves `launch-status.json` and per-client `traffic-<entity>-console.log` beside the plan. If the result is missing, inspect these files and reconcile before another run; do not label an interrupted launcher as a deployment outcome.
+
+**Reading the agent sequence:** the console records `BDI_STAGE=1` (previous-job post-observations), `2` (next-job pre-observations), `3` (job dispatch) and `4` (goal assessment). Repeated stages are normal when percepts arrive or health is rechecked; count actual execution/retry events for metrics. Diagnosis, restart, fresh verification and rollback remain visible as `BDI_DECISION` events. A job returning success is not proof of healthy delivery; inspect the final result and verified-release evidence below.
 
 **Automatic capture:** the controller launcher now saves its combined stdout/stderr as `<campaign>/controller-console.log` while displaying it live. The GUI logging configuration sends agent messages to the console as well, so you no longer need to copy MAS text for new runs. This also covers baseline and reset runs. C1 additionally retains its wrapper console under `-experiment/`. Existing completed runs are not retroactively given a console log.
 

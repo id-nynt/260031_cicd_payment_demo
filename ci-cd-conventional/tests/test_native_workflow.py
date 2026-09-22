@@ -18,6 +18,35 @@ native=importlib.util.module_from_spec(spec);spec.loader.exec_module(native)
 def workflow(name):return yaml.safe_load((ROOT/'.github/workflows'/name).read_text())
 
 class NativeWorkflowTest(unittest.TestCase):
+    def test_finalizer_preserves_and_validates_both_traffic_summaries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); downloaded = root/'downloaded'; downloaded.mkdir()
+            sha = 'a'*40
+            plan = dict(case='healthy', seed=42, comparison=dict(candidate=sha, baseline='b'*40),
+                        traffic_targets=native.traffic_targets('healthy', native.CATALOG['healthy']))
+            native.write(downloaded/'prepare'/'plan.json', plan)
+            native.write(downloaded/'prepare'/'unused.json', {})
+            events = [dict(event='campaign_started', timestamp='2026-01-01T00:00:00Z')]
+            for entity in ('staging', 'production'):
+                identity = f'native-7-1-{entity}-1'
+                native.write(downloaded/entity/'gate-result.json', dict(entity=entity, decision='allow', execution_id=identity))
+                native.write(downloaded/(entity+'-traffic')/'summary.json', dict(entity=entity, scenario='healthy', seed=42,
+                    execution_id=identity, release_sha=sha, stop_reason='campaign_finished', successful=3, requests=3))
+                events.append(dict(event='deployment_ready', after_entity=entity, timestamp='2026-01-01T00:00:01Z'))
+            (downloaded/'prepare'/'experiment-events.jsonl').write_text('\n'.join(json.dumps(e) for e in events))
+            jobs = [dict(name=name+' entity', conclusion='success', started_at='2026-01-01T00:00:00Z',
+                         completed_at='2026-01-01T00:00:01Z') for name in ('Build','Test','Security','Staging','Production')]
+            with patch.object(native, 'api', return_value={'jobs':jobs}), patch.dict('os.environ', {
+                    'GITHUB_RUN_ID':'7', 'GITHUB_RUN_ATTEMPT':'1', 'GITHUB_REPOSITORY':'o/r',
+                    'GITHUB_STEP_SUMMARY':str(root/'step-summary.md')}):
+                result = root/'result'
+                self.assertEqual(0, native.finish(result, downloaded))
+            metrics = json.loads((result/'experiment-metrics.json').read_text())
+            self.assertTrue(metrics['eligible_for_comparison'], metrics['validation_issues'])
+            self.assertEqual(6, metrics['traffic_requests'])
+            self.assertTrue((root/'result-traffic-staging/summary.json').exists())
+            self.assertTrue((root/'result-traffic/summary.json').exists())
+
     def test_installed_sources_and_reusable_health_inputs(self):
         for source in (ROOT/'ci-cd-conventional/workflows').glob('*.yml'):
             self.assertEqual(source.read_bytes(), (ROOT/'.github/workflows'/source.name).read_bytes())

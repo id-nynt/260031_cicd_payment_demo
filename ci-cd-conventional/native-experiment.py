@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT/'ci-cd-conventional'))
 from configuration import load_configuration, digest, known_good_sha
 from experiments.experiment_metrics import extract
-from experiments.experiment_protocol import protocol_key
+from experiments.experiment_protocol import protocol_key, traffic_targets
 
 CATALOG = json.loads((ROOT/'experiments/scenarios.json').read_text())
 
@@ -66,8 +66,8 @@ def prepare(directory):
         if api('commits/'+good)['sha'] != good: raise ValueError('Known-good source not published')
     comparison = dict(case=case, seed=seed, candidate=sha, baseline=good, policy=policy,
         worker_sha=os.environ['GITHUB_SHA'], contract_sha256=config['contract_sha256'])
-    write(directory/'plan.json', dict(case=case, seed=seed, mechanism='github-actions', comparison=comparison,
-        thresholds=policy['thresholds'], traffic_required=bool(CATALOG[case]['profile']),
+    write(directory/'plan.json', dict(schema_version=2, case=case, seed=seed, mechanism='github-actions', comparison=comparison,
+        thresholds=policy['thresholds'], traffic_targets=traffic_targets(case, CATALOG[case]), traffic_required=bool(CATALOG[case]['profile']),
         fault_expected=bool(CATALOG[case]['profile'] and 'errors' in CATALOG[case]['profile']),
         comparison_key=None, native_workflow=True, configuration_inputs=config['configuration_inputs'],
         protocol_key=protocol_key(case,seed,sha,good,os.environ['GITHUB_SHA'],config['contract_sha256'],policy,
@@ -142,14 +142,16 @@ def observe(policy, sample, record, clock=time.monotonic, sleep=time.sleep, repa
 def gate(directory, entity, execution_id, sha, scenario, seed):
     doc, _, policy = configuration()
     events=directory/'experiment-events.jsonl'; directory.mkdir(parents=True,exist_ok=False)
-    selected=CATALOG[scenario]; traffic=None
+    selected=CATALOG[scenario]; traffic=None; traffic_log=None
     emit(events,'execution_configuration',entity=entity,execution_id=execution_id,release_sha=sha)
     try:
         if entity in ['staging','production']:
             emit(events,'deployment_ready',after_entity=entity,milliseconds=60000)
-            if not (entity=='production' and scenario in ('candidate-stopped','candidate-restart-fails')):
+            target = traffic_targets(scenario, selected).get(entity)
+            if target:
+                traffic_log = (directory/'traffic-console.log').open('w', encoding='utf-8')
                 traffic=subprocess.Popen(['node',str(ROOT/'scripts/run-traffic-scenario.mjs'),'--campaign',str(directory),
-                    '--scenario',selected['profile'] if selected['entity']==entity and selected['profile'] else 'healthy','--entity',entity,'--seed',str(seed),'--output',str(directory)+'-traffic'])
+                    '--scenario',target['profile'],'--entity',entity,'--seed',str(seed),'--output',str(directory)+'-traffic'], stdout=traffic_log, stderr=subprocess.STDOUT)
             time.sleep(60)
         def record(round_number, value):
             emit(events,'observation',entity=entity,round=round_number,**value)
@@ -213,6 +215,7 @@ def gate(directory, entity, execution_id, sha, scenario, seed):
         if traffic:
             try: traffic.wait(timeout=10)
             except subprocess.TimeoutExpired: traffic.terminate();traffic.wait()
+        if traffic_log: traffic_log.close()
 
 
 def finish(directory, downloaded):
@@ -260,10 +263,12 @@ def finish(directory, downloaded):
     (directory/'experiment-events.jsonl').write_text(''.join(json.dumps(e)+'\n' for e in events))
     write(directory/'controller-result.json',result);write(directory/'generation-manifest.json',dict(mechanism='github-actions'))
     write(Path(str(directory)+'-experiment')/'plan.json',plan)
-    summaries=[p for p in downloaded.rglob('summary.json') if json.loads(p.read_text()).get('entity')==CATALOG[case]['entity']]
-    if summaries:
-        if len(summaries)!=1:raise ValueError('Ambiguous traffic summaries')
-        write(Path(str(directory)+'-traffic')/'summary.json',json.loads(summaries[0].read_text()))
+    summaries = [json.loads(p.read_text()) for p in downloaded.rglob('summary.json')]
+    for entity, target in plan.get('traffic_targets', traffic_targets(case, CATALOG[case])).items():
+        matching = [s for s in summaries if s.get('entity') == entity]
+        if len(matching) > 1: raise ValueError('Ambiguous traffic summaries for ' + entity)
+        if matching:
+            write(Path(str(directory)+target['summary_suffix'])/'summary.json', matching[0])
     write(directory/'github-jobs.json',jobs)
     metrics=extract(directory);write(directory/'experiment-metrics.json',metrics)
     with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as f:

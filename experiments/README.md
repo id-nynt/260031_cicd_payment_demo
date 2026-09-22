@@ -1,5 +1,7 @@
 # Shared experiment protocol and evidence
 
+For a single sequential procedure covering both approaches and all cases, use [the end-to-end paired study guide](../docs/execution/guidelines/06_PAIRED_EXPERIMENTS_END_TO_END.md). Its study schedule and per-trial ledger live under ignored `results/studies/`. `evaluate_study.py --study <folder> --output <new-report-folder>` reads that ledger without executing experiments, retains planned/missing/excluded trials, checks reset/configuration evidence and duplicates, and exports per-trial, per-group and matched-pair comparisons. The existing `summarize.py` remains available for exploratory scans of older results.
+
 - [BDI manual](../docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md): Jason orchestrates the pipeline.
 - [Conventional manual](../docs/execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md): GitHub Actions orchestrates the pipeline.
 - [Scenario definitions and study limitations](../docs/execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md).

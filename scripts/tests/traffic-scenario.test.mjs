@@ -155,3 +155,20 @@ test('completion of staging observation does not stop the production client', ()
   assert.equal(stopReason(events, 'production'), null);
   assert.equal(stopReason([...events, { event: 'bdi_recovery_decision' }], 'production'), 'recovery_started');
 });
+
+
+test('standalone traffic rejects seeds outside the paired unsigned 32-bit contract', () => {
+  for (const seed of [-1, 4294967296, 1.5]) {
+    assert.throws(() => validateProfile({ ...profile([phase(1)]), seed }));
+  }
+});
+
+test('early campaign completion retains a zero-request summary without contacting the app', async t => {
+  const f = await fixture(t);
+  await appendFile(f.journal, JSON.stringify({ event: 'controller_finished' }) + '\n');
+  const result = await runScenario({ ...f, profile: profile([phase(1)]) });
+  assert.equal(result.stop_reason, 'campaign_finished_before_traffic');
+  assert.equal(result.requests, 0);
+  assert.equal(f.received.length, 0);
+  assert.equal(JSON.parse(await readFile(join(f.output, 'summary.json'))).requests, 0);
+});

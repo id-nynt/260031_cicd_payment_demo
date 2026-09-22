@@ -30,7 +30,6 @@ From the repository root, check `experiments/results/release-pairs/current-pair.
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$ErrorActionPreference = 'Stop'
 $pairFile = (Get-Content -LiteralPath experiments/results/release-pairs/current-pair.txt -Raw -ErrorAction Stop).Trim()
 $pairFile
 if ([string]::IsNullOrWhiteSpace($pairFile) -or -not (Test-Path -LiteralPath $pairFile -PathType Leaf)) {
@@ -49,6 +48,11 @@ git ls-remote --exit-code origin "refs/tags/$workerRef"
 if ($LASTEXITCODE -ne 0) { throw 'Publish the control tag first' }
 gh auth status
 if ($LASTEXITCODE -ne 0) { throw 'Authenticate before dispatch' }
+$workerSha = gh api "repos/$($pair.repository)/commits/$workerRef" --jq .sha
+if ($LASTEXITCODE -ne 0) { throw 'Resolve the published control commit before dispatch.' }
+py -3 -B experiments/control_revision.py --worker-sha $workerSha --scope conventional
+if ($LASTEXITCODE -ne 0) { throw 'Fetch missing commits or publish a new reviewed control tag; retain app SHAs.' }
+
 ```
 
 The pair JSON stores the new immutable application SHAs and common worker revision. Do not substitute the historical `v1` tag or prior v2 SHA: those commits lack the new version banner. Application jobs check out `release_sha`, so the source label follows deployment and rollback automatically.
@@ -165,6 +169,8 @@ $resultDir = "experiments/results/conventional/$runId/artifacts/native-result/re
 Get-Content "$resultDir/controller-result.json" -Raw
 Get-Content "$resultDir/experiment-metrics.json" -Raw
 ```
+
+New plans declare traffic for each environment. The finalizer preserves both staging and production summaries beside `result/`; full traces and `traffic-console.log` remain in the health artifacts. Inspect `traffic_by_entity` in metrics for profile/seed/execution/release mismatches and missing traffic at a reached gate. Early build/test stops need no deployment traffic. Stopped-candidate production uses repair probes, with normal staging traffic still required. A red result and a traffic validation error are different findings: retain both.
 
 This collects every artifact, full GitHub logs and run metadata. Existing folders are never overwritten. Interrupted runs may lack results; `collection.json` preserves collection errors. A red workflow can correctly mean “candidate failed; v1 restored.” Follow [the results inspection guide](05_EXPERIMENT_RESULTS_GUIDE.md), record interventions/reset IDs, and restore v1 before continuing.
 

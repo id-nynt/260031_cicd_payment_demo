@@ -1,5 +1,8 @@
 // Project-specific beliefs above are generated solely from 03_workflow_model.yaml.
-// Generic runtime state and plans below come from controller_generic.asl.
+// Generic event-driven plans: post-observations -> pre-observations -> dispatch -> assess.
+// Java actions publish later percepts. Result handlers, not action return alone,
+// resume the loop. Final-job post-observations remain mandatory for achievement.
+// Internal execution_failed is distinct from an explicitly requested failure goal.
 workflow_active.
 
 // ======================
@@ -125,66 +128,74 @@ all_goals_satisfied :-
     <- .print("Achievement pending: ", Entity, " = ", Desired).
 
 // ======================
-// RUN PIPELINE
+// EXECUTION LOOP: enter stage 1, then advance only when its checks permit it.
 // ======================
-
-// STOPPED OR RECOVERING: never start another normal job.
 +!run_pipeline
     : not workflow_active
     <- true.
-
-// REQUIRED HEALTH VERIFICATION TAKES PRIORITY OVER COMPLETION.
 +!run_pipeline
+    : workflow_active & (running(_) | observing(_))
+    <- true.
++!run_pipeline
+    : workflow_active & not running(_) & not observing(_)
+    <- .print("BDI_STAGE=1 post_observations");
+       !check_post_observations.
+
+// ======================
+// 1. CHECK POST-OBSERVATIONS OF PREVIOUS JOBS
+// Health callbacks return to run_pipeline, which rechecks the outstanding work.
+// ======================
++!check_post_observations
     : workflow_active & required(Entity) & phase_result(Entity, success)
       & verify_after(Entity) & telemetry(Entity, block)
     <- !failed(Entity, telemetry_block, stopped).
-+!run_pipeline
++!check_post_observations
     : workflow_active & required(Entity) & phase_result(Entity, success)
       & verify_after(Entity) & telemetry(Entity, unknown)
     <- !failed(Entity, telemetry_unknown, unknown).
-+!run_pipeline
++!check_post_observations
     : workflow_active & required(Entity) & phase_result(Entity, success)
       & verify_after(Entity) & not telemetry(Entity, _) & not observing(Entity)
     <- +observing(Entity);
        .print("BDI_DECISION=observe entity=", Entity);
        observe_telemetry(Entity).
++!check_post_observations
+    : workflow_active
+      & not (required(Entity) & phase_result(Entity, success)
+             & verify_after(Entity) & not telemetry(Entity, allow))
+    <- .print("BDI_STAGE=2 pre_observations");
+       !check_pre_observations.
 
-// COMPLETED: assess every goal and required observation.
-+!run_pipeline
+// ======================
+// 2. CHECK PRE-OBSERVATIONS OF THE NEXT JOB
+// An already accepted source observation satisfies the current model's precondition.
+// If delivery is already complete, proceed directly to stage 4.
+// ======================
++!check_pre_observations
     : workflow_active & all_goals_satisfied
-    <- !check_master_goal.
-
-// JOB OR OBSERVATION CURRENTLY RUNNING
-+!run_pipeline
-    : workflow_active & (running(_) | observing(_))
-    <- true.
-
-// PRE-PROMOTION OBSERVATION
-+!run_pipeline
+    <- !assess_goals.
++!check_pre_observations
     : nextentity(Entity) & observe_before(Entity, Source) & telemetry(Source, block)
     <- !failed(Source, telemetry_block, stopped).
-+!run_pipeline
++!check_pre_observations
     : nextentity(Entity) & observe_before(Entity, Source) & telemetry(Source, unknown)
     <- !failed(Source, telemetry_unknown, unknown).
-+!run_pipeline
++!check_pre_observations
     : nextentity(Entity) & observe_before(Entity, Source) & not telemetry(Source, _)
     <- +observing(Source);
        .print("BDI_DECISION=observe entity=", Source);
        observe_telemetry(Source).
-
-// RUN NEXT ENTITY
-+!run_pipeline
-    : nextentity(Entity) & ready_to_execute(Entity)
++!check_pre_observations
+    : not all_goals_satisfied & nextentity(Entity) & ready_to_execute(Entity)
     <- !run_entity(Entity).
-
-// NO POSSIBLE PROGRESS
-+!run_pipeline
-    : workflow_active & not running(_) & not observing(_) & not nextentity(_)
++!check_pre_observations
+    : workflow_active & not all_goals_satisfied
+      & not running(_) & not observing(_) & not nextentity(_)
     <- .print("Pipeline cannot make further progress.");
        !end(stopped, not_needed).
 
 // ======================
-// EXECUTE ENTITY
+// 3. EXECUTE THE JOB AND TRACK ITS ATTEMPT
 // ======================
 
 // START THE SELECTED COMPLETE YAML JOB.
@@ -192,7 +203,8 @@ all_goals_satisfied :-
 +!run_entity(Entity)
     : entity(Entity) & not running(_) & not terminal(Entity)
       & attempt_count(Entity, PreviousAttempts)
-    <- Attempt = PreviousAttempts + 1;
+    <- .print("BDI_STAGE=3 execute entity=", Entity);
+       Attempt = PreviousAttempts + 1;
        -attempt_count(Entity, PreviousAttempts);
        +attempt_count(Entity, Attempt);
        -phase_result(Entity, _);
@@ -204,6 +216,23 @@ all_goals_satisfied :-
        +run_attempt(Entity, Attempt);
        .print("BDI_DECISION=run entity=", Entity, " attempt=", Attempt);
        run_job(Entity, Attempt).
+
+// ======================
+// 4. ASSESS GOALS AFTER A JOB RESULT
+// Declaring success requires all goals, health, maintenance and safety checks.
+// If observations or jobs remain, stage 1 begins the next cycle.
+// ======================
++!assess_goals
+    : not workflow_active
+    <- true.
++!assess_goals
+    : workflow_active & all_goals_satisfied
+    <- .print("BDI_STAGE=4 assess_goals");
+       !check_master_goal.
++!assess_goals
+    : workflow_active & not all_goals_satisfied
+    <- .print("BDI_STAGE=4 assess_goals");
+       !run_pipeline.
 
 // ======================
 // OBSERVATIONS -> PHASE RESULTS
@@ -229,7 +258,8 @@ all_goals_satisfied :-
       & not phase_result(Entity, success)
     <- +phase_result(Entity, success).
 
-// An explicitly requested failure is an observed goal outcome, not a retry trigger.
+// If the goal asks for this job to fail and it fails, record that outcome.
+// Do not retry merely to make it succeed. This does not describe ordinary fault injection.
 +status(Entity, Attempt, failure)
     : running(Entity) & run_attempt(Entity, Attempt) & achievement(Entity, failure)
       & (not max_duration(Entity, _) | duration(Entity, Attempt, _))
@@ -242,11 +272,11 @@ all_goals_satisfied :-
 // CONFIRMED FAILURE: retain its type for the retry/recovery decision.
 +status(Entity, Attempt, Result)
     : running(Entity) & run_attempt(Entity, Attempt)
-      & Result \== success & Result \== unknown & not phase_result(Entity, fail)
+      & Result \== success & Result \== unknown & not phase_result(Entity, execution_failed)
       & not (Result == failure & achievement(Entity, failure))
     <- +failure_reason(Entity, Result);
        .print("Failure observation accepted: ", Entity, " attempt ", Attempt, " = ", Result);
-       +phase_result(Entity, fail).
+       +phase_result(Entity, execution_failed).
 
 // UNCERTAIN EXECUTION IS NOT A CONFIRMED FAILURE.
 +status(Entity, Attempt, unknown)
@@ -274,14 +304,15 @@ all_goals_satisfied :-
 // PHASE RESULT EVENTS
 // ======================
 
-// EXPECTED FAILURE: assess remaining goals without dispatching dependants.
+// EXPLICIT NEGATIVE GOAL: the requested failure occurred; assess other goals.
+// Success-dependent jobs remain blocked.
 +phase_result(Entity, failure)
     : running(Entity) & achievement(Entity, failure)
     <- -running(Entity);
        -run_attempt(Entity, _);
        .print("Expected failure observed: ", Entity);
        !maintain(Entity);
-       !run_pipeline.
+       !assess_goals.
 
 // NORMAL ENTITY SUCCESS
 +phase_result(Entity, success)
@@ -291,29 +322,29 @@ all_goals_satisfied :-
        .print("BDI_BELIEF=success entity=", Entity);
        !maintain(Entity);
        !check_avoidance;
-       !run_pipeline.
+       !assess_goals.
 
 // NORMAL ENTITY FAILURE -> RETRY
-+phase_result(Entity, fail)
++phase_result(Entity, execution_failed)
     : running(Entity) & not recovery_entity(Entity)
       & retry_pending(Entity) & attempt_count(Entity, Attempt) & retry_interval(Delay)
     <- -running(Entity);
        -run_attempt(Entity, _);
-       -phase_result(Entity, fail);
+       -phase_result(Entity, execution_failed);
        .print("BDI_DECISION=retry entity=", Entity, " within configured retry budget");
        record_decision(Entity, retry, Attempt);
        .wait(Delay);
        !run_pipeline.
 
 // REJECTED DISPATCH -> STOP (not an executed deployment failure)
-+phase_result(Entity, fail)
++phase_result(Entity, execution_failed)
     : running(Entity) & not recovery_entity(Entity) & failure_reason(Entity, dispatch_rejected)
     <- -running(Entity);
        -run_attempt(Entity, _);
        !failed(Entity, dispatch_rejected, stopped).
 
 // NORMAL ENTITY FAILURE -> CONFIGURED RECOVERY OR STOP
-+phase_result(Entity, fail)
++phase_result(Entity, execution_failed)
     : running(Entity) & not recovery_entity(Entity) & not retry_pending(Entity)
       & failure_reason(Entity, Result) & Result \== dispatch_rejected
     <- -running(Entity);
@@ -364,7 +395,7 @@ all_goals_satisfied :-
        observe_telemetry(Recovery).
 
 // RECOVERY FAILURE -> STOP; never retry the recovery action.
-+phase_result(Recovery, fail)
++phase_result(Recovery, execution_failed)
     : running(Recovery) & recovery_entity(Recovery) & recovery_active(_, Recovery)
     <- -running(Recovery);
        -run_attempt(Recovery, _);

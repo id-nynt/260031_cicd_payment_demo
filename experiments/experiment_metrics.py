@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def read(path, default=None):
-    return json.loads(path.read_text(encoding='utf-8')) if path.exists() else default
+    return json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else default
 
 
 def stamp(value):
@@ -43,11 +43,43 @@ def extract(directory):
     reasons = []
     if not plan: reasons.append('no_experiment_plan')
     if not started or not finished or not result: reasons.append('incomplete_campaign')
-    if plan.get('traffic_required') and traffic.get('stop_reason') not in ('campaign_finished', 'recovery_started', 'campaign_finished_before_traffic'):
-        reasons.append('traffic_failed_or_incomplete')
-    if traffic.get('unexpected_responses', 0) or traffic.get('network_errors', 0): reasons.append('unexpected_traffic_errors')
-    if plan.get('fault_expected') and not traffic.get('injected_errors', 0): reasons.append('no_injected_traffic_observed')
-    if plan.get('traffic_required') and not traffic.get('successful', 0): reasons.append('no_successful_traffic_observed')
+    traffic_by_entity = {}
+    if 'traffic_targets' in plan:
+        for entity, target in plan['traffic_targets'].items():
+            summary = read(Path(str(directory) + target['summary_suffix']) / 'summary.json', {})
+            reached = any((e['event'] == 'deployment_ready' and e.get('after_entity') == entity) or
+                          (e['event'] == 'observation' and e.get('entity') == entity) for e in events)
+            issues = []
+            if reached:
+                if summary.get('stop_reason') not in ('campaign_finished', 'recovery_started'):
+                    issues.append('traffic_failed_or_incomplete')
+                if summary.get('entity') != entity or summary.get('scenario') != target['profile'] or summary.get('seed') != plan.get('seed'):
+                    issues.append('traffic_configuration_mismatch')
+                execution = result.get('executions', {}).get(entity, {})
+                execution_id = execution.get('execution_id', execution.get('executionId'))
+                if not execution_id or summary.get('execution_id') != execution_id:
+                    issues.append('traffic_identity_mismatch')
+                if summary.get('release_sha') != result.get('release_sha'):
+                    issues.append('traffic_release_mismatch')
+                if not summary.get('successful', 0): issues.append('no_successful_traffic_observed')
+                if target['fault_expected'] and not summary.get('injected_errors', 0):
+                    issues.append('no_injected_traffic_observed')
+                if not target['fault_expected'] and summary.get('injected_errors', 0):
+                    issues.append('unexpected_injected_traffic')
+                if summary.get('unexpected_responses', 0) or summary.get('network_errors', 0):
+                    issues.append('unexpected_traffic_errors')
+            elif target['fault_expected']:
+                issues.append('fault_target_not_reached')
+            # An early build/test failure legitimately has no deployment traffic.
+            traffic_by_entity[entity] = dict(required=reached, summary=summary, validation_issues=issues)
+            reasons.extend(entity + ':' + issue for issue in issues)
+    else:
+        # Historical plans predate environment-specific traffic evidence.
+        if plan.get('traffic_required') and traffic.get('stop_reason') not in ('campaign_finished', 'recovery_started', 'campaign_finished_before_traffic'):
+            reasons.append('traffic_failed_or_incomplete')
+        if traffic.get('unexpected_responses', 0) or traffic.get('network_errors', 0): reasons.append('unexpected_traffic_errors')
+        if plan.get('fault_expected') and not traffic.get('injected_errors', 0): reasons.append('no_injected_traffic_observed')
+        if plan.get('traffic_required') and not traffic.get('successful', 0): reasons.append('no_successful_traffic_observed')
     interventions = read(Path(str(directory) + '-experiment') / 'interventions.json')
     mode = result.get('mode')
     if mode != 'github': reasons.append('not_live_execution')
@@ -57,7 +89,7 @@ def extract(directory):
             e['event']=='diagnosis_finished' and (e.get('status')=='app_stopped' or
             (e.get('app_state')=='stopped' and e.get('dependency_ready') is True)) for e in events):
         reasons.append('stopped_candidate_fault_not_observed')
-    row = dict(repair_attempts=len(repair_actions), diagnoses=sum(e['event']=='diagnosis_started' for e in events),
+    row = dict(metrics_schema_version=2, traffic_by_entity=traffic_by_entity, repair_attempts=len(repair_actions), diagnoses=sum(e['event']=='diagnosis_started' for e in events),
         candidate_repaired=bool(delivery and repair_verified and repair_actions and any(
             e['event']=='repair_finished' and e.get('status')=='executed' for e in events)),
         candidate_repair_seconds=duration(repair_actions[0] if repair_actions else None,repair_verified),
@@ -72,7 +104,8 @@ def extract(directory):
         rollback_attempts=sum(e.get('entity')=='rollback' for e in actions), observations=len(measurements),
         reconciliations=sum(e['event']=='reconciliation' for e in events),
         summed_entity_duration_ms=sum(e.get('duration_ms',0) for e in events if e['event']=='action_finished'),
-        traffic_requests=traffic.get('requests'), traffic_errors=traffic.get('injected_errors'),
+        traffic_requests=sum(v['summary'].get('requests', 0) for v in traffic_by_entity.values()) if traffic_by_entity else traffic.get('requests'),
+        traffic_errors=sum(v['summary'].get('injected_errors', 0) for v in traffic_by_entity.values()) if traffic_by_entity else traffic.get('injected_errors'),
         release_sha=result.get('release_sha'), known_good_sha=result.get('known_good_sha'),
         human_interventions=len(interventions) if isinstance(interventions,list) else None,
         validation_issues=reasons, eligible_for_comparison=not reasons)

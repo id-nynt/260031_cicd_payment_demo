@@ -26,6 +26,10 @@ For BDI, manual **D** automatically selects all acknowledged GitHub execution ID
 
 BDI manual D reloads `$candidateDir` from `experiments/results/current-bdi-trial.json`, saved automatically by C1/C2 and manual scenarios. Console output is already captured beside the plan. New GUI runs also save controller-console.log in the campaign folder. Manually retain agent-mind screenshots only if needed; older runs without a console log require manual text capture while MAS remains open. Screenshots supplement the JSON evidence; they do not replace it.
 
+New schema-2 plans contain `traffic_targets`; metrics expose `traffic_by_entity` and aggregate request/error totals across those clients. Only reached gates require normal traffic. An injected-traffic scenario that never reaches its fault target is flagged. Legacy plans retain legacy validation; do not mix old and new control revisions in a matched pair. A stage marker (`BDI_STAGE`) is a log annotation, not an execution attempt.
+
+For launcher failures, inspect `<trial>-experiment/launch-status.json` and `traffic-<entity>-console.log`. Native traffic console logs reside in each health artifact. Preserve incomplete evidence and reconcile remote work before retrying. Re-running the read-only metric extractor does not repair missing traffic or recreate a lost result.
+
 ## 2. Read outcomes before metrics
 
 Choose the existing result directory in this separate input block (for BDI, manual D already sets `$candidateDir`):

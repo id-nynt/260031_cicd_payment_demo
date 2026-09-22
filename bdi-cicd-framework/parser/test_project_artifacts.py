@@ -69,18 +69,17 @@ class ProjectArtifactsTest(unittest.TestCase):
     def test_two_campaigns_reuse_identical_artifacts_without_writing_project(self):
         before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in
                   [self.workflow, self.agent, self.manifest]}
-        real_run = run_controller.subprocess.run
         def simulated_process(command, **kwargs):
-            if command[0] == 'git':
-                return real_run(command, **kwargs)
+            # The launcher now uses Popen through this wrapper, not subprocess.run.
+            # Keep this artifact-reuse unit test independent of Java/Gradle.
             result = Path(kwargs['env']['BDI_RESULT_FILE'])
             result.write_text('{"outcome":"achieved"}')
-            return type('Process', (), {'returncode': 0})()
+            return 0
         for name in ['first', 'second']:
             directory = self.root / name
             with patch.object(sys, 'argv', ['run_controller.py', '--project-dir', str(self.root),
                                            '--scenario', 'healthy', '--artifacts-dir', str(directory)]), \
-                 patch.object(run_controller.subprocess, 'run', side_effect=simulated_process), \
+                 patch.object(run_controller, 'run_with_console_log', side_effect=simulated_process), \
                  patch.object(artifacts, 'generate_agent', side_effect=AssertionError('runtime generated')):
                 self.assertEqual(run_controller.main(), 0)
             self.assertEqual(self.agent.read_bytes(), (directory / 'controller_agent.asl').read_bytes())

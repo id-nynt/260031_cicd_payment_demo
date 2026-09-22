@@ -1,33 +1,28 @@
 # Inspect and compare experiment results
 
+The local file `experiments/results/release-pairs/current-pair.txt` contains the path of the selected release-pair JSON. The execution guides read that path automatically. In the JSON, check `v1_sha`, `v2_sha`, `worker_ref` and `known_good_receipt`; the last field must point to the successful v1 baseline result before measured trials. A null receipt means it has not been linked, even if deployment succeeded. The pointer, pair JSON and referenced run directories are Git-ignored; back them up together. The pointer identifies a selection, not current deployment state.
+
+
 Read this after either manual. A candidate deployment, a safe stop, and restoration of v1 are different outcomes. Keep raw evidence even when the experiment fails, is cancelled, or lacks enough evidence to classify.
 
-For the labelled app pair, record `/health.appVersion` and a refreshed checkout screenshot alongside `deploymentRunId`, the receipt and source SHA. The page banner and startup log show v1/v2 immediately, but a label alone does not uniquely identify a commit or prove health. New app commits require a new baseline receipt and pair selection; follow [the returning-user guide](06_REFRESH_VERSION_PAIR.md).
+For the labelled app pair, record `/health.appVersion` and a refreshed checkout screenshot alongside `deploymentRunId`, the receipt and source SHA. The page banner and startup log show v1/v2 immediately, but a label alone does not uniquely identify a commit or prove health. New app commits require a new baseline receipt and pair selection; follow [the returning-user guide](03_BDI_MANUAL_EXECUTION_GUIDE.md#a4-create-or-refresh-the-version-pair).
 
 ## 1. Find the trial and preserve the whole bundle
 
 | Approach | Location | First files to inspect |
 |---|---|---|
-| BDI comparative C6 | `experiments/results/bdi/<trial>/` | `controller-result.json`, `experiment-metrics.json`, `controller-journal.jsonl`, `experiment-events.jsonl` |
+| BDI comparative C1 | `experiments/results/bdi/<trial>/` | `controller-result.json`, `experiment-metrics.json`, `controller-journal.jsonl`, `experiment-events.jsonl` |
 | BDI supporting evidence | Sibling `<trial>-experiment/`, `<trial>-traffic/`, `<trial>-traffic-<stage>/` | `plan.json`, `controller-console.log`, `faults.properties`, traffic `summary.json` and request/transition logs |
-| BDI manual C0–C5/baselines | Explicit `$candidateDir`/`$baselineDir` printed in the manual | Same result/journal; retain manual fault files, traffic output and MAS screenshots |
+| BDI GUI/manual C2-C7 and baselines | Explicit `$candidateDir`/`$baselineDir` printed in the manual | Result/journal plus automatic controller-console.log; retain fault files, traffic output and optional agent-mind screenshots |
 | Conventional | `experiments/results/conventional/<run-id>/` | `github-run.json`, `github-run.log`, `collection.json` |
 | Conventional result | `artifacts/native-result/result/` beneath that directory | `controller-result.json`, `experiment-metrics.json`, `experiment-events.jsonl`, `github-jobs.json` |
 | Conventional supporting evidence | `artifacts/native-prepare/`, `artifacts/native-*-health/`, and sibling `result-experiment/`, `result-traffic/` | Plan, frozen config/input snapshots, gate decisions, complete traffic traces |
 
 Download conventional evidence with `py -3 experiments/collect.py --repo OWNER/REPO --run-id RUN_ID`. It refuses existing directories. To retry collection after a transient download error, use a new `--output` folder and retain the original failure; do not include both copies as two trials in the analysis tree. Download before artifact retention expires. Results/reports are Git-ignored: archive them deliberately outside the working tree as well.
 
-For BDI, also retain logs from each dispatched GitHub entity. The journal/result includes execution and GitHub run identities. For each distinct remote ID:
+For BDI, manual **D** automatically selects all acknowledged GitHub execution IDs from the journal and downloads their logs/metadata into a fresh `github-evidence-*` folder inside the campaign. Use that block; do not manually copy IDs or terminal JSON.
 
-```powershell
-$remoteRunId = 'REPLACE_WITH_ENTITY_RUN_ID'
-gh run view $remoteRunId --repo $env:GITHUB_REPOSITORY --log |
-  Set-Content "$candidateDir/github-$remoteRunId.log" -Encoding utf8
-gh run view $remoteRunId --repo $env:GITHUB_REPOSITORY --json databaseId,headSha,conclusion,status,url,jobs |
-  Set-Content "$candidateDir/github-$remoteRunId.json" -Encoding utf8
-```
-
-In C6 set `$candidateDir` to the exact printed campaign path. Console output is already captured beside the plan. For GUI trials, retain screenshots of the agent mind and copy/save the MAS output before closing it. Screenshots supplement the JSON evidence; they do not replace it.
+BDI manual D reloads `$candidateDir` from `experiments/results/current-bdi-trial.json`, saved automatically by C1/C2 and manual scenarios. Console output is already captured beside the plan. New GUI runs also save controller-console.log in the campaign folder. Manually retain agent-mind screenshots only if needed; older runs without a console log require manual text capture while MAS remains open. Screenshots supplement the JSON evidence; they do not replace it.
 
 ## 2. Read outcomes before metrics
 

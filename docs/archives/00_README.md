@@ -10,6 +10,8 @@ These materials provide historical context and evidence. Use the [current execut
 6. [Historical experiment records](06_experiment-records/00_README.md) — dated verification reports and their original evidence files.
 7. [Superseded developer guides](07_superseded-developer-guides/00_README.md) — duplicate explanations, completed proposals, old setup/repair instructions and working notes, with links to maintained replacements.
 
+8. [Consolidated BDI guides](08_consolidated-bdi-guides/00_README.md) ? former split refresh and demonstration guides, now maintained in manual 03.
+
 Read each collection's `00_README.md` before its numbered documents. Non-Markdown evidence and snapshot filenames are preserved; their historical paths inside logs/manifests are not rewritten.
 
 [All documentation](../00_README.md)

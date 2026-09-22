@@ -2,7 +2,7 @@
 
 Start with the execution guidelines to run the experiments. File numbers indicate reading order within each folder; the two execution manuals are alternative routes.
 
-**Already completed the old setup?** Start at [Refresh the version pair, step 1](execution/guidelines/06_REFRESH_VERSION_PAIR.md#1-review-and-publish-the-new-v1-source) for the app's new visible version label. Create fresh v1/v2 source tags and a new live v1 receipt, then resume the BDI/conventional trial steps. Existing tools, credentials and runner registration can be reused.
+**BDI readers need one operational document:** [03 BDI complete manual](execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md). New users start at A; users with a completed pair/baseline start at B. Pair refresh is included in A4, and baseline setup in F1. The old split guides are archived.
 
 | Folder | Read it for |
 |---|---|

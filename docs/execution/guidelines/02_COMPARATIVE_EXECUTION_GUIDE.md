@@ -6,7 +6,7 @@
 
 Use one payment app/repository, the same immutable v1/v2 sources and one shared deployment environment. **Conventional entry:** [ci-cd.yml](../../../.github/workflows/ci-cd.yml). **BDI entry:** `run_experiment.py --mechanism bdi`. Both use [entity-execution.yml](../../../.github/workflows/entity-execution.yml); conventional uses `needs`/conditions and a bounded telemetry script, while BDI uses Jason beliefs/plans.
 
-Follow the [conventional manual](04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md) for publication/setup and GitHub activation; follow [BDI manual C6](03_BDI_MANUAL_EXECUTION_GUIDE.md#c6-matched-comparison-all-11-scenarios) for agent activation. Complete common setup/reset before **each** trial. Do not run both mechanisms simultaneously.
+Follow the [conventional manual](04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md) for publication/setup and GitHub activation; follow [BDI manual C1](03_BDI_MANUAL_EXECUTION_GUIDE.md#c6-matched-comparison-all-11-scenarios) for agent activation. Complete common setup/reset before **each** trial. Do not run both mechanisms simultaneously.
 
 The earlier `--mechanism conventional` Java implementation remains an optional **scripted controller** for controlled policy tests. It is not the native GitHub baseline described here. Its old walkthrough is [archived](../../archives/04_manual-guides/02_COMPARISON-before-native-workflow.md).
 

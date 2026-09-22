@@ -1,3 +1,5 @@
+> ARCHIVED: consolidated into [03 BDI complete manual](../../execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md). Do not use these superseded commands for new runs.
+
 # Returning users: start a new v1/v2 experiment pair
 
 **Start here if the old tools, authentication, Docker and runner setup are already complete.** The app now displays a release banner immediately, so the old application commits cannot serve as the new labelled pair. You need new immutable application tags and a fresh live v1 receipt; you do not need to reinstall the tools or register another runner.
@@ -94,6 +96,9 @@ py -3 bdi-cicd-framework/run_controller.py --validate-only
 if ($LASTEXITCODE -ne 0) { throw 'Resolve generated-project consistency' }
 gh auth status
 if ($LASTEXITCODE -ne 0) { throw 'Restore existing GitHub authentication' }
+foreach ($value in @($series,$env:GITHUB_REPOSITORY,$v1Tag,$v1Sha,$v2Tag,$v2Sha,$workerRef)) {
+  if ([string]::IsNullOrWhiteSpace($value)) { throw 'Missing pair selection. Restore the values from steps 1-2 before saving; do not create an unnamed .json file.' }
+}
 New-Item -ItemType Directory -Force experiments/results/release-pairs | Out-Null
 $pairFile = [System.IO.Path]::GetFullPath("experiments/results/release-pairs/$series.json")
 if (Test-Path $pairFile) { throw 'Do not overwrite an earlier release pair' }
@@ -103,20 +108,29 @@ $pair = [pscustomobject]@{
   worker_ref = $workerRef; known_good_receipt = $null
 }
 $pair | ConvertTo-Json | Set-Content -LiteralPath $pairFile -Encoding utf8
-$pairFile
+$pairFile | Set-Content -LiteralPath experiments/results/release-pairs/current-pair.txt -Encoding utf8
+Get-Content -LiteralPath experiments/results/release-pairs/current-pair.txt
 ```
 
-Save the printed path. This selection record is local experiment evidence, so it is Git-ignored and needs a backup. Start Docker Desktop and your **existing** Linux runner if stopped; verify it is online and can use Docker. Stop old traffic and settle any previous remote execution. If BDI has an unresolved execution, follow manual F3 before launching anything else.
+`experiments/results/release-pairs/current-pair.txt` now contains the selected JSON path on one line. Open it whenever a guide asks for the pair file, and copy the path without quotes. A new series updates this pointer; previous JSON files remain intact. Both this text file and the selection record are local experiment evidence, so they are Git-ignored and need a backup. Start Docker Desktop and your **existing** Linux runner if stopped; verify it is online and can use Docker. Stop old traffic and settle any previous remote execution. If BDI has an unresolved execution, follow manual F3 before launching anything else.
 
 ## 4. Deploy the NEW v1 and save a fresh baseline receipt
 
 This is preparation, not a measured v2 trial. An old successful receipt is not a receipt for the newly labelled v1 commit. The following establishes the baseline with your existing BDI setup; the conventional manual's step 3 can alternatively establish it, using this pair's v1 SHA and worker tag.
 
-If you reopened PowerShell, first set `$pairFile` to the exact saved path printed in step 3. The block below reloads its selections.
+The block below reads the saved path from `current-pair.txt` automatically and trims trailing newlines. If any command fails, stop before continuing.
 
 ```powershell
-if ([string]::IsNullOrWhiteSpace($pairFile)) { throw 'Set $pairFile to the saved release-pair JSON path from step 3' }
-$pair = Get-Content -LiteralPath $pairFile -Raw | ConvertFrom-Json
+$ErrorActionPreference = 'Stop'
+$pairFile = (Get-Content -LiteralPath experiments/results/release-pairs/current-pair.txt -Raw -ErrorAction Stop).Trim()
+$pairFile
+if ([string]::IsNullOrWhiteSpace($pairFile) -or -not (Test-Path -LiteralPath $pairFile -PathType Leaf)) {
+  throw 'Pair file not found. Check current-pair.txt and stop here.'
+}
+$pair = Get-Content -LiteralPath $pairFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+foreach ($field in @('series','repository','v1_tag','v1_sha','v2_tag','v2_sha','worker_ref')) {
+  if ([string]::IsNullOrWhiteSpace($pair.$field)) { throw "Incomplete pair: missing $field. Select the named pair JSON, not .json." }
+}
 Remove-Item Env:GH_TOKEN,Env:GITHUB_TOKEN,Env:GITHUB_API_URL -ErrorAction SilentlyContinue
 Remove-Item Env:BDI_EXECUTION_PLAN,Env:BDI_SCENARIO,Env:BDI_READY_URL,Env:BDI_PROMETHEUS_URL,Env:BDI_PAUSE_AFTER_ENTITY,Env:BDI_PAUSE_MILLISECONDS,Env:BDI_POLL_SECONDS,Env:BDI_ENTITY_TIMEOUT_MINUTES -ErrorAction SilentlyContinue
 $env:GITHUB_REPOSITORY = $pair.repository
@@ -152,16 +166,18 @@ $pair | ConvertTo-Json | Set-Content -LiteralPath $pairFile -Encoding utf8
 $knownGood
 ```
 
+**Do not skip the verification/save block above after closing the MAS console.** Deployment success alone does not update the pair JSON: its `known_good_receipt` must contain the saved result path before BDI step 1. If deployment already succeeded but this field is null, set `$baselineDir` to that existing run directory and run only the verification/save block; do not redeploy just to attach the receipt.
+
 Refresh `http://localhost:3001/checkout` and `http://localhost:3000/checkout`: both must immediately show **Payment Service v1**, without making a payment. Container startup logs also contain `Payment Service v1 started`. Back up the baseline directory and pair file together. If using a conventional baseline instead, set `known_good_receipt` to its newly downloaded result and perform the same version/identity checks before saving the pair.
 
 ## 5. Start the measured experiments
 
 You now have three distinct saved items: the **v1 source tag/SHA**, the **v2 source tag/SHA**, and the **new v1 live receipt**. The receipt is not a Git tag and the heading is not proof of deployment success on its own.
 
-For BDI, use manual **B1–B4**, loading this pair file in **B2**, then **C6** with `healthy` first. For conventional, load the pair in manual **step 2**, restore v1 with **step 4**, then launch `healthy` in **step 5**. The counterpart must use the same pair file, case and seed. Restore v1 between every trial.
+For BDI, use manual **B1–B4**, loading this pair file in **B2**, then **route 3A** with `healthy` first. For conventional, load the pair in manual **step 2**, restore v1 with **step 4**, then launch `healthy` in **step 5**. The counterpart must use the same pair file, case and seed. Restore v1 between every trial.
 
-Successful v2 delivery: both relevant receipt/health checks pass and production shows **v2**. Verified rollback: production shows **v1** and `recovery_outcome=restored`; it is not successful v2 delivery. Archive all result/traffic folders following the [results guide](05_EXPERIMENT_RESULTS_GUIDE.md), including unsuccessful trials.
+Successful v2 delivery: both relevant receipt/health checks pass and production shows **v2**. Verified rollback: production shows **v1** and `recovery_outcome=restored`; it is not successful v2 delivery. Archive all result/traffic folders following the [results guide](../../execution/guidelines/05_EXPERIMENT_RESULTS_GUIDE.md), including unsuccessful trials.
 
-After the healthy pair, follow the [pilot sequence and shared scenarios](02_COMPARATIVE_EXECUTION_GUIDE.md). Do not repeat tool installation or runner registration unless the prerequisite checks fail.
+After the healthy pair, follow the [pilot sequence and shared scenarios](../../execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md). Do not repeat tool installation or runner registration unless the prerequisite checks fail.
 
-[Guidelines index](00_README.md)
+[Guidelines index](../../execution/guidelines/00_README.md)

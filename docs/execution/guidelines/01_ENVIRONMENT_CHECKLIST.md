@@ -33,7 +33,7 @@ BDI endpoint/query changes belong in `bdi-cicd-framework/config/runtime_bindings
 ## Choose the next instruction
 
 - Study design and fault scope: [comparative protocol](02_COMPARATIVE_EXECUTION_GUIDE.md).
-- BDI setup, baseline, reset and paired trial: manual **A**, **B**, **F1** when needed, then **C6**.
+- BDI setup, baseline, reset and paired trial: manual **A** and manual 03 A4/F1 when needed, then **A-F** (C1 for paired trials).
 - Conventional setup, baseline, reset and trial: conventional manual **1–5**.
 - Missing/stale BDI artifacts: [generation and runtime](../../resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md).
 - Interrupted BDI execution: manual **F3**; reconcile before another trial and retain pending evidence.

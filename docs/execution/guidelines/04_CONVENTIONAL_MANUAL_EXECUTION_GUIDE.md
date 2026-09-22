@@ -2,7 +2,7 @@
 
 This is a standalone GitHub Actions route. No Java, Jason, BDI controller, generation or BDI baseline receipt is required. Use the root payment app unchanged and the implementation in [ci-cd-conventional/](../../../ci-cd-conventional/README.md). The five named stages are **build → test → security → staging → production**. Preparation, bounded health gates, rollback and evidence are supporting jobs, retained to provide a realistic conventional baseline.
 
-**Returning after the app-version update:** start with [Refresh the version pair](06_REFRESH_VERSION_PAIR.md). You can reuse your tools and runner, but need new application tags and a receipt for the updated v1 SHA. Then resume this guide at step 2, skip step 3 only if that new baseline is already verified, and use steps 4-5 for each trial.
+**Returning after the app-version update:** start with [BDI manual A4: version pair](03_BDI_MANUAL_EXECUTION_GUIDE.md#a4-create-or-refresh-the-version-pair). You can reuse your tools and runner, but need new application tags and a receipt for the updated v1 SHA. Then resume this guide at step 2, skip step 3 only if that new baseline is already verified, and use steps 4-5 for each trial.
 
 ## 1. One-time setup and publication
 
@@ -26,10 +26,20 @@ Workflow sources live in `ci-cd-conventional/workflows/`; GitHub installation co
 
 ## 2. Start the session and select versions
 
+From the repository root, check `experiments/results/release-pairs/current-pair.txt`. The block reads the path automatically and trims trailing newlines. If any command fails, stop before dispatching.
+
 ```powershell
 $ErrorActionPreference = 'Stop'
-$pairFile = 'REPLACE_WITH_ABSOLUTE_PATH_TO_RELEASE_PAIR_JSON'
-$pair = Get-Content -LiteralPath $pairFile -Raw | ConvertFrom-Json
+$ErrorActionPreference = 'Stop'
+$pairFile = (Get-Content -LiteralPath experiments/results/release-pairs/current-pair.txt -Raw -ErrorAction Stop).Trim()
+$pairFile
+if ([string]::IsNullOrWhiteSpace($pairFile) -or -not (Test-Path -LiteralPath $pairFile -PathType Leaf)) {
+  throw 'Pair file not found. Check current-pair.txt and stop here.'
+}
+$pair = Get-Content -LiteralPath $pairFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+foreach ($field in @('series','repository','v1_tag','v1_sha','v2_tag','v2_sha','worker_ref')) {
+  if ([string]::IsNullOrWhiteSpace($pair.$field)) { throw "Incomplete pair: missing $field. Select the named pair JSON, not .json." }
+}
 $env:GITHUB_REPOSITORY = $pair.repository
 $workerRef = $pair.worker_ref
 $v1Sha = $pair.v1_sha
@@ -158,7 +168,7 @@ This collects every artifact, full GitHub logs and run metadata. Existing folder
 
 ## 7. Pair with BDI and repeat
 
-For paired research, run `py -3 ci-cd-conventional/configuration.py --check-bdi-parity`. Reset v1, then follow **C6** in the [BDI manual](03_BDI_MANUAL_EXECUTION_GUIDE.md) with the same case, seed, candidate, receipt and worker revision. Run every case, alternate order and predeclare repetition count. Match `protocol_key`; inspect actual fault exposure and reset evidence separately.
+For paired research, run `py -3 ci-cd-conventional/configuration.py --check-bdi-parity`. Reset v1, then follow **C1** in the [BDI manual](03_BDI_MANUAL_EXECUTION_GUIDE.md) with the same case, seed, candidate, receipt and worker revision. Run every case, alternate order and predeclare repetition count. Match `protocol_key`; inspect actual fault exposure and reset evidence separately.
 
 ## Troubleshooting and scope
 

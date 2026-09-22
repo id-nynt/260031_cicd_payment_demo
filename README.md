@@ -1,6 +1,6 @@
 # Payment Service
 
-The app now shows its source-controlled **v1/v2** banner on checkout, payment and receipt pages, in `/health.appVersion`, and in startup logs. This checkout is the new **v1** source. Existing users should start with [Refresh the version pair](docs/execution/guidelines/06_REFRESH_VERSION_PAIR.md) to publish fresh tags and establish a new baseline receipt; old tags do not gain the banner.
+The app now shows its source-controlled **v1/v2** banner on checkout, payment and receipt pages, in `/health.appVersion`, and in startup logs. This checkout is the new **v1** source. Existing users should start with [Refresh the version pair](docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#a4-create-or-refresh-the-version-pair) to publish fresh tags and establish a new baseline receipt; old tags do not gain the banner.
 
 
 Documentation: [reading guide](docs/00_README.md).

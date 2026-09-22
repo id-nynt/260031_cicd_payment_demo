@@ -21,6 +21,19 @@ import shutil
 from workflow_model import runtime_settings
 
 
+def run_with_console_log(command, *, cwd, env, log_path: Path) -> int:
+    """Keep live console output and durable evidence for GUI and terminal runs."""
+    with log_path.open("w", encoding="utf-8") as log:
+        with subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                              errors="replace") as process:
+            for line in process.stdout:
+                log.write(line)
+                log.flush()
+                print(line, end="", flush=True)
+            return process.wait()
+
+
 def load_mapping(path: Path) -> dict:
     value = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -235,12 +248,13 @@ def main() -> int:
     wrapper = ROOT / "bdi" / ("gradlew.bat" if os.name == "nt" else "gradlew")
     # The repository wrapper may be checked out without an executable bit.
     command = ([str(wrapper)] if os.name == "nt" else ["bash", str(wrapper)]) + ["--no-daemon", "runConventional" if args.mechanism == "conventional" else "runController"]
-    process = subprocess.run(command, cwd=ROOT / "bdi", env=environment)
+    returncode = run_with_console_log(command, cwd=ROOT / "bdi", env=environment,
+                                      log_path=artifacts / "controller-console.log")
     result_path = Path(environment["BDI_RESULT_FILE"])
     if not result_path.exists():
-        return process.returncode or 2
+        return returncode or 2
     if args.reconcile_only:
-        return process.returncode
+        return returncode
     outcome = json.loads(result_path.read_text(encoding="utf-8")).get("outcome", "unknown")
     return {"achieved": 0, "stopped": 1, "unknown": 2}.get(outcome, 2)
 

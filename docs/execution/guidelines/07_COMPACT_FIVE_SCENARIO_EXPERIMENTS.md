@@ -24,6 +24,7 @@ These are expected responses to inspect, not guaranteed results. Preserve unexpe
 
 | Your current state | Start here |
 |---|---|
+| Old/hanging study; starting a fresh study | **Step 0**, then Steps 1-4 |
 | Existing setup/pair; support changes not yet published | Step 1 |
 | Current control revision already published and selected | Step 2 |
 | Reopening the same compact study | Step 2, then **3.2 only**; resume Step 7 if a trial already started |
@@ -31,6 +32,83 @@ These are expected responses to inspect, not guaranteed results. Preserve unexpe
 | All 10 scheduled runs finalised | Step 11 |
 
 Manual choices are separate from execution blocks. Paste complete `. { ... }` blocks. Stop after a red error; do not continue with stale variables.
+
+## Step 0. Retire an old/hanging study and start fresh (only when needed)
+
+**Do not delete the previous experiment folders or `current-compact-study.txt`.** The text file only selects a study directory; it does not run, stop or reset anything. Step 3.1 creates a new directory and replaces the pointer automatically, keeping a timestamped copy of the previous pointer. Old results, run IDs and baseline receipts remain available for audit. Keep old directories in place because records contain absolute paths; moving them can break evidence references.
+
+Distinguish **an incomplete study** (some trials have no record) from **an active execution** (a controller, traffic client or GitHub job is still running). Creating a new pointer does not stop an active execution. Use the following order.
+
+### 0.1. Identify the previous study
+
+**Open:** a new Controller PowerShell at the repository root. This block only reads the old selection; it does not require Step 2 or change the pointer.
+
+```powershell
+. {
+    $ErrorActionPreference = 'Stop'
+    Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
+    $previousStudyDir = $null
+    $previousStudy = $null
+    if (Test-Path experiments/results/current-compact-study.txt) {
+        $previousStudyDir = (Get-Content experiments/results/current-compact-study.txt -Raw).Trim()
+        if (-not (Test-Path (Join-Path $previousStudyDir 'study.json'))) { throw 'Old pointer is invalid. Locate its existing study folder before replacing the selection.' }
+        $previousStudy = Get-Content (Join-Path $previousStudyDir 'study.json') -Raw | ConvertFrom-Json
+        [pscustomobject]@{ Study=$previousStudyDir; Repository=$previousStudy.repository; Worker=$previousStudy.worker_ref; Pair=$previousStudy.pair_file } | Format-List
+        if (Test-Path (Join-Path $previousStudyDir 'current-trial.txt')) { Get-Content (Join-Path $previousStudyDir 'current-trial.txt') }
+        foreach ($item in $previousStudy.trials) {
+            $folder = Join-Path $previousStudyDir "trials/$($item.id)"
+            [pscustomobject]@{ Trial=$item.id; Started=(Test-Path (Join-Path $folder 'started.json')); Recorded=(Test-Path (Join-Path $folder 'record.json')) }
+        }
+    } else { 'No existing study pointer. Check for any independently started execution before proceeding.' }
+}
+```
+
+### 0.2. Settle unfinished work before any reset
+
+**Open:** the previous controller/traffic terminals, MAS window if used, and **GitHub ? repository ? Actions**.
+
+1. If work is still progressing normally, let it finish and collect its evidence. If intentionally abandoning a stuck run, stop only the old controller/traffic processes belonging to this study (Ctrl+C in their terminals; close its MAS window). If process ownership is unclear, stop here and identify it. Do not kill every Java, Python or Node process.
+2. Inspect the old trial's saved GitHub run IDs and the repository Actions page for running, queued or approval-waiting jobs, including diagnosis, restart, rollback and resets. Let them finish, or explicitly cancel **only the old experiment runs** using the GitHub UI. Verify each becomes terminal; a cancellation request alone is not sufficient. Leave the runner and Docker running.
+3. For an interrupted BDI execution, restore GitHub login if needed and reconcile its durable execution state:
+
+```powershell
+. {
+    $ErrorActionPreference = 'Stop'
+    if (-not $previousStudy) { throw 'Load the old study in Step 0.1 first.' }
+    Remove-Item Env:GH_TOKEN,Env:GITHUB_TOKEN,Env:GITHUB_API_URL -ErrorAction SilentlyContinue
+    $env:GITHUB_REPOSITORY = $previousStudy.repository
+    $env:BDI_WORKFLOW_REF = $previousStudy.worker_ref
+    $env:BDI_RELEASE_SHA = $previousStudy.v2_sha
+    $env:GITHUB_TOKEN = gh auth token --hostname github.com
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) { throw 'Restore GitHub login.' }
+    Remove-Item Env:BDI_SCENARIO,Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
+    py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only
+    if ($LASTEXITCODE -ne 0) { throw 'Reconciliation did not complete. Inspect the output; do not launch a reset or new trial.' }
+}
+```
+
+Reconciliation does not resume the old campaign. **An unresolved execution remains a stop condition even if you have a new pair or pointer.** Never delete controller locks, pending-execution files or dispatch intents to bypass it. For conventional dispatch uncertainty, use Step 10's `dispatch_trial.py --resolve-only` against the **old** study and trial, not a newly created study. Read-only evidence collection may continue while resolving a blocker.
+
+4. Save available logs/results and record interrupted outcomes using the old frozen study's tools where compatible. Preserve existing records unchanged; do not manufacture a final state after a later reset. Missing evidence stays missing. Add a dated note inside the old study explaining why it was stopped/superseded and which trials remain incomplete. Do not label unrun trials successful or mark the old study complete.
+
+**Expected:** no old execution or traffic can still modify the deployment; unresolved operations have been reconciled. Old evidence remains intact. A clean terminal alone is not proof that remote jobs stopped.
+
+### 0.3. Create the new selection and restore v1
+
+Open a **fresh Controller PowerShell** to avoid stale `$trial`, `$studyDir` and helper variables, then follow this sequence:
+
+| Order | Action | Expected result |
+|---|---|---|
+| 1 | Step 1: commit/publish/select the reviewed control revision if needed | Correct worker tag; existing app v1/v2 SHAs and baseline preserved |
+| 2 | Step 2: load the selected pair and reset helpers | Session variables populated; stale experiment environment overrides cleared |
+| 3 | Step **3.1 once**, then 3.2 | New ten-trial schedule; previous pointer backed up; `current-compact-study.txt` selects the new directory |
+| 4 | Step 3.3 | Reuse the verified v1 baseline receipt; create a baseline only if no valid receipt exists |
+| 5 | Step 4 | Fresh reset receipt verifies **both staging and production at v1** |
+| 6 | Step 5 onward | Start new trial 001; old trial numbering/results belong to the old study |
+
+Do not delete database volumes, run `docker compose down -v`, remove release tags, or delete baseline receipts. This is a reset to the verified v1 application with retained database data, not an empty-database experiment. If Step 4 fails, preserve its logs and resolve the failure before starting a candidate. Merely seeing v1 in the browser is insufficient; both execution identities/readiness checks must pass.
+
+If you only closed the terminal and want to **continue the same unchanged study**, skip Step 0 and Step 3.1: use Step 2 ? Step 3.2 ? Step 7/10 for any already-started trial. For manual-to-agent handoff after trial 004, keep the same pointer and schedule.
 
 ## Optional handoff: manual first two cases, automated remaining cases
 
@@ -209,6 +287,19 @@ $seed = 42
     $cases = @('healthy','test-failure','production-temporary','production-persistent','candidate-stopped')
     $catalog = Get-Content experiments/scenarios.json -Raw | ConvertFrom-Json
     if (@($cases | Where-Object { $_ -notin $catalog.PSObject.Properties.Name }).Count) { throw 'Catalog mismatch.' }
+    # Starting a new study changes only the selection, never the old evidence.
+    # Complete Step 0 first if the previous study has unfinished work.
+    $studyPointer = 'experiments/results/current-compact-study.txt'
+    if (Test-Path $studyPointer) {
+        $oldSelection = (Get-Content $studyPointer -Raw).Trim()
+        if (-not (Test-Path (Join-Path $oldSelection 'study.json'))) { throw 'Previous study pointer is invalid; resolve Step 0.1 before replacing it.' }
+        $historyDir = 'experiments/results/study-pointer-history'
+        New-Item -ItemType Directory -Force -Path $historyDir | Out-Null
+        $pointerBackup = Join-Path $historyDir ('compact-five-' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '.txt')
+        if (Test-Path $pointerBackup) { throw 'Pointer backup already exists; use a fresh timestamp.' }
+        Copy-Item -LiteralPath $studyPointer -Destination $pointerBackup -ErrorAction Stop
+        "Previous study preserved: $oldSelection ; pointer backup: $pointerBackup"
+    }
     $studyDir = [System.IO.Path]::GetFullPath('experiments/results/studies/compact-five-' + (Get-Date -Format yyyyMMdd-HHmmss-fff))
     New-Item -ItemType Directory -Path $studyDir -ErrorAction Stop | Out-Null
     $trials = @(); $index = 0
@@ -229,7 +320,7 @@ $seed = 42
 }
 ```
 
-**Expected:** `candidate trials: 10` for one repetition. Only the five selected cases are scheduled. The pointer is `experiments/results/current-compact-study.txt`; it does not replace the full study's pointer.
+**Expected:** `candidate trials: 10` for one repetition. Only the five selected cases are scheduled. The pointer is `experiments/results/current-compact-study.txt`; it does not replace the full study's pointer. If a previous compact selection existed, its pointer is backed up in `experiments/results/study-pointer-history/`. The previous study folder and every result remain unchanged. Do not delete the pointer manually.
 
 ### 3.2. Reload the saved compact study
 

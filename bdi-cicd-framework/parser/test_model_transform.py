@@ -135,12 +135,12 @@ class ModelTransformTest(unittest.TestCase):
     def test_dispatch_workflow_contains_independent_exactly_selected_entities(self):
         workflow = yaml.load((ROOT.parent / ".github" / "workflows" / "entity-execution.yml")
                              .read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
-        jobs = {name: job for name,job in workflow["jobs"].items() if name not in {"report","candidate_operation"}}
+        jobs = {name: job for name,job in workflow["jobs"].items() if name not in {"diagnose_candidate","restart_candidate"}}
         self.assertEqual(set(jobs), {"build", "test", "security", "staging", "production", "rollback"})
         for entity, job in jobs.items():
             self.assertNotIn("needs", job)
             self.assertEqual(job["if"], f"inputs.entity == '{entity}'")
-            checkout = next(step for step in job["steps"] if step.get("uses") == "actions/checkout@v4")
+            checkout = next(step for step in job["steps"] if step.get("uses") == "actions/checkout@v4" and step.get("with",{}).get("path")=="application")
             self.assertEqual(checkout["with"]["ref"], "${{ inputs.release_sha }}")
         self.assertEqual(jobs["staging"]["concurrency"]["group"], "payment-deployment-control")
         self.assertEqual(jobs["production"]["concurrency"]["group"], "payment-deployment-control")

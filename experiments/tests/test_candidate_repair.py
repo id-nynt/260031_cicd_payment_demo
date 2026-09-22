@@ -39,9 +39,16 @@ class CandidateRepairTest(unittest.TestCase):
         with patch.object(repair,'inspect_target',side_effect=[self.stopped,dict(self.stopped,container_id='new')]),patch.object(repair,'docker') as docker:
             self.assertEqual('not_applicable',self.call()['status']);docker.assert_not_called()
 
-    def test_ambiguous_container_never_selected(self):
-        with patch.object(repair,'docker',return_value='one two'):
-            with self.assertRaisesRegex(ValueError,'ambiguous'):repair.container('payment-production','app')
+    def test_container_selection_intersects_exact_labels(self):
+        def item(id,service,project='payment-production',oneoff='False'):
+            return dict(Id=id,Config=dict(Labels={'com.docker.compose.project':project,'com.docker.compose.service':service,'com.docker.compose.oneoff':oneoff}))
+        items=[item('app','app'),item('db','postgres'),item('other','app','payment-staging'),item('oneoff','app',oneoff='True')]
+        with patch.object(repair,'docker',side_effect=['app db other oneoff',json.dumps(items)]):
+            self.assertEqual('app',repair.container('payment-production','app')['Id'])
+        with patch.object(repair,'docker',side_effect=['a b',json.dumps([item('a','app'),item('b','app')])]):
+            with self.assertRaisesRegex(ValueError,'exact_matches=2'):repair.container('payment-production','app')
+        with patch.object(repair,'docker',return_value=''):
+            with self.assertRaisesRegex(ValueError,'project=payment-production, service=app, exact_matches=0'):repair.container('payment-production','app')
 
     def test_controlled_restart_failure_is_retained(self):
         with patch.object(repair,'inspect_target',return_value=self.stopped),patch.object(repair,'docker') as docker:

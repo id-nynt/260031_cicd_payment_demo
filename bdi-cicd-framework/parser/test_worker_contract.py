@@ -11,7 +11,8 @@ class WorkerContractTest(unittest.TestCase):
             transient=next(s for s in steps if s.get('name')=='Controlled transient failure')
             self.assertEqual("inputs.failure_mode == 'transient_failure'", transient['if'])
             self.assertEqual('exit 1',transient['run'])
-        security=next(s for s in worker['jobs']['security']['steps'] if 'npm audit' in s.get('run',''))
+        security=next(s for s in worker['jobs']['security']['steps'] if 'execute-entity.sh' in s.get('run',''))
+        self.assertIn('npm audit --omit=dev --audit-level=high',(ROOT/'scripts/execute-entity.sh').read_text())
         self.assertFalse(security.get('continue-on-error',False))
         inputs=worker.get('on',worker.get(True))['workflow_dispatch']['inputs']
         self.assertIn('request_faults',inputs['experiment_mode']['options'])
@@ -26,11 +27,13 @@ class WorkerContractTest(unittest.TestCase):
             self.assertEqual(job['job_name'], worker['jobs'][name]['name'])
             self.assertEqual("inputs.entity == '"+name+"'", worker['jobs'][name]['if'])
             self.assertNotIn('needs',worker['jobs'][name])
-        self.assertEqual(set(worker['jobs'])-{'report','candidate_operation'},set(pipeline['jobs'])|set(pipeline['recovery']))
-        self.assertEqual('${{ always() && inputs.report_only == true }}',worker['jobs']['report']['if'])
+        self.assertEqual(set(worker['jobs'])-{'diagnose_candidate','restart_candidate'},set(pipeline['jobs'])|set(pipeline['recovery']))
+        self.assertNotIn('report',worker['jobs'])
+        self.assertEqual('Diagnose candidate',worker['jobs']['diagnose_candidate']['name'])
+        self.assertEqual('Restart candidate',worker['jobs']['restart_candidate']['name'])
         self.assertNotIn('report_only',worker['on']['workflow_dispatch']['inputs'])
         for name in pipeline['jobs']:
-            self.assertEqual('${{ inputs.report_only == true }}',worker['jobs'][name]['continue-on-error'])
+            self.assertNotIn('continue-on-error',worker['jobs'][name])
 
     def test_java_fixtures_match_canonical_compiler(self):
         framework=ROOT/'bdi-cicd-framework'

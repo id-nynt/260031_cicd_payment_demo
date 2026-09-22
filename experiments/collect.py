@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import subprocess
+import importlib.util
+import os
 
 ROOT = Path(__file__).resolve().parent
 
@@ -30,12 +32,32 @@ def main():
         if response.returncode:
             record['errors'].append(dict(command=command[:2], message=response.stderr))
     results = list(target.rglob('experiment-metrics.json'))
+    run = {}
     try:
         run = json.loads((target/'github-run.json').read_text(encoding='utf-8'))
         if run.get('status') != 'completed':
             record['errors'].append(dict(message='Remote workflow is not terminal; collect again after it finishes'))
     except (OSError, ValueError):
         record['errors'].append(dict(message='Missing or invalid GitHub run metadata'))
+    if not results and run.get('status') == 'completed' and not record['errors']:
+        try:
+            plans=list((target/'artifacts').rglob('plan.json'))
+            if len(plans)!=1: raise ValueError('Missing/ambiguous preparation artifact')
+            plan=json.loads(plans[0].read_text(encoding='utf-8-sig'))
+            if plan.get('workflow_layout')!='six-jobs-v1': raise ValueError('Missing server result for legacy workflow')
+            if plan.get('repository')!=args.repo or plan['comparison']['worker_sha']!=run['headSha']:
+                raise ValueError('Collected workflow identity differs from plan')
+            import sys
+            sys.path.insert(0,str(ROOT.parent/'ci-cd-conventional'))
+            spec=importlib.util.spec_from_file_location('native_collector',ROOT.parent/'ci-cd-conventional/native-experiment.py')
+            native=importlib.util.module_from_spec(spec);spec.loader.exec_module(native)
+            # Offline aggregation: no dispatch, API calls, health requests or repair.
+            os.environ['GITHUB_REPOSITORY']=args.repo
+            os.environ['GITHUB_RUN_ID']=str(args.run_id)
+            native.finish(target/'artifacts/native-result/result',target/'artifacts',remote=run)
+            results=list(target.rglob('experiment-metrics.json'))
+        except Exception as error:
+            record['errors'].append(dict(message='Offline aggregation failed: '+str(error)))
     record['metrics_found'] = len(results)
     record['complete_download'] = not record['errors'] and len(results) == 1
     if args.no_interventions:

@@ -47,17 +47,56 @@ class NativeWorkflowTest(unittest.TestCase):
             self.assertTrue((root/'result-traffic-staging/summary.json').exists())
             self.assertTrue((root/'result-traffic/summary.json').exists())
 
-    def test_installed_sources_and_reusable_health_inputs(self):
+    def test_execution_wrapper_classifies_only_confirmed_injections_as_retryable(self):
+        spec=importlib.util.spec_from_file_location('attempt',ROOT/'ci-cd-conventional/run-entity.py')
+        attempt=importlib.util.module_from_spec(spec);spec.loader.exec_module(attempt)
+        self.assertEqual('failure',attempt.status_for(75))
+        self.assertEqual('failure',attempt.status_for(124))
+        self.assertEqual('transient_failure',attempt.status_for(75,'transient_failure'))
+        self.assertEqual('timeout',attempt.status_for(124,'deployment_timeout'))
+
+    def test_attempt_intent_blocks_replay_before_side_effects(self):
+        spec=importlib.util.spec_from_file_location('attempt',ROOT/'ci-cd-conventional/run-entity.py')
+        attempt=importlib.util.module_from_spec(spec);spec.loader.exec_module(attempt)
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)
+            with patch.dict(attempt.os.environ,dict(GITHUB_RUN_ID='7',GITHUB_RUN_ATTEMPT='1',RELEASE_SHA='a'*40,GITHUB_OUTPUT=str(directory/'outputs'))),patch.object(attempt.subprocess,'Popen') as launch:
+                launch.return_value.wait.return_value=0
+                attempt.run('build',1,directory,directory/'evidence')
+                with self.assertRaises(FileExistsError):attempt.run('build',1,directory,directory/'evidence')
+                self.assertEqual(1,launch.call_count)
+
+    def test_six_job_collector_uses_attempt_receipts_not_failed_health_job_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);download=root/'download';download.mkdir()
+            native.write(download/'prepare/plan.json',dict(workflow_layout='six-jobs-v1',case='production-persistent',
+                seed=42,comparison=dict(candidate='a'*40,baseline='b'*40),traffic_required=False))
+            native.emit(download/'prepare/experiment-events.jsonl','campaign_started')
+            jobs=[]
+            for entity in ('build','test','security','staging','production','rollback'):
+                identity='native-7-1-'+entity+'-1'
+                native.write(download/entity/'execution/attempt-1.json',dict(entity=entity,attempt=1,status='success',
+                    executionId=identity,githubRunId=7,release_sha=('b' if entity=='rollback' else 'a')*40,
+                    started_at='2026-01-01T00:00:00Z',completed_at='2026-01-01T00:00:01Z',durationMs=1000))
+                jobs.append(dict(name=entity.title(),conclusion='failure' if entity=='production' else 'success',completedAt='2026-01-01T00:00:02Z'))
+                if entity in ('staging','production','rollback'):
+                    native.write(download/entity/'health/gate-result.json',dict(entity=entity,execution_id=identity,
+                        decision='block' if entity=='production' else 'allow'))
+            with patch.dict(native.os.environ,dict(GITHUB_REPOSITORY='o/r',GITHUB_RUN_ID='7')),patch.object(native,'api',side_effect=AssertionError('offline')):
+                self.assertEqual(1,native.finish(root/'result',download,remote={'jobs':jobs}))
+            result=json.loads((root/'result/controller-result.json').read_text())
+            self.assertEqual('success',result['executions']['production']['status'])
+            self.assertEqual('restored',result['recovery_outcome'])
+            self.assertEqual('stopped',result['outcome'])
+
+    def test_single_workflow_has_six_jobs_with_embedded_health(self):
         for source in (ROOT/'ci-cd-conventional/workflows').glob('*.yml'):
-            self.assertEqual(source.read_bytes(), (ROOT/'.github/workflows'/source.name).read_bytes())
-        doc = workflow('ci-cd.yml')
-        for entity in ['staging', 'production', 'rollback']:
-            job = doc['jobs'][entity+'_health']
-            callee = workflow(Path(job['uses']).name)
-            self.assertEqual(set(callee['on']['workflow_call']['inputs']), set(job['with']))
-            self.assertEqual(entity, job['with']['entity'])
-            self.assertIn('always()', job['if'])
-        self.assertEqual(['staging_health'], doc['jobs']['production']['needs'])
+            self.assertEqual(source.read_bytes(),(ROOT/'.github/workflows'/source.name).read_bytes())
+        doc=workflow('ci-cd.yml')
+        self.assertEqual({'build','test','security','staging','production','rollback'},set(doc['jobs']))
+        for entity in ('staging','production','rollback'):
+            self.assertTrue(any('native-experiment.py gate' in s.get('run','') for s in doc['jobs'][entity]['steps']))
+        self.assertEqual(['staging'],doc['jobs']['production']['needs'])
 
     def test_runs_without_bdi_framework(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -79,25 +118,32 @@ class NativeWorkflowTest(unittest.TestCase):
         self.assertEqual({'workflow_dispatch'},set(doc['on']))
         self.assertEqual(set(CASES),set(doc['on']['workflow_dispatch']['inputs']['scenario']['options']))
         self.assertEqual(len(CASES),13)
-        for name in ['build','test','security','staging','production','rollback']:
-            self.assertEqual('./.github/workflows/conventional-entity.yml',doc['jobs'][name]['uses'])
-        self.assertEqual(['staging_health'],doc['jobs']['production']['needs'])
+        for job in doc['jobs'].values(): self.assertNotIn('uses',job)
         self.assertIn('known_good_sha',doc['jobs']['rollback']['if'])
         self.assertIn("needs.production.outputs.status == 'success'",doc['jobs']['rollback']['if'])
     def test_worker_faults_are_scoped_and_timeout_precedes_deployment(self):
-        worker=workflow('entity-execution.yml')
-        for entity in ['staging','production']:
-            steps=worker['jobs'][entity]['steps']
-            fault=next(i for i,s in enumerate(steps) if s.get('name')=='Controlled deployment timeout before side effects')
-            deploy=next(i for i,s in enumerate(steps) if s.get('run')=='docker compose up -d --build')
-            self.assertLess(fault,deploy)
-            self.assertTrue(any(s.get('run')=='docker compose stop postgres' for s in steps))
-            self.assertTrue(any(s.get('run')=='docker compose stop app' for s in steps))
-        self.assertFalse(any('docker compose stop' in s.get('run','') for s in worker['jobs']['rollback']['steps']))
+        script=(ROOT/'scripts/execute-entity.sh').read_text()
+        for entity in ('staging','production'):
+            body=script.split('  '+entity+')')[1].split('    ;;')[0]
+            self.assertLess(body.index('sleep 90'),body.index('docker compose up'))
+            self.assertIn('docker compose stop postgres',body)
+        self.assertNotIn('docker compose stop',script.split('  rollback)')[1])
     def test_native_retries_only_confirmed_transient_or_timeout_never_unknown(self):
-        condition=workflow('conventional-entity.yml')['jobs']['wait']['if']
-        self.assertIn("'transient_failure'",condition);self.assertIn("'timeout'",condition)
-        self.assertNotIn("'unknown'",condition);self.assertIn("inputs.entity != 'rollback'",condition)
+        doc=workflow('ci-cd.yml')
+        for entity in ('build','test','security','staging','production'):
+            condition=next(s['if'] for s in doc['jobs'][entity]['steps'] if s.get('id')=='retry')
+            self.assertIn("'transient_failure'",condition);self.assertIn("'timeout'",condition)
+            self.assertNotIn("'unknown'",condition)
+        self.assertFalse(any(s.get('id')=='retry' for s in doc['jobs']['rollback']['steps']))
+    def test_ready_degradation_reobserves_without_repair(self):
+        policy=copy.deepcopy(self.policy);policy['execution'].update(observation_attempts=4,observation_interval_seconds=0)
+        good=dict(data_status='fresh',readiness='ready',availability=1,error_rate=0,latency_p95_ms=10)
+        samples=iter([dict(good,error_rate=.8),good,good])
+        from unittest.mock import Mock
+        repair=Mock()
+        self.assertEqual('allow',native.observe(policy,lambda:next(samples),lambda *a:None,repair=repair))
+        repair.assert_not_called()
+
     def test_gate_rechecks_transient_and_rejects_persistent_or_missing(self):
         policy=copy.deepcopy(self.policy);policy['execution'].update(observation_attempts=4,observation_interval_seconds=0,healthy_observations=2)
         good=dict(data_status='fresh',readiness='ready',availability=1,error_rate=0,latency_p95_ms=10)

@@ -540,11 +540,13 @@ observation_open(Round, Time) :- observation_limit(Max) & Round < Max & observat
     & healthy_count(Entity, Count) & healthy_observations(Need) & observation_timeout(Deadline)
     & (Count + 1 < Need | Time > Deadline) & not observation_open(Round, Time)
     <- !accept_sample(Entity, unknown).
-// Diagnose once before spending the entire observation budget. Repairs are subgoals,
+// Diagnose unavailable services early; ready-but-degraded services reobserve.
+// Repairs are subgoals,
 // not normal pipeline achievements; the original deployment result stays intact.
 +telemetry_sample(Entity, Attempt, Round, Decision, Time)
     : observing(Entity) & attempt_count(Entity, Attempt) & Decision \== allow
       & repair_enabled(Entity) & not repair_checked(Entity) & observation_open(Round, Time)
+      & not telemetry_measurement(Entity, Attempt, Round, fresh, ready, _, _, 1, Time)
     <- +repair_checked(Entity);
        +repair_pending_sample(Entity, Attempt, Round);
        .print("BDI_DECISION=diagnose_candidate entity=", Entity);
@@ -585,7 +587,8 @@ observation_open(Round, Time) :- observation_limit(Max) & Round < Max & observat
 +telemetry_sample(Entity, Attempt, Round, Decision, Time)
     : observing(Entity) & attempt_count(Entity, Attempt)
     & Decision \== allow & observation_open(Round, Time)
-    & (not repair_enabled(Entity) | repair_checked(Entity))
+    & (not repair_enabled(Entity) | repair_checked(Entity)
+       | telemetry_measurement(Entity, Attempt, Round, fresh, ready, _, _, 1, Time))
     <- -healthy_count(Entity, _);
        +healthy_count(Entity, 0);
        !reobserve(Entity, Round).

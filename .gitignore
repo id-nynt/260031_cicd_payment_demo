@@ -55,7 +55,7 @@ Thumbs.db
 Desktop.ini
 
 # Reviewed historical evidence belongs in version control, including selected logs.
-!/docs/archives/**/*.log
+/docs/archives/*
 
 # Intentionally NOT ignored:
 # - docs/ and archives/ (review historical material before adding)

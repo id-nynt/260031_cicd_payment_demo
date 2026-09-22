@@ -17,8 +17,8 @@ For the labelled app pair, record `/health.appVersion` and a refreshed checkout 
 | BDI GUI/manual C2-C7 and baselines | Explicit `$candidateDir`/`$baselineDir` printed in the manual | Result/journal plus automatic controller-console.log; retain fault files, traffic output and optional agent-mind screenshots |
 | Conventional | `experiments/results/conventional/<run-id>/` | `github-run.json`, `github-run.log`, `collection.json` |
 | Conventional result | `artifacts/native-result/result/` beneath that directory | `controller-result.json`, `experiment-metrics.json`, `experiment-events.jsonl`, `github-jobs.json` |
-| Conventional supporting evidence | `artifacts/native-prepare/`, `artifacts/native-*-health/`, and sibling `result-experiment/`, `result-traffic/` | Plan, frozen config/input snapshots, gate decisions, complete traffic traces |
-| Conventional repair evidence | `artifacts/native-production-health/production/` | `diagnose-receipt.json`, `restart-receipt.json` and gate events |
+| Conventional supporting evidence | `artifacts/native-prepare/`, `artifacts/native-staging/`, `artifacts/native-production/`, `artifacts/native-rollback/`, and sibling `result-experiment/`, `result-traffic/` | Plan, frozen config/input snapshots, gate decisions, complete traffic traces |
+| Conventional repair evidence | `artifacts/native-production/health/` | `diagnose-receipt.json`, `restart-receipt.json` and gate events |
 
 Download conventional evidence with `py -3 experiments/collect.py --repo OWNER/REPO --run-id RUN_ID`. It refuses existing directories. To retry collection after a transient download error, use a new `--output` folder and retain the original failure; do not include both copies as two trials in the analysis tree. Download before artifact retention expires. Results/reports are Git-ignored: archive them deliberately outside the working tree as well.
 

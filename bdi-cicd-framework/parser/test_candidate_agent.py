@@ -62,6 +62,6 @@ class CandidateAgentTest(unittest.TestCase):
     def test_persistent_running_fault_does_not_select_restart(self):
         result,events=self.run_case('production_unhealthy','stopped','restored')
         self.assertFalse(any(e['event']=='repair_started' for e in events))
-        self.assertEqual(1,sum(e['event']=='diagnosis_started' for e in events))
+        self.assertEqual(0,sum(e['event']=='diagnosis_started' for e in events))
 
 if __name__=='__main__':unittest.main()

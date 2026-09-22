@@ -59,6 +59,18 @@ class StudyEvaluationTest(unittest.TestCase):
         self.assertEqual(1,summary['groups'][0]['delivery_denominator'])
         self.assertIsNone(summary['groups'][0]['restoration_rate'])
 
+    def test_complete_study_requires_unused_verified_final_reset(self):
+        _,_,summary=evaluate(self.root)
+        self.assertFalse(summary['study_complete'])
+        final=self.root/'resets/final'
+        verified={e:dict(release_sha='v1',execution_id='final-'+e,github_run_id=99) for e in ('staging','production')}
+        write(final/'controller-result.json',dict(mode='github',outcome='achieved',repository='owner/repo',release_sha='v1',verified_releases=verified))
+        write(final/'reset-check.json',{e:dict(ready=True,appVersion='v1',experimentMode='normal',deploymentRunId='final-'+e) for e in verified})
+        (self.root/'current-reset.txt').write_text(str(final))
+        self.assertTrue(evaluate(self.root)[2]['study_complete'])
+        (final/'used-by-trial.txt').write_text('02-native')
+        self.assertFalse(evaluate(self.root)[2]['study_complete'])
+
     def test_missing_trial_stays_in_planned_denominator(self):
         self.records[1].unlink()
         rows,pairs,summary=evaluate(self.root)

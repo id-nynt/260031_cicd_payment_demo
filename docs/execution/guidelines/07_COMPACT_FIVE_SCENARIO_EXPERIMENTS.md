@@ -10,7 +10,7 @@ This guide is for your existing setup and release pair. Open **Docker Desktop**,
 |---|---|---|---|
 | 1 | 1 | `healthy` | Baseline/control: v2 delivered; both health gates accepted; normal payment traffic |
 | 2 | 3 | `test-failure` | Deterministic test failure: safe stop, no production deployment, reset v1 remains |
-| 3 | 8 | `production-temporary` | 75 seconds of mixed request errors, then normal traffic: reobserve, recover and continue v2 |
+| 3 | 8 | `production-temporary` | 75 seconds of mixed request errors, then normal traffic: bounded reobservation through the two-minute metric window, then two healthy observations and continued v2 |
 | 4 | 9 | `production-persistent` | Sustained request errors: bounded observations, then verified rollback to v1 |
 | 5 | 7 | `candidate-stopped` | Matching production app stopped after deployment succeeds: diagnose, one restart, fresh verification, continue v2 |
 
@@ -32,7 +32,33 @@ Manual choices are separate from execution blocks. Paste complete `. { ... }` bl
 
 ## Step 1. Publish the reviewed control update once
 
+**For the interrupted September 22 study:** keep its six recorded trials and original records unchanged. This revision changes execution logic and workflow layout: publish a new worker tag and create a **new** compact study; do not combine old/new trials as matched pairs. Old evidence remains useful as a pilot and diagnosis record. Do not claim the old study completed all ten runs.
+
+In Source Control, review and stage intended code, tests and documentation (including new helper files); exclude results and credentials. Commit them, then verify `git status --short` produces no output. Pushing an existing commit does not include unstaged/uncommitted changes. If the block below stops on a dirty worktree, complete this manual step before proceeding. Never bypass the guard.
+
+
 **Open:** your editor/Source Control and GitHub. Review and commit intended changes, including the refactored agent, supporting scripts and generated manifest. Publish/register the reviewed workflows on the default branch through your normal process. **Do not blindly stage all files.** Keep existing immutable v1/v2 app SHAs.
+
+**Manual action:** in Source Control review and stage the intended files. Then inspect the staged list:
+
+```powershell
+git diff --cached --stat
+```
+
+**Only after reviewing that list**, commit and publish the branch:
+
+```powershell
+. {
+    $ErrorActionPreference = 'Stop'
+    git commit -m "Simplify paired workflows and repair experiment recording"
+    if ($LASTEXITCODE -ne 0) { throw 'Commit did not complete. Inspect Git output before proceeding.' }
+    if (git status --porcelain) { throw 'Uncommitted files remain. Review them; do not discard them to bypass this check.' }
+    git push origin HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Branch publication failed.' }
+}
+```
+
+Skip the commit block if this exact revision is already committed and the worktree is clean. Publishing a branch does not merge workflows into the default branch; complete that reviewed publication separately. No tag/pair block or experiment step should follow a failed prerequisite.
 
 Before publication, run these read-only checks from the repository root:
 
@@ -80,7 +106,7 @@ If the current pair already selects this exact published control revision, skip 
 }
 ```
 
-**Expected:** new published control tag; old tags, app SHAs and receipts preserved. Proceed to Step 2. Conventional deployment is triggered by `workflow_dispatch`, not by this push.
+**Expected:** new published control tag; old tags, app SHAs and receipts preserved. Proceed to Step 2. Conventional deployment is triggered by `workflow_dispatch`, not by this push. Its single workflow has six jobs: build, test, security, staging, production and rollback. Health checks run inside deployment jobs; the local collector aggregates saved artifacts after the workflow ends. The BDI worker retains separate **Diagnose candidate** and **Restart candidate** jobs with static names. They run only when requested by the agent; neither is a normal pipeline phase. The obsolete report job is removed.
 
 ## Step 2. Load the session and reset helpers
 
@@ -309,22 +335,18 @@ BDI runs locally until completion. Conventional execution dispatches the GitHub 
     } elseif ($trial.mechanism -eq 'github-actions') {
         $resultDir = Join-Path $trialRoot 'native/artifacts/native-result/result'
         $resultDir | Set-Content (Join-Path $trialRoot 'result-path.txt') -Encoding utf8
-        $payload = @{ release_sha=$v2Sha; scenario=$trial.case; baseline='false'; known_good_receipt=(Get-Content -LiteralPath $knownGood -Raw); confirm_compatible_rollback='true'; seed=[string]$study.seed } | ConvertTo-Json -Compress
-        $payload | gh workflow run ci-cd.yml --repo $pair.repository --ref $workerRef --json
-        if ($LASTEXITCODE -ne 0) { throw 'Dispatch failed/uncertain. Inspect Step 10; do not blindly dispatch again.' }
-        gh run list --repo $pair.repository --workflow ci-cd.yml --limit 10 --json databaseId,displayTitle,headSha,createdAt,status,url
+        py -3 -B experiments/dispatch_trial.py --study "$studyDir" --trial $trial.id
+        if ($LASTEXITCODE -ne 0) { throw 'Dispatch failed/uncertain. Use Step 10; never blindly redispatch.' }
     } else { throw 'Unknown mechanism in schedule.' }
 }
 ```
 
-### 6.2. Conventional only: select its run, wait and collect
+### 6.2. Conventional only: load its saved run ID, wait and collect
 
-Skip this subsection for BDI. Select the GitHub run matching this trial's creation time, case, worker SHA and v2 SHA; do not blindly select the latest run.
-
-**Manual input - separate block:**
+Skip this subsection for BDI. The dispatch helper saves the uniquely matching run ID. It verifies the worker SHA, case, candidate SHA and start time; ambiguous matches stop execution.
 
 ```powershell
-$runId = (Read-Host 'Paste this conventional trial GitHub run ID').Trim()
+$runId = (Get-Content (Join-Path $trialRoot 'github-run-id.txt') -Raw).Trim()
 ```
 
 **Then run unchanged:**
@@ -384,8 +406,8 @@ This block also restores trial variables after reopening PowerShell and completi
 |---|---|---|
 | Result, metrics and common events | `bdi/` | `native/artifacts/native-result/result/` |
 | Agent decisions / execution log | `bdi/controller-console.log`, `controller-journal.jsonl` | `native/github-run.log`, gate events |
-| Traffic | `bdi-traffic*/`; client logs in `bdi-experiment/` | `native/artifacts/native-*-health/`; summaries beside `result/` |
-| Diagnosis/restart evidence | `bdi/operation-<UUID>/receipt.json` | `native/artifacts/native-production-health/production/` receipts |
+| Traffic | `bdi-traffic*/`; client logs in `bdi-experiment/` | `native/artifacts/native-staging/` and `native-production/`; summaries beside `result/` |
+| Diagnosis/restart evidence | `bdi/operation-<UUID>/receipt.json` | `native/artifacts/native-production/health/` receipts |
 | Launch failure | `bdi-experiment/launch-status.json` | GitHub run/job and collection status |
 
 Inspect `traffic_by_entity` for required traffic and profile/seed/deployment/release mismatches. Missing evidence is not success. A restart returning `executed` is not verified delivery. Use the five-case table above to inspect the actual fault and response; retain unexpected but well-evidenced outcomes.
@@ -438,56 +460,36 @@ Run before reset, including after failed trials. Endpoint failures are retained 
 }
 ```
 
-Console logs, result JSON and traffic logs are automatic. Screenshots are optional; if wanted, save them in `$trialRoot`. Do not manually recreate missing JSON or rerun to manufacture evidence for an earlier trial.
+Console logs and traffic logs are automatic. Conventional result JSON/metrics are assembled offline by `collect.py` from terminal job metadata and per-attempt receipts. A missing required receipt is a collection failure, not an inferred success. Screenshots are optional; if wanted, save them in `$trialRoot`. Do not manually recreate missing JSON or rerun to manufacture evidence for an earlier trial.
 
 ## Step 8. Finalise this trial's record
 
-**Open:** `$trialRoot`, its raw evidence and GitHub logs. This brief manual review confirms actual fault exposure and production safety.
+**Open:** Controller PowerShell after Step 7. The helper derives fault exposure and final safety from the saved evidence, reads the reset references from `started.json`, and writes the exact schema required by the evaluator. It never assumes an expected outcome actually occurred. Missing evidence remains unverified/ineligible; failures are still recorded. Do not hand-write another `record.json` format or set eligibility yourself.
 
-- `verified_candidate`: live ready production matches the accepted v2 execution ID.
-- `verified_baseline`: live ready production matches reset v1 (test failure) or the successfully verified rollback ID (persistent degradation).
-- `unsafe`: evidence demonstrates an unsafe final state.
-- `unverified`: evidence cannot establish safety.
-
-Confirm normal traffic/gates for `healthy`; for other cases confirm the actual injected fault. Count interventions during candidate execution, excluding routine setup/reset/collection; leave the count blank if unknown. Describe staging state and unexpected outcomes in notes.
-
-**Manual answers - separate block:**
+**Manual input ? only information that logs cannot establish:**
 
 ```powershell
-$faultReview = (Read-Host 'Fault exposure (or healthy traffic) confirmed from raw evidence? yes/no').Trim()
-$safety = (Read-Host 'Production safety: verified_candidate / verified_baseline / unsafe / unverified').Trim()
-$interventionText = (Read-Host 'Number of human interventions during this trial; blank if unknown').Trim()
-$notes = Read-Host 'Notes: approvals, unexpected outcomes, staging state, interruptions or exclusions'
+$interventionText = (Read-Host 'Human interventions during candidate execution; blank if unknown').Trim()
+$notes = Read-Host 'Notes: approvals, additional agent intervention, interruptions or unexpected behaviour'
 ```
 
-**Save the record without overwriting an earlier finalisation:**
+An execution agent may supply these from its own documented action history. Unknown intervention counts must stay unknown. Routine reset and collection do not count as candidate repair interventions.
 
 ```powershell
 . {
     $ErrorActionPreference = 'Stop'
-    if ($faultReview -notin @('yes','no')) { throw 'Answer yes or no.' }
-    if ($safety -notin @('verified_candidate','verified_baseline','unsafe','unverified')) { throw 'Choose one documented safety value.' }
-    $interventions = $null
+    $recordArgs = @('--study', $studyDir, '--trial', $trial.id)
     if ($interventionText) {
-        if ($interventionText -notmatch '^\d+$') { throw 'Intervention count must be nonnegative or blank.' }
-        $interventions = [int]$interventionText
+        if ($interventionText -notmatch '^\d+$') { throw 'Use a nonnegative count or leave blank.' }
+        $recordArgs += @('--human-interventions', $interventionText)
     }
-    $recordPath = Join-Path $trialRoot 'record.json'
-    if (Test-Path $recordPath) { throw 'Already finalised. Preserve the original; document corrections separately.' }
-    $start = Get-Content (Join-Path $trialRoot 'started.json') -Raw | ConvertFrom-Json
-    $complete = $false
-    if ($trial.mechanism -eq 'github-actions' -and (Test-Path (Join-Path $trialRoot 'native/collection.json'))) {
-        $complete = (Get-Content (Join-Path $trialRoot 'native/collection.json') -Raw | ConvertFrom-Json).complete_download
-    } elseif ($trial.mechanism -eq 'bdi' -and (Test-Path (Join-Path $trialRoot 'remote-collection.json'))) {
-        $complete = (Get-Content (Join-Path $trialRoot 'remote-collection.json') -Raw | ConvertFrom-Json).complete
-    }
-    [pscustomobject]@{ result_dir=$resultDir; reset_result=$start.reset_result; reset_check=$start.reset_check; evidence_complete=[bool]$complete; fault_reviewed=($faultReview -eq 'yes'); safety=$safety; human_interventions=$interventions; notes=$notes; finalised_at=(Get-Date).ToUniversalTime().ToString('o') } |
-        ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $recordPath -Encoding utf8
-    Get-Content -LiteralPath $recordPath -Raw
+    if ($notes) { $recordArgs += @('--notes', $notes) }
+    py -3 -B experiments/record_trial.py @recordArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Recording failed: inspect error; do not invent or overwrite evidence.' }
 }
 ```
 
-**Expected:** `record.json` saved even for failures/incomplete trials. This does not prove remote work has stopped. Resolve uncertainty through Step 10 before resetting.
+**Expected:** path to `record.json`, eligibility and explicit issues. An unexpected valid rollback can be eligible even though the scenario expectation was not met. Recording does not prove remote work has stopped. Preserve the original on corrections; use a separately documented amendment, never silently overwrite old records. Continue to Step 9 only after all remote work is terminal.
 
 ## Step 9. Clean up and restore v1
 
@@ -509,6 +511,7 @@ Invoke-StudyReset
 | Terminal reopened | Step 2, then 3.2 and 7.1; use saved pointers rather than guessing paths |
 | Trial already has `started.json` | Resume collection/review; never dispatch it again as though it were new |
 | BDI interrupted or remote execution unknown | Stop the old local controller if still running, then use the reconciliation command below; inspect GitHub before resetting |
+| Conventional dispatch uncertain | Run `py -3 -B experiments/dispatch_trial.py --study "$studyDir" --trial $trial.id --resolve-only`. Never delete its intent file or assume no response means no run. |
 | Conventional cancelled or runner lost | Inspect all remote jobs and Docker state; preserve incomplete evidence; do not count GitHub `Re-run jobs` as another planned trial |
 | Collection incomplete | Keep the failure record; download again into a fresh folder for inspection and document any correction; never count duplicate downloads as extra trials |
 | Old control tag / file mismatch | Step 1, then start a new compact study if the control revision changed |
@@ -533,8 +536,11 @@ Reconciliation reads remote status; it does not resume or dispatch. An unresolve
     $reportDir = [System.IO.Path]::GetFullPath('experiments/reports/' + (Get-Date -Format yyyyMMdd-HHmmss-fff))
     py -3 experiments/evaluate_study.py --study "$studyDir" --output "$reportDir"
     if ($LASTEXITCODE -ne 0) { throw 'Fix the reported ledger/format error without altering original evidence.' }
-    Get-Content (Join-Path $reportDir 'summary.json') -Raw
+    $summary = Get-Content (Join-Path $reportDir 'summary.json') -Raw | ConvertFrom-Json
+    $summary | ConvertTo-Json -Depth 8
     "Report: $reportDir"
+    if (-not $summary.study_complete) { throw 'Study is incomplete: finalise pending trials and verify the final unused v1 reset in both environments.' }
+    if ($summary.matched_pairs -lt $summary.planned_pairs) { 'Some pairs are excluded. Inspect trials.csv and pairs.csv; do not claim all comparisons are valid.' }
 }
 ```
 
@@ -545,7 +551,9 @@ Reconciliation reads remote status; it does not resume or dispatch. An unresolve
 | `groups.csv` | Per-case/per-approach delivery, restoration and repair rates with denominators; runtime, retries, repair time and interventions |
 | `summary.json` | Planned/recorded/eligible counts, matched pairs and interpretation limits |
 
-For one complete eligible repetition, expect **10 recorded trials and 5 matched pairs**. Missing or excluded evidence reduces the matched count; retain and explain it. Pair differences are **BDI minus conventional**. Positive delivery difference favours BDI; negative runtime difference means BDI was faster. Do not turn missing times into zero.
+A study is complete only when all scheduled records exist, evidence exclusions are explained, the final reset verifies **both** environments at v1, and evaluation outputs are saved. Agent task completion alone is not study completion.
+
+For one complete eligible repetition, expect **10 recorded trials and 5 matched pairs**, with `final_reset_complete=true` and `study_complete=true`. These completion flags do not override evidence exclusions. Missing or excluded evidence reduces the matched count; retain and explain it. Pair differences are **BDI minus conventional**. Positive delivery difference favours BDI; negative runtime difference means BDI was faster. Do not turn missing times into zero.
 
 Report each case separately:
 

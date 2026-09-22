@@ -259,7 +259,9 @@ public final class ControllerEnvironment extends Environment {
             measurement = repairCompleted.getOrDefault(entity,false) ? provider.measureRepair() : provider.measure();
             return publishMeasurement(entity, round, measurement, execution.executionId());
         }
-        measurement = decision.equals("unknown")
+        measurement = reason.equals("scenario_candidate_stopped")
+            ? new ProjectTelemetryProvider.Measurement("fresh", "not_ready", 0, 0, 0)
+            : decision.equals("unknown")
             ? new ProjectTelemetryProvider.Measurement("unavailable", "unknown", 0, 0, 0)
             : new ProjectTelemetryProvider.Measurement("fresh", "ready", decision.equals("block") ? 1 : 0, 20, 1);
         return publishMeasurement(entity, round, measurement, latest.get(entity).executionId());

@@ -1,5 +1,8 @@
 # RQ1: End-to-end paired experiments for conventional and BDI CI/CD
 
+**Current compact study:** use [guide 07](07_COMPACT_FIVE_SCENARIO_EXPERIMENTS.md) for the five-case schedule, safe dispatch/resume and schema-checked recording. Current conventional execution has six jobs; `collect.py` generates result JSON locally from downloaded receipts. A new control revision requires a new study.
+
+
 ## Introduction and reading path
 
 **Research question:** Does BDI-based execution improve the reliability and resilience of CI/CD pipelines compared with conventional execution?
@@ -495,8 +498,8 @@ This also works after reopening PowerShell once Steps 3 and 4.2 have restored th
 | Result / metrics / common event timeline | `bdi/` | `native/artifacts/native-result/result/` |
 | Agent mind/decision text | `bdi/controller-console.log`, `controller-journal.jsonl` | Not an agent; use GitHub logs and gate event timeline |
 | Frozen plan/config | `bdi-experiment/plan.json`, snapshots in `bdi/` | `native/artifacts/native-prepare/`, and `result-experiment/plan.json` |
-| Traffic requests/transitions | `bdi-traffic*/` siblings | `native/artifacts/native-*-health/` |
-| Repair evidence | `bdi/operation-<UUID>/receipt.json` | `native/artifacts/native-production-health/production/diagnose-receipt.json`, `restart-receipt.json` |
+| Traffic requests/transitions | `bdi-traffic*/` siblings | `native/artifacts/native-staging/`, `native/artifacts/native-production/` |
+| Repair evidence | `bdi/operation-<UUID>/receipt.json` | `native/artifacts/native-production/health/diagnose-receipt.json`, `restart-receipt.json` |
 | Complete remote job logs | Step 8.2 below | Already collected: `native/github-run.log`, `github-run.json` |
 | Reset evidence | Path in `started.json` plus this trial's `reset-check.json` | Same |
 

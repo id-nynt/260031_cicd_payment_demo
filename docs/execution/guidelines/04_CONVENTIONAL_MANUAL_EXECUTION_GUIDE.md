@@ -1,5 +1,8 @@
 # Manual conventional experiment: v1 to v2
 
+**Current compact study:** use [guide 07](07_COMPACT_FIVE_SCENARIO_EXPERIMENTS.md) for the five-case schedule, safe dispatch/resume and schema-checked recording. Current conventional execution has six jobs; `collect.py` generates result JSON locally from downloaded receipts. A new control revision requires a new study.
+
+
 This is a standalone GitHub Actions route. No Java, Jason, BDI controller, generation or BDI baseline receipt is required. Use the root payment app unchanged and the implementation in [ci-cd-conventional/](../../../ci-cd-conventional/README.md). The five named stages are **build → test → security → staging → production**. Preparation, bounded health gates, rollback and evidence are supporting jobs, retained to provide a realistic conventional baseline.
 
 **Returning after the app-version update:** start with [BDI manual A4: version pair](03_BDI_MANUAL_EXECUTION_GUIDE.md#a4-create-or-refresh-the-version-pair). You can reuse your tools and runner, but need new application tags and a receipt for the updated v1 SHA. Then resume this guide at step 2, skip step 3 only if that new baseline is already verified, and use steps 4-5 for each trial.
@@ -160,7 +163,7 @@ Open the run's stage and health jobs. Look for:
 
 Successful staging/production deployments have a 60-second warmup, then at most 36 observations/180 seconds requiring two consecutive healthy samples. Temporary errors last 75 seconds; the two-minute metric window can delay recovery. Inspect actual samples rather than assuming success.
 
-The production gate can diagnose a stopped matching candidate with a ready database and restart it once. Both repair scenarios retain the 60-second pause; production then uses shared payment probes for 120 seconds instead of the regular traffic client. Fresh health and live deployment identity must pass within the repair decision budget (300 seconds). A repaired v2 can finish successfully; failed repair triggers the existing verified-v1 rollback job. Inspect `diagnose-receipt.json`/`restart-receipt.json` in `native-production-health`, plus common `diagnosis_*`, `repair_*` and `repair_verified` events. No manual log copy is needed: the collection command downloads these artifacts. After collection, follow the existing reset section before the next trial.
+The production gate can diagnose a stopped matching candidate with a ready database and restart it once. Both repair scenarios retain the 60-second pause; production then uses shared payment probes for 120 seconds instead of the regular traffic client. Fresh health and live deployment identity must pass within the repair decision budget (300 seconds). A repaired v2 can finish successfully; failed repair triggers the existing verified-v1 rollback job. Inspect `diagnose-receipt.json`/`restart-receipt.json` in `native-production/health/`, plus common `diagnosis_*`, `repair_*` and `repair_verified` events. No manual log copy is needed: the collection command downloads these artifacts. After collection, follow the existing reset section before the next trial.
 
 ```powershell
 py -3 experiments/collect.py --repo $env:GITHUB_REPOSITORY --run-id $runId

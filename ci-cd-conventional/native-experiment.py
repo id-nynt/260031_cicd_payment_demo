@@ -69,7 +69,7 @@ def prepare(directory):
     write(directory/'plan.json', dict(schema_version=2, case=case, seed=seed, mechanism='github-actions', comparison=comparison,
         thresholds=policy['thresholds'], traffic_targets=traffic_targets(case, CATALOG[case]), traffic_required=bool(CATALOG[case]['profile']),
         fault_expected=bool(CATALOG[case]['profile'] and 'errors' in CATALOG[case]['profile']),
-        comparison_key=None, native_workflow=True, configuration_inputs=config['configuration_inputs'],
+        comparison_key=None, native_workflow=True, workflow_layout='six-jobs-v1', repository=os.environ['GITHUB_REPOSITORY'], configuration_inputs=config['configuration_inputs'],
         protocol_key=protocol_key(case,seed,sha,good,os.environ['GITHUB_SHA'],config['contract_sha256'],policy,
             {'selected':digest(ROOT/'scripts/traffic-scenarios'/f"{CATALOG[case]['profile']}.json") if CATALOG[case]['profile'] else None,
              'healthy':digest(ROOT/'scripts/traffic-scenarios/healthy.json')},
@@ -79,7 +79,6 @@ def prepare(directory):
     for source in (ROOT/'ci-cd-conventional/snapshots').iterdir():
         shutil.copyfile(source, directory/source.name)
     shutil.copytree(ROOT/'ci-cd-conventional/workflows', directory/'workflows')
-    shutil.copyfile(ROOT/'.github/workflows/entity-execution.yml', directory/'workflows/entity-execution.yml')
     shutil.copyfile(ROOT/'experiments/scenarios.json', directory/'scenarios.json')
     emit(directory/'experiment-events.jsonl','campaign_started', release_sha=sha, scenario=case)
     output('known_good_sha', good)
@@ -124,7 +123,7 @@ def observe(policy, sample, record, clock=time.monotonic, sleep=time.sleep, repa
         if clock()>=min(deadline,deadline_limit()): break
         round_number+=1
         value=sample(); record(round_number,value)
-        if repair is not None and not healthy(value,policy['thresholds']):
+        if repair is not None and (value['data_status'] != 'fresh' or value['readiness'] != 'ready' or value['availability'] < 1):
             result=repair()
             repair=None
             if result == 'executed':
@@ -139,7 +138,7 @@ def observe(policy, sample, record, clock=time.monotonic, sleep=time.sleep, repa
         if round_number<execution['observation_attempts']: sleep(min(execution['observation_interval_seconds'],max(0,deadline-clock())))
     return 'block' if value.get('data_status') == 'fresh' and not healthy(value,policy['thresholds']) else 'unknown'
 
-def gate(directory, entity, execution_id, sha, scenario, seed):
+def gate(directory, entity, execution_id, sha, scenario, seed, execution_directory=None):
     doc, _, policy = configuration()
     events=directory/'experiment-events.jsonl'; directory.mkdir(parents=True,exist_ok=False)
     selected=CATALOG[scenario]; traffic=None; traffic_log=None
@@ -157,14 +156,13 @@ def gate(directory, entity, execution_id, sha, scenario, seed):
             emit(events,'observation',entity=entity,round=round_number,**value)
             print(f'OBSERVE {entity} round={round_number} data={value["data_status"]} error_rate={value["error_rate"]}',flush=True)
         if entity == 'production':
-            jobs=[]
-            for page in range(1,101):
-                batch=api(f'actions/runs/{os.environ["GITHUB_RUN_ID"]}/attempts/{os.environ["GITHUB_RUN_ATTEMPT"]}/jobs?per_page=100&page={page}')['jobs'];jobs+=batch
-                if len(batch)<100:break
-            selected=[j for j in jobs if j['name'].endswith('Production entity') and j.get('completed_at') and j['conclusion']!='skipped']
-            if not selected: raise ValueError('Missing production duration evidence')
-            job=max(selected,key=lambda j:j['started_at'])
-            duration=(datetime.fromisoformat(job['completed_at'].replace('Z','+00:00'))-datetime.fromisoformat(job['started_at'].replace('Z','+00:00'))).total_seconds()*1000
+            if execution_directory:
+                receipts=[json.loads(p.read_text()) for p in execution_directory.glob('attempt-*.json')]
+                matching=[r for r in receipts if r['executionId']==execution_id and r['status']=='success']
+                if len(matching)!=1: raise ValueError('Missing production duration evidence')
+                duration=matching[0]['durationMs']
+            else:
+                raise ValueError('Production gate requires execution receipts')
             if duration>policy['max_production_ms']:
                 emit(events,'maintenance_violation',entity=entity,duration_ms=duration)
                 raise ValueError('Production exceeded duration constraint')
@@ -218,7 +216,7 @@ def gate(directory, entity, execution_id, sha, scenario, seed):
         if traffic_log: traffic_log.close()
 
 
-def finish(directory, downloaded):
+def finish(directory, downloaded, remote=None):
     directory.mkdir(parents=True,exist_ok=False)
     plans=list(downloaded.rglob('plan.json'))
     if len(plans)!=1: raise ValueError('Missing/ambiguous preparation evidence; no certified result')
@@ -229,13 +227,15 @@ def finish(directory, downloaded):
     gates={}
     for path in downloaded.rglob('gate-result.json'):
         item=json.loads(path.read_text());gates[item['entity']]=item
-    jobs=[]
-    for page in range(1,101):
-        batch=api(f'actions/runs/{os.environ["GITHUB_RUN_ID"]}/attempts/{os.environ["GITHUB_RUN_ATTEMPT"]}/jobs?per_page=100&page={page}')['jobs'];jobs+=batch
-        if len(batch)<100:break
+    jobs=[] if remote is None else remote['jobs']
+    if remote is None:
+        for page in range(1,101):
+            batch=api(f'actions/runs/{os.environ["GITHUB_RUN_ID"]}/attempts/{os.environ["GITHUB_RUN_ATTEMPT"]}/jobs?per_page=100&page={page}')['jobs'];jobs+=batch
+            if len(batch)<100:break
     executions={}
     names={'Build entity':'build','Test entity':'test','Security entity':'security','Staging entity':'staging','Production entity':'production','Rollback entity':'rollback'}
     for job in jobs:
+        if plan.get('workflow_layout') == 'six-jobs-v1': continue
         entity=next((v for k,v in names.items() if job['name'].endswith(k)),None)
         if not entity or job['conclusion']=='skipped' or not job.get('started_at') or not job.get('completed_at'):continue
         attempt=2 if '/ retry /' in job['name'] else 1
@@ -248,6 +248,23 @@ def finish(directory, downloaded):
         events+=[dict(timestamp=job['started_at'],event='action_started',**fields),dict(timestamp=job['completed_at'],event='action_finished',status=status,duration_ms=duration,**fields)]
         if entity=='rollback':events.append(dict(timestamp=job['started_at'],event='recovery_started',entity='production'))
         if attempt>=executions.get(entity,{}).get('attempt',0):executions[entity]=dict(status=status,attempt=attempt,executionId=execution_id,githubRunId=int(os.environ['GITHUB_RUN_ID']),durationMs=duration)
+    if plan.get('workflow_layout') == 'six-jobs-v1':
+        seen=set()
+        for path in sorted(downloaded.rglob('attempt-*.json')):
+            item=json.loads(path.read_text()); entity=item['entity']; attempt=item['attempt']
+            if (entity,attempt) in seen: raise ValueError('Duplicate execution receipt')
+            seen.add((entity,attempt))
+            if item['release_sha'] != (good if entity=='rollback' else sha): raise ValueError('Receipt release mismatch')
+            fields=dict(entity=entity,attempt=attempt,execution_id=item['executionId'],mechanism='github-actions')
+            events += [dict(timestamp=item['started_at'],event='action_started',**fields),
+                       dict(timestamp=item['completed_at'],event='action_finished',status=item['status'],duration_ms=item['durationMs'],**fields)]
+            if entity=='rollback':events.append(dict(timestamp=item['started_at'],event='recovery_started',entity='production'))
+            if attempt>=executions.get(entity,{}).get('attempt',0): executions[entity]=item
+        # Terminal jobs without receipts are evidence gaps, never certified successes.
+        for job in jobs:
+            entity=job['name'].lower()
+            if entity in ('build','test','security','staging','production','rollback') and job.get('conclusion')!='skipped' and entity not in executions:
+                raise ValueError('Missing execution receipt for terminal job: '+entity)
     telemetry={k:v['decision'] for k,v in gates.items()}
     delivered=all(executions.get(e,{}).get('status')=='success' for e in ['build','test','security','staging','production']) and all(telemetry.get(e)=='allow' for e in ['staging','production']) and 'rollback' not in executions
     restored=executions.get('rollback',{}).get('status')=='success' and telemetry.get('rollback')=='allow'
@@ -258,7 +275,8 @@ def finish(directory, downloaded):
     if delivered:
         for entity in ['staging','production']:
             result['verified_releases'][entity]=dict(release_sha=sha,execution_id=gates[entity]['execution_id'],github_run_id=int(os.environ['GITHUB_RUN_ID']),environment=entity)
-    events.append(dict(timestamp=now(),event='campaign_finished',outcome=result['outcome']))
+    finished=max((j.get('completedAt',j.get('completed_at','')) or '' for j in jobs),default='')
+    events.append(dict(timestamp=finished or now(),event='campaign_finished',outcome=result['outcome']))
     events.sort(key=lambda e:datetime.fromisoformat(e['timestamp'].replace('Z','+00:00')))
     (directory/'experiment-events.jsonl').write_text(''.join(json.dumps(e)+'\n' for e in events))
     write(directory/'controller-result.json',result);write(directory/'generation-manifest.json',dict(mechanism='github-actions'))
@@ -271,14 +289,14 @@ def finish(directory, downloaded):
             write(Path(str(directory)+target['summary_suffix'])/'summary.json', matching[0])
     write(directory/'github-jobs.json',jobs)
     metrics=extract(directory);write(directory/'experiment-metrics.json',metrics)
-    with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as f:
+    with open(os.environ.get('GITHUB_STEP_SUMMARY',str(directory/'summary.md')),'a',encoding='utf-8') as f:
         f.write(f'## Conventional result\nCandidate delivered: {delivered}\n\nRecovery: {result["recovery_outcome"]}\n\nDownload native-result and native-* evidence artifacts.\n')
     return 0 if delivered else 1
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=['prepare','gate','finish']);p.add_argument('--directory',type=Path,required=True)
-    p.add_argument('--entity');p.add_argument('--execution-id');p.add_argument('--release-sha');p.add_argument('--scenario',choices=CATALOG);p.add_argument('--seed',type=int,default=42);p.add_argument('--downloaded',type=Path)
+    p.add_argument('--execution-directory',type=Path);p.add_argument('--entity');p.add_argument('--execution-id');p.add_argument('--release-sha');p.add_argument('--scenario',choices=CATALOG);p.add_argument('--seed',type=int,default=42);p.add_argument('--downloaded',type=Path)
     a=p.parse_args()
     if a.command=='prepare':prepare(a.directory)
-    elif a.command=='gate':sys.exit(gate(a.directory,a.entity,a.execution_id,a.release_sha,a.scenario,a.seed))
+    elif a.command=='gate':sys.exit(gate(a.directory,a.entity,a.execution_id,a.release_sha,a.scenario,a.seed,a.execution_directory))
     else:sys.exit(finish(a.directory,a.downloaded))

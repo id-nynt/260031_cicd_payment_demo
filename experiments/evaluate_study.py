@@ -158,7 +158,22 @@ def evaluate(study_dir):
             item[key+'_mean']=mean(values) if values else None
             item[key+'_median']=median(values) if values else None
         groups.append(item)
-    return rows,pairs,dict(planned=len(rows),recorded=sum(r['recorded'] for r in rows),
+    final_reset_complete=False
+    try:
+        reset_dir=Path((study_dir/'current-reset.txt').read_text(encoding='utf-8-sig').strip())
+        receipt=read(reset_dir/'controller-result.json'); checks=read(reset_dir/'reset-check.json')
+        final_reset_complete=(not (reset_dir/'used-by-trial.txt').exists() and receipt.get('outcome')=='achieved'
+            and receipt.get('mode')=='github' and receipt.get('repository')==study['repository']
+            and receipt.get('release_sha')==study['v1_sha'] and all(
+                checks.get(e,{}).get('ready') is True and checks[e].get('appVersion')=='v1'
+                and checks[e].get('experimentMode')=='normal'
+                and receipt.get('verified_releases',{}).get(e,{}).get('github_run_id')
+                and receipt['verified_releases'][e].get('release_sha')==study['v1_sha']
+                and checks[e].get('deploymentRunId') and checks[e]['deploymentRunId']==receipt['verified_releases'][e].get('execution_id')
+                for e in ('staging','production')))
+    except (OSError,ValueError,KeyError): pass
+    return rows,pairs,dict(final_reset_complete=bool(final_reset_complete),
+        study_complete=bool(all(r['recorded'] for r in rows) and final_reset_complete),planned=len(rows),recorded=sum(r['recorded'] for r in rows),
         eligible=sum(r['eligible'] for r in rows),matched_pairs=sum(p['matched'] for p in pairs),
         planned_pairs=len(pairs),groups=groups,
         limitations=['Descriptive estimates only; small repeated samples do not establish statistical superiority.',

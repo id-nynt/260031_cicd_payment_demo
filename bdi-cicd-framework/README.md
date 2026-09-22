@@ -143,3 +143,9 @@ If interrupted, close the old console and run `python bdi-cicd-framework/run_con
 For the payment demo's detailed setup, traffic experiments and v1 restoration, follow the [manual guide](../docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md). For supported policy, telemetry contracts and implementation details, read [generation and runtime](../docs/resources-and-plans/02_BDI_GENERATION_AND_RUNTIME.md).
 
 For matched BDI versus conventional trials with automatic traffic and metrics, see the [comparative execution guide](../docs/execution/guidelines/02_COMPARATIVE_EXECUTION_GUIDE.md). The conventional entry is [ci-cd.yml](../.github/workflows/ci-cd.yml), activated manually; follow its [manual guide](../docs/execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md). Both approaches support the same 13 scenarios, including `candidate-stopped` and `candidate-restart-fails`. Returning users retain existing app SHAs and publish a new control revision using [manual A4.4](../docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#a44-update-only-the-control-revision-retaining-an-existing-app-pair).
+
+### Recovery and shared worker update
+
+The four sources of truth, generated contract/manifest and `master_goal` remain unchanged in role. Ready services with bad request metrics use bounded reobservation; unavailable services can trigger diagnosis and a single matching-candidate restart. Java results still arrive as percepts. Simulation represents a stopped candidate as not ready, rather than a running service with request errors.
+
+`.github/workflows/entity-execution.yml` retains statically named **Diagnose candidate** and **Restart candidate** jobs. Normal jobs use `scripts/execute-entity.sh`; immutable application and frozen control code are checked out separately. The former conventional-only report job is removed. Follow guide 07 for a fresh study after publishing this revision; preserve old pilot evidence.

@@ -24,3 +24,7 @@ reports/<analysis-id>/                      # CSV and grouped JSON
 Results and reports are ignored by Git to avoid accidentally publishing experiment data. Back up complete directories deliberately. Do not reuse/delete failed trial folders. Historical evidence remains where it was recorded.
 
 For a compact first study, select `healthy`, `build-failure`, `candidate-stopped`, `production-persistent`, and `candidate-restart-fails`; add `production-temporary` for recovery without restart. Run the same selected cases for both mechanisms with the same candidate/baseline/worker/policy/seed, restore v1 between every run, and alternate order across repetitions. Predeclare the cases and repetition count, retaining exclusions and interrupted runs. The paired policy may produce equal outcomes; superiority is a research question, not an expected assertion built into the scripts.
+
+## Compact-study recording
+
+Use guide 07. `dispatch_trial.py` sends JSON directly to GitHub CLI and saves dispatch intent before sending; `--resolve-only` never redispatches. `collect.py` supports the six-job conventional workflow and aggregates its per-attempt receipts offline. `record_trial.py` writes the evaluator schema from saved reset, collection, fault and final-state evidence, with unknown interventions left unknown. It never overwrites an existing record. `evaluate_study.py` separately reports `final_reset_complete` and `study_complete`; eligibility and matched-pair counts still govern comparisons. Preserve existing studies when execution code changes.

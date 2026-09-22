@@ -13,19 +13,30 @@ def docker(*args):
     return subprocess.check_output(['docker', *args], text=True, timeout=20).strip()
 
 def container(project, service):
-    ids=docker('ps','-aq','--filter',f'label=com.docker.compose.project={project}',
-               '--filter',f'label=com.docker.compose.service={service}').split()
-    if len(ids)!=1: raise ValueError('Missing or ambiguous target container')
-    return json.loads(docker('inspect',ids[0]))[0]
+    # Do not rely on multiple label filters being intersected by every engine.
+    # Include stopped containers, then enforce exact labels locally. Never choose
+    # the first match or fall back to a different Compose project.
+    ids=docker('ps','-aq','--no-trunc','--filter',f'label=com.docker.compose.project={project}').split()
+    inspected=json.loads(docker('inspect',*ids)) if ids else []
+    matches=[item for item in inspected
+             if item.get('Config',{}).get('Labels',{}).get('com.docker.compose.project')==project
+             and item.get('Config',{}).get('Labels',{}).get('com.docker.compose.service')==service
+             and item.get('Config',{}).get('Labels',{}).get('com.docker.compose.oneoff','false').lower()!='true']
+    if len(matches)!=1:
+        raise ValueError(f'Missing or ambiguous target container: project={project}, service={service}, exact_matches={len(matches)}')
+    return matches[0]
 
 def inspect_target(project, app, dependency, expected):
     target=container(project,app)
     variables=dict(item.split('=',1) for item in target['Config']['Env'] if '=' in item)
     if variables.get('CI_RUN_ID')!=expected: raise ValueError('Candidate deployment identity mismatch')
     dep=container(project,dependency)
+    dep_env=dict(item.split('=',1) for item in dep.get('Config',{}).get('Env',[]) if '=' in item)
+    db_user=dep_env.get('POSTGRES_USER','postgres')
+    db_name=dep_env.get('POSTGRES_DB',db_user)
     # A running database alone does not establish readiness.
     ready=dep['State'].get('Running',False) and subprocess.run(
-        ['docker','exec',dep['Id'],'pg_isready'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10).returncode==0
+        ['docker','exec',dep['Id'],'pg_isready','-U',db_user,'-d',db_name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10).returncode==0
     state='running' if target['State'].get('Running') else 'stopped'
     if target['State'].get('Paused') or target['State'].get('Restarting'): state='unknown'
     return dict(container_id=target['Id'], deployment_execution_id=expected, app_state=state, dependency_ready=bool(ready))

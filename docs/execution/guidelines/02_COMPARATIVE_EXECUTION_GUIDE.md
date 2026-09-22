@@ -52,13 +52,13 @@ The native retry DAG currently supports the payment topology, one retry and a fi
 
 Candidate repair has separate limits: diagnose once on the first unhealthy/unknown production sample, allow one restart only for the matching stopped app with a ready database, run the shared 120-second probes, then require two new healthy observations and current deployment identity. The 300-second decision budget starts at diagnosis; queue/approval delays count. Adapter/worker/network timeouts can add bounded wall-clock overhead. A restart resets the observation window/count in both implementations but cannot extend the overall repair budget. Inapplicable diagnosis resumes bounded observation; failed verification/known-terminal repair failure permits verified rollback. BDI preserves unresolved execution and stops when remote operation status is uncertain. The conventional gate's script runs synchronously on the runner; runner loss remains a separate untested case.
 
-Native reuse uses an explicit status output: failed execution steps may have a tolerated job conclusion so the retry DAG can run. The report job reads actual step failures/timeouts; downstream stages require `status=success`. The final result job fails when candidate delivery is not achieved. A green intermediate wrapper is not proof of candidate delivery.
+Conventional execution uses one workflow with six jobs. Each job records mechanical attempts and fails if its selected attempt is unsuccessful. Deployment health checks are steps inside staging/production/rollback. The collector aggregates terminal metadata and receipts offline; a successful rollback restores v1 but does not establish v2 delivery. There are no reusable entity/health wrappers or report/result jobs.
 
 ## Evidence and metrics
 
 | BDI | Native GitHub Actions |
 |---|---|
-| Printed local campaign directory | Run artifacts: `native-prepare`, `native-*-health`, `native-result` |
+| Printed local campaign directory | Run artifacts: `native-prepare`, `native-<entity>`; collected result is generated locally |
 | Controller result/journal and common events | Same result/common-event schema plus GitHub job records |
 | Sibling `*-experiment/plan.json` | Preparation plan, conventional config, frozen input/contract snapshots and workflow copies |
 | Sibling `*-traffic/` plus `*-traffic-<other-stage>/` | Gate artifact contains profile, requests/transitions and traffic summary |

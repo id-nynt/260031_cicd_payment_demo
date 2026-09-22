@@ -1,4 +1,4 @@
-# Source of truth: ci-cd-conventional/workflows/. Run sync_workflows.py after editing.
+# Source of truth: ci-cd-conventional/workflows/ci-cd.yml. Install with sync_workflows.py.
 name: Conventional Payment CI/CD
 run-name: conventional-${{ inputs.scenario }}-${{ inputs.release_sha }}
 'on':
@@ -52,9 +52,15 @@ concurrency:
   group: payment-conventional-campaign
   cancel-in-progress: false
 jobs:
-  prepare:
+  build:
+    name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      FAILURE_MODE: ${{ inputs.scenario == 'build-failure' && 'force_failure' || 'none' }}
     outputs:
+      status: ${{ steps.selected.outputs.status }}
       known_good_sha: ${{ steps.prepare.outputs.known_good_sha }}
     steps:
     - uses: actions/checkout@v4
@@ -79,117 +85,65 @@ jobs:
         name: native-prepare
         path: evidence/prepare/
         if-no-files-found: error
-  build:
-    needs:
-    - prepare
-    uses: ./.github/workflows/conventional-entity.yml
-    with:
-      entity: build
-      release_sha: ${{ inputs.release_sha }}
-      failure_mode: ${{ inputs.scenario == 'build-failure' && 'force_failure' || 'none' }}
-      experiment_mode: normal
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ env.RELEASE_SHA }}
+        path: .application
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: .application/package-lock.json
+    - name: Execute build
+      id: first
+      run: python ci-cd-conventional/run-entity.py --entity build --attempt 1 --app .application --directory evidence/build/execution
+    - name: One bounded retry for confirmed transient failure or controlled timeout
+      id: retry
+      if: ${{ steps.first.outputs.status == 'transient_failure' || steps.first.outputs.status == 'timeout' }}
+      run: |-
+        sleep 5
+        python ci-cd-conventional/run-entity.py --entity build --attempt 2 --app .application --directory evidence/build/execution
+    - name: Select attempt result
+      id: selected
+      if: ${{ always() }}
+      env:
+        STATUS: ${{ steps.retry.outputs.status || steps.first.outputs.status }}
+        EXECUTION_ID: ${{ steps.retry.outputs.execution_id || steps.first.outputs.execution_id }}
+      run: |-
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        echo "execution_id=$EXECUTION_ID" >> "$GITHUB_OUTPUT"
+        [ "$STATUS" = success ]
+    - name: Preserve trial evidence even on failure
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-build
+        path: evidence/build/
+        if-no-files-found: warn
   test:
-    needs:
-    - build
-    uses: ./.github/workflows/conventional-entity.yml
-    with:
-      entity: test
-      release_sha: ${{ inputs.release_sha }}
-      failure_mode: ${{ inputs.scenario == 'test-failure' && 'force_failure' || inputs.scenario == 'transient-test-failure' && 'transient_failure' || 'none'
-        }}
-      experiment_mode: normal
-    if: ${{ needs.build.outputs.status == 'success' }}
-  security:
-    needs:
-    - test
-    uses: ./.github/workflows/conventional-entity.yml
-    with:
-      entity: security
-      release_sha: ${{ inputs.release_sha }}
-      failure_mode: none
-      experiment_mode: normal
-    if: ${{ needs.test.outputs.status == 'success' }}
-  staging:
-    needs:
-    - security
-    uses: ./.github/workflows/conventional-entity.yml
-    with:
-      entity: staging
-      release_sha: ${{ inputs.release_sha }}
-      failure_mode: ${{ inputs.scenario == 'infrastructure-failure' && 'infrastructure_failure' || inputs.scenario == 'deployment-timeout' && 'deployment_timeout'
-        || 'none' }}
-      experiment_mode: ${{ (inputs.scenario == 'staging-temporary' || inputs.scenario == 'staging-persistent') && 'request_faults' || 'normal' }}
-    if: ${{ needs.security.outputs.status == 'success' }}
-  staging_health:
-    needs:
-    - staging
-    if: ${{ always() && !cancelled() && needs.staging.outputs.status == 'success' }}
-    uses: ./.github/workflows/conventional-health.yml
-    with:
-      entity: staging
-      execution_id: ${{ needs.staging.outputs.execution_id }}
-      release_sha: ${{ inputs.release_sha }}
-      scenario: ${{ inputs.scenario }}
-      seed: ${{ inputs.seed }}
-  production:
-    needs:
-    - staging_health
-    uses: ./.github/workflows/conventional-entity.yml
-    with:
-      entity: production
-      release_sha: ${{ inputs.release_sha }}
-      failure_mode: ${{ inputs.scenario == 'service-unavailable' && 'service_unavailable' || (inputs.scenario == 'candidate-stopped' || inputs.scenario == 'candidate-restart-fails') && 'candidate_stopped' || 'none' }}
-      experiment_mode: ${{ (inputs.scenario == 'production-temporary' || inputs.scenario == 'production-persistent') && 'request_faults' || 'normal' }}
-  production_health:
-    needs:
-    - production
-    if: ${{ always() && !cancelled() && needs.production.outputs.status == 'success' }}
-    uses: ./.github/workflows/conventional-health.yml
-    with:
-      entity: production
-      execution_id: ${{ needs.production.outputs.execution_id }}
-      release_sha: ${{ inputs.release_sha }}
-      scenario: ${{ inputs.scenario }}
-      seed: ${{ inputs.seed }}
-  rollback:
-    needs:
-    - prepare
-    - production
-    - production_health
-    uses: ./.github/workflows/conventional-entity.yml
-    with:
-      entity: rollback
-      release_sha: ${{ needs.prepare.outputs.known_good_sha }}
-      failure_mode: none
-      experiment_mode: normal
-    if: ${{ always() && !cancelled() && needs.prepare.outputs.known_good_sha != '' && (needs.production.outputs.status == 'failure' || needs.production.outputs.status
-      == 'timeout' || (needs.production.outputs.status == 'success' && needs.production_health.result == 'failure')) }}
-  rollback_health:
-    needs:
-    - rollback
-    - prepare
-    if: ${{ always() && !cancelled() && needs.rollback.outputs.status == 'success' }}
-    uses: ./.github/workflows/conventional-health.yml
-    with:
-      entity: rollback
-      execution_id: ${{ needs.rollback.outputs.execution_id }}
-      release_sha: ${{ needs.prepare.outputs.known_good_sha }}
-      scenario: ${{ inputs.scenario }}
-      seed: ${{ inputs.seed }}
-  result:
-    needs:
-    - prepare
-    - build
-    - test
-    - security
-    - staging
-    - staging_health
-    - production
-    - production_health
-    - rollback
-    - rollback_health
-    if: ${{ always() }}
+    name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs:
+    - build
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: payment
+          POSTGRES_PASSWORD: payment
+          POSTGRES_DB: payment
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U payment -d payment" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://payment:payment@localhost:5432/payment
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      FAILURE_MODE: ${{ inputs.scenario == 'test-failure' && 'force_failure' || inputs.scenario == 'transient-test-failure' && 'transient_failure' || 'none' }}
+    outputs:
+      status: ${{ steps.selected.outputs.status }}
     steps:
     - uses: actions/checkout@v4
       with:
@@ -198,16 +152,316 @@ jobs:
       with:
         python-version: '3.12'
     - run: python -m pip install PyYAML==6.0.3
-    - uses: actions/download-artifact@v4
+    - uses: actions/checkout@v4
       with:
-        pattern: native-*
-        path: downloaded
-    - env:
-        GITHUB_TOKEN: ${{ github.token }}
-      run: python ci-cd-conventional/native-experiment.py finish --directory evidence/result --downloaded downloaded
-    - if: ${{ always() }}
+        ref: ${{ env.RELEASE_SHA }}
+        path: .application
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: .application/package-lock.json
+    - name: Execute test
+      id: first
+      run: python ci-cd-conventional/run-entity.py --entity test --attempt 1 --app .application --directory evidence/test/execution
+    - name: One bounded retry for confirmed transient failure or controlled timeout
+      id: retry
+      if: ${{ steps.first.outputs.status == 'transient_failure' || steps.first.outputs.status == 'timeout' }}
+      run: |-
+        sleep 5
+        python ci-cd-conventional/run-entity.py --entity test --attempt 2 --app .application --directory evidence/test/execution
+    - name: Select attempt result
+      id: selected
+      if: ${{ always() }}
+      env:
+        STATUS: ${{ steps.retry.outputs.status || steps.first.outputs.status }}
+        EXECUTION_ID: ${{ steps.retry.outputs.execution_id || steps.first.outputs.execution_id }}
+      run: |-
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        echo "execution_id=$EXECUTION_ID" >> "$GITHUB_OUTPUT"
+        [ "$STATUS" = success ]
+    - name: Preserve trial evidence even on failure
+      if: ${{ always() }}
       uses: actions/upload-artifact@v4
       with:
-        name: native-result
-        path: evidence/
-        if-no-files-found: error
+        name: native-test
+        path: evidence/test/
+        if-no-files-found: warn
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs:
+    - test
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      FAILURE_MODE: none
+    outputs:
+      status: ${{ steps.selected.outputs.status }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: python -m pip install PyYAML==6.0.3
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ env.RELEASE_SHA }}
+        path: .application
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: .application/package-lock.json
+    - name: Execute security
+      id: first
+      run: python ci-cd-conventional/run-entity.py --entity security --attempt 1 --app .application --directory evidence/security/execution
+    - name: One bounded retry for confirmed transient failure or controlled timeout
+      id: retry
+      if: ${{ steps.first.outputs.status == 'transient_failure' || steps.first.outputs.status == 'timeout' }}
+      run: |-
+        sleep 5
+        python ci-cd-conventional/run-entity.py --entity security --attempt 2 --app .application --directory evidence/security/execution
+    - name: Select attempt result
+      id: selected
+      if: ${{ always() }}
+      env:
+        STATUS: ${{ steps.retry.outputs.status || steps.first.outputs.status }}
+        EXECUTION_ID: ${{ steps.retry.outputs.execution_id || steps.first.outputs.execution_id }}
+      run: |-
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        echo "execution_id=$EXECUTION_ID" >> "$GITHUB_OUTPUT"
+        [ "$STATUS" = success ]
+    - name: Preserve trial evidence even on failure
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-security
+        path: evidence/security/
+        if-no-files-found: warn
+  staging:
+    name: Staging
+    runs-on:
+    - self-hosted
+    - linux
+    - payment-deploy
+    timeout-minutes: 45
+    needs:
+    - security
+    environment: staging
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    env:
+      COMPOSE_PROJECT_NAME: payment-staging
+      APP_PORT: 3001
+      POSTGRES_PORT: 5433
+      METRICS_PORT: 9465
+      PROMETHEUS_PORT: 9091
+      DEPLOYMENT_ENVIRONMENT: staging
+      NODE_ENV: production
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+      EXPERIMENT_MODE: ${{ (inputs.scenario == 'staging-temporary' || inputs.scenario == 'staging-persistent') && 'request_faults' || 'normal' }}
+      MERCHANT_NAME: Staging Merchant
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      FAILURE_MODE: ${{ inputs.scenario == 'infrastructure-failure' && 'infrastructure_failure' || inputs.scenario == 'deployment-timeout' && 'deployment_timeout' || 'none' }}
+    outputs:
+      status: ${{ steps.selected.outputs.status }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: python -m pip install PyYAML==6.0.3
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ env.RELEASE_SHA }}
+        path: .application
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: .application/package-lock.json
+    - name: Execute staging
+      id: first
+      run: python ci-cd-conventional/run-entity.py --entity staging --attempt 1 --app .application --directory evidence/staging/execution
+    - name: One bounded retry for confirmed transient failure or controlled timeout
+      id: retry
+      if: ${{ steps.first.outputs.status == 'transient_failure' || steps.first.outputs.status == 'timeout' }}
+      run: |-
+        sleep 5
+        python ci-cd-conventional/run-entity.py --entity staging --attempt 2 --app .application --directory evidence/staging/execution
+    - name: Select attempt result
+      id: selected
+      if: ${{ always() }}
+      env:
+        STATUS: ${{ steps.retry.outputs.status || steps.first.outputs.status }}
+        EXECUTION_ID: ${{ steps.retry.outputs.execution_id || steps.first.outputs.execution_id }}
+      run: |-
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        echo "execution_id=$EXECUTION_ID" >> "$GITHUB_OUTPUT"
+        [ "$STATUS" = success ]
+    - name: Observe health and perform bounded recovery when applicable
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: python ci-cd-conventional/native-experiment.py gate --directory evidence/staging/health --entity staging --execution-id "${{ steps.selected.outputs.execution_id }}" --release-sha "$RELEASE_SHA" --scenario "${{ inputs.scenario }}" --seed "${{ inputs.seed }}" --execution-directory evidence/staging/execution
+    - name: Preserve trial evidence even on failure
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-staging
+        path: evidence/staging/
+        if-no-files-found: warn
+  production:
+    name: Production
+    runs-on:
+    - self-hosted
+    - linux
+    - payment-deploy
+    timeout-minutes: 45
+    needs:
+    - staging
+    environment: production
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    env:
+      COMPOSE_PROJECT_NAME: payment-production
+      APP_PORT: 3000
+      POSTGRES_PORT: 5432
+      METRICS_PORT: 9464
+      PROMETHEUS_PORT: 9090
+      DEPLOYMENT_ENVIRONMENT: production
+      NODE_ENV: production
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+      EXPERIMENT_MODE: ${{ (inputs.scenario == 'production-temporary' || inputs.scenario == 'production-persistent') && 'request_faults' || 'normal' }}
+      MERCHANT_NAME: Production Merchant
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      FAILURE_MODE: ${{ inputs.scenario == 'service-unavailable' && 'service_unavailable' || (inputs.scenario == 'candidate-stopped' || inputs.scenario == 'candidate-restart-fails') && 'candidate_stopped' || 'none' }}
+    outputs:
+      status: ${{ steps.selected.outputs.status }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: python -m pip install PyYAML==6.0.3
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ env.RELEASE_SHA }}
+        path: .application
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: .application/package-lock.json
+    - name: Execute production
+      id: first
+      run: python ci-cd-conventional/run-entity.py --entity production --attempt 1 --app .application --directory evidence/production/execution
+    - name: One bounded retry for confirmed transient failure or controlled timeout
+      id: retry
+      if: ${{ steps.first.outputs.status == 'transient_failure' || steps.first.outputs.status == 'timeout' }}
+      run: |-
+        sleep 5
+        python ci-cd-conventional/run-entity.py --entity production --attempt 2 --app .application --directory evidence/production/execution
+    - name: Select attempt result
+      id: selected
+      if: ${{ always() }}
+      env:
+        STATUS: ${{ steps.retry.outputs.status || steps.first.outputs.status }}
+        EXECUTION_ID: ${{ steps.retry.outputs.execution_id || steps.first.outputs.execution_id }}
+      run: |-
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        echo "execution_id=$EXECUTION_ID" >> "$GITHUB_OUTPUT"
+        [ "$STATUS" = success ]
+    - name: Observe health and perform bounded recovery when applicable
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: python ci-cd-conventional/native-experiment.py gate --directory evidence/production/health --entity production --execution-id "${{ steps.selected.outputs.execution_id }}" --release-sha "$RELEASE_SHA" --scenario "${{ inputs.scenario }}" --seed "${{ inputs.seed }}" --execution-directory evidence/production/execution
+    - name: Preserve trial evidence even on failure
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-production
+        path: evidence/production/
+        if-no-files-found: warn
+  rollback:
+    name: Rollback
+    runs-on:
+    - self-hosted
+    - linux
+    - payment-deploy
+    timeout-minutes: 45
+    needs:
+    - build
+    - production
+    if: ${{ always() && !cancelled() && needs.build.outputs.known_good_sha != '' && needs.production.result == 'failure' && (needs.production.outputs.status == 'success' || needs.production.outputs.status == 'failure' || needs.production.outputs.status == 'timeout') }}
+    environment: production
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    env:
+      COMPOSE_PROJECT_NAME: payment-production
+      APP_PORT: 3000
+      POSTGRES_PORT: 5432
+      METRICS_PORT: 9464
+      PROMETHEUS_PORT: 9090
+      DEPLOYMENT_ENVIRONMENT: production
+      NODE_ENV: production
+      PAYMENT_PROVIDER: fake
+      FAKE_PAYMENT_OUTCOME: succeeded
+      EXPERIMENT_MODE: normal
+      MERCHANT_NAME: Production Merchant
+      RELEASE_SHA: ${{ needs.build.outputs.known_good_sha }}
+      FAILURE_MODE: none
+    outputs:
+      status: ${{ steps.selected.outputs.status }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: python -m pip install PyYAML==6.0.3
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ env.RELEASE_SHA }}
+        path: .application
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: .application/package-lock.json
+    - name: Execute rollback
+      id: first
+      run: python ci-cd-conventional/run-entity.py --entity rollback --attempt 1 --app .application --directory evidence/rollback/execution
+    - name: Select attempt result
+      id: selected
+      if: ${{ always() }}
+      env:
+        STATUS: ${{ steps.first.outputs.status }}
+        EXECUTION_ID: ${{ steps.first.outputs.execution_id }}
+      run: |-
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        echo "execution_id=$EXECUTION_ID" >> "$GITHUB_OUTPUT"
+        [ "$STATUS" = success ]
+    - name: Observe health and perform bounded recovery when applicable
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: python ci-cd-conventional/native-experiment.py gate --directory evidence/rollback/health --entity rollback --execution-id "${{ steps.selected.outputs.execution_id }}" --release-sha "$RELEASE_SHA" --scenario "${{ inputs.scenario }}" --seed "${{ inputs.seed }}" --execution-directory evidence/rollback/execution
+    - name: Preserve trial evidence even on failure
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-rollback
+        path: evidence/rollback/
+        if-no-files-found: warn

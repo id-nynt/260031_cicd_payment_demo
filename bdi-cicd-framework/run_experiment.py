@@ -30,6 +30,7 @@ def main():
     parser.add_argument('--confirm-compatible-rollback', action='store_true', required=True)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--artifacts-dir', type=Path)
+    parser.add_argument('--gui', action='store_true', help='Open Jason MAS Console; inspect controller_agent and close the console after Campaign finished to finalise collection')
     parser.add_argument('--prepare-only', action='store_true', help='Write a reviewable plan only; no launch/traffic')
     args = parser.parse_args()
     if not 0 <= args.seed <= 4294967295: raise ModelError('Seed must be an unsigned 32-bit integer')
@@ -79,7 +80,7 @@ def main():
         policy=policy, profile=digest(traffic_profile) if traffic_profile else None, pause_ms=OBSERVATION_DELAY_SECONDS * 1000,
         sources=sources)
     plan = dict(schema_version=2, prepared_at=datetime.now(timezone.utc).isoformat(), mechanism=args.mechanism,
-        case=args.case, seed=args.seed, campaign=str(campaign), thresholds=policy['thresholds'],
+        case=args.case, seed=args.seed, campaign=str(campaign), gui=args.gui, thresholds=policy['thresholds'],
         traffic_required=profile is not None, fault_expected=bool(profile and 'errors' in profile),
         comparison=comparison, comparison_key=hashlib.sha256(json.dumps(comparison,sort_keys=True).encode()).hexdigest(),
         known_good_receipt=str(args.known_good.resolve()), baseline_receipt_sha256=digest(args.known_good),
@@ -94,6 +95,9 @@ def main():
         print('Prepared only. No controller or traffic launched. Use a NEW path for the live launch.'); return 0
     command = [sys.executable,'-B',str(ROOT/'run_controller.py'),'--mechanism',args.mechanism,'--known-good',str(args.known_good.resolve()),
         '--confirm-compatible-rollback','--artifacts-dir',str(campaign),'--pause-after','staging,production','--pause-ms',str(OBSERVATION_DELAY_SECONDS * 1000)]
+    if args.gui:
+        command.append('--gui')
+        print('MAS Console enabled: inspect controller_agent; after Campaign finished, close the console to finish collection.', flush=True)
     traffic = []
     traffic_logs = []
     process = None

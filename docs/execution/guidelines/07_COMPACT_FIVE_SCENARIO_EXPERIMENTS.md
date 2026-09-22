@@ -1,10 +1,57 @@
-# RQ1 compact study: five scenarios, conventional and BDI CI/CD
+# RQ1 compact experiments: five scenarios with BDI and conventional CI/CD
 
-## Scope and starting point
+## Where to start
 
+This guide takes you through **five scenarios, each run once with each approach**. Use one Controller PowerShell window throughout. Every candidate run follows the same sequence:
+
+**Choose one run in C -> D: save and record its evidence -> E: restore v1 -> return to C for the next run.**
+
+| Your situation | Follow these steps |
+|---|---|
+| First experiment; tools or v1/v2 pair not ready | A1, then A2 if control publication is needed; B1-B4; C1 |
+| Pair and control revision already published; creating your first compact study | B1; B2 **new study** branch; B3-B4; C1 |
+| Compact study already created, but no candidate has run | B1; B2 **existing study** branch; B3-B4; C1 |
+| Returning to the same study after closing PowerShell | B1; B2 **existing study** branch; B3. If a trial started, use F2 before any reset; otherwise B4 and the next C scenario |
+| A candidate run just finished | D1-D4, then E; return to the next run in the same C scenario |
+| All ten trials recorded and final reset passed | G: evaluate and back up |
+| Old work is hanging and you want a fresh study | F3 first; then B1, B2 **new study**, B3-B4 |
+
+**For your existing study:** wording changes alone do not require a new tag. However, the MAS Console option below adds `--gui` support to `run_experiment.py`, which is a frozen control file. If your selected worker predates that support, finish/preserve any active run, then follow A2 and create a new study in B2.1 before further candidates. Do not bypass B1's control-revision check or mix control revisions within a study.
+
+**Open and keep running:** Docker Desktop, the existing Linux deployment runner, Controller PowerShell at the repository root, and your repository's GitHub Actions page. Keep the machine awake. Do not run experiments concurrently.
+
+**Copying commands:** copy complete code blocks, without the Markdown fences or terminal prompt. Paste every `. { ... }` block as a whole. Manual choices appear in separate blocks; no placeholder paths are embedded in execution blocks. After an unexpected error, stop and use F2 rather than continuing with old variables.
+
+### MAS Console: viewing the agent during manual runs
+
+Manual BDI candidates, v1 resets and first-baseline creation now open the **Jason MAS Console**. Open/select `controller_agent` to inspect its output and agent mind; the terminal also prints an agent-mind inspector URL you can open in a browser while the agent is running. Conventional candidates have no BDI agent window.
+
+Wait for **`Campaign finished: outcome=...`** and the saved result message. Inspect the final agent state, then close the completed MAS Console so PowerShell can finish collection/verification and return to its prompt. Gradle waiting at 75% while the completed console remains open is normal. Do not close the window or press Ctrl+C while jobs are still active.
+
+Console output and structured events remain saved automatically; GUI inspection is additional. Optional screenshots of beliefs/intentions can be saved in the current trial folder displayed in D1. Measured outcomes/times come from campaign events, not how long you leave the completed window open.
+
+For unattended execution, append `-Headless` to **each** `Invoke-CompactCandidate` and `Invoke-StudyReset` call; omit `--gui` from the optional F1 baseline command. This keeps automatic logs without waiting for someone to close a window. The default manual commands below show the Console.
+
+If functions were already loaded in your terminal, copy B3 again to replace the candidate function. To replace the reset function, copy just its complete `function Invoke-StudyReset { ... }` definition from B1, or reload B1 when no execution is active. Editing the Markdown alone does not update functions already in memory. An existing headless execution cannot be converted into a MAS Console run; use its printed inspector URL and allow it to finish.
+
+### What the saved files mean
+
+| Item | Meaning |
+|---|---|
+| Release pair | Immutable v1, candidate v2, published worker revision and baseline receipt |
+| `experiments/results/release-pairs/current-pair.txt` | Selects the pair JSON; commands read and trim the path automatically |
+| Study | One saved schedule plus all its trial/reset evidence |
+| `experiments/results/current-compact-study.txt` | Selects the study folder; changing this file does **not** reset the application |
+| Trial | One scenario executed by one approach; five scenarios times two approaches = ten trials |
+| Baseline receipt | Historical evidence of a verified v1 deployment; reused as the rollback reference |
+| Reset receipt | Evidence of a fresh deployment of v1 to **both** environments before a candidate; used by only one trial |
+
+Creating a study, loading helper functions and deploying v1 are different actions. **B4 and E actually reset the environments.** Merely completing B1-B3 does not.
+
+## Experiment introduction
 Run only the five cases below to examine **normal delivery, safe stopping, waiting for recovery, rollback and candidate repair**. Both approaches use the same app v1/v2 SHAs, worker revision, jobs, telemetry, faults and recovery capabilities. BDI pursues `master_goal`; conventional execution uses the GitHub Actions workflow. A repaired and verified v2 can achieve delivery. Restoring v1 is successful restoration, **not** v2 delivery.
 
-This guide is for your existing setup and release pair. Open **Docker Desktop**, the existing **Linux deployment runner**, **Controller PowerShell** at the repository root, and **GitHub Actions**. Keep the machine awake. If tools or the labelled v1/v2 pair are missing, complete [full-guide Steps 1-2](06_PAIRED_EXPERIMENTS_END_TO_END.md) first, then return here. Do not also run the full study schedule.
+
 
 | Compact order | Original experiment # | Case | Purpose and evidence to inspect |
 |---|---|---|---|
@@ -18,114 +65,45 @@ These are expected responses to inspect, not guaranteed results. Preserve unexpe
 
 **Default workload:** one repetition = **10 measured candidate runs**, plus v1 resets and a baseline only if no receipt exists. This is a small descriptive study/pilot, not statistical proof of superiority. If time permits, choose more repetitions **before creating the schedule**. Three repetitions mean 30 candidate runs. Each case runs BDI then conventional in odd repetitions; order reverses in even repetitions. Never run the two approaches concurrently.
 
-**Matched timing:** 35 seconds of temporary faults, observation starts after a 15-second deployment pause, 30-second rolling error/latency queries, five-second observation spacing and two consecutive healthy samples. Prometheus scrape and app metric export intervals remain five seconds. The rolling window retains earlier faults, so passing is not expected immediately at second 35; allow the window to clear while normal traffic continues. Start traffic clients before the pause.
+**Matched timing:** 35 seconds of temporary faults, observation starts after a 15-second deployment pause, 30-second rolling error/latency queries, five-second observation spacing and two consecutive healthy samples. Prometheus scrape and app metric export intervals remain five seconds. The rolling window retains earlier faults, so passing is not expected immediately at second 35; allow the window to clear while normal traffic continues. The experiment scripts start traffic before the pause; do not add a manual client.
 
 **Do not shorten observation/repair budgets to save time.** The 180-second observation budget remains; repair probes/decision budgets are unchanged. A timing change requires a newly published control revision and a new study; do not mix results with the old 75/60/120-second protocol. Normal verification uses two consecutive healthy samples; repair retains its 120-second probe window and 300-second decision budget. Runner queues and approval waits can add substantial runtime.
 
-| Your current state | Start here |
-|---|---|
-| Old/hanging study; starting a fresh study | **Step 0**, then Steps 1-4 |
-| Existing setup/pair; support changes not yet published | Step 1 |
-| Current control revision already published and selected | Step 2 |
-| Reopening the same compact study | Step 2, then **3.2 only**; resume Step 7 if a trial already started |
-| One candidate run finished | Steps 7-9, then Step 5 |
-| All 10 scheduled runs finalised | Step 11 |
+## A. One-time setup and control publication
 
-Manual choices are separate from execution blocks. Paste complete `. { ... }` blocks. Stop after a red error; do not continue with stale variables.
+### A1. Check the existing installation and release pair
 
-## Step 0. Retire an old/hanging study and start fresh (only when needed)
+**Open:** Controller PowerShell and GitHub Actions.
 
-**Do not delete the previous experiment folders or `current-compact-study.txt`.** The text file only selects a study directory; it does not run, stop or reset anything. Step 3.1 creates a new directory and replaces the pointer automatically, keeping a timestamped copy of the previous pointer. Old results, run IDs and baseline receipts remain available for audit. Keep old directories in place because records contain absolute paths; moving them can break evidence references.
+**Actions:** if this is a new machine, complete [guide 03, A1-A4](03_BDI_MANUAL_EXECUTION_GUIDE.md#a-one-time-setup) for tools, runner/configuration and the labelled v1/v2 pair. Return here after saving the pair; use this guide's compact schedule, not another guide's scenario loop. A missing baseline receipt is handled in F1 below.
 
-Distinguish **an incomplete study** (some trials have no record) from **an active execution** (a controller, traffic client or GitHub job is still running). Creating a new pointer does not stop an active execution. Use the following order.
+For an existing setup, check that `experiments/results/release-pairs/current-pair.txt` exists and that Docker and the existing runner are available. Keep payment data and existing results.
 
-### 0.1. Identify the previous study
+**Expected:** the pair file selects the intended app versions and worker. If the control code is already published, skip A2 and go to B1.
 
-**Open:** a new Controller PowerShell at the repository root. This block only reads the old selection; it does not require Step 2 or change the pointer.
+### A2. Publish a changed control revision only when needed
 
-```powershell
-. {
-    $ErrorActionPreference = 'Stop'
-    Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
-    $previousStudyDir = $null
-    $previousStudy = $null
-    if (Test-Path experiments/results/current-compact-study.txt) {
-        $previousStudyDir = (Get-Content experiments/results/current-compact-study.txt -Raw).Trim()
-        if (-not (Test-Path (Join-Path $previousStudyDir 'study.json'))) { throw 'Old pointer is invalid. Locate its existing study folder before replacing the selection.' }
-        $previousStudy = Get-Content (Join-Path $previousStudyDir 'study.json') -Raw | ConvertFrom-Json
-        [pscustomobject]@{ Study=$previousStudyDir; Repository=$previousStudy.repository; Worker=$previousStudy.worker_ref; Pair=$previousStudy.pair_file } | Format-List
-        if (Test-Path (Join-Path $previousStudyDir 'current-trial.txt')) { Get-Content (Join-Path $previousStudyDir 'current-trial.txt') }
-        foreach ($item in $previousStudy.trials) {
-            $folder = Join-Path $previousStudyDir "trials/$($item.id)"
-            [pscustomobject]@{ Trial=$item.id; Started=(Test-Path (Join-Path $folder 'started.json')); Recorded=(Test-Path (Join-Path $folder 'record.json')) }
-        }
-    } else { 'No existing study pointer. Check for any independently started execution before proceeding.' }
-}
-```
-
-### 0.2. Settle unfinished work before any reset
-
-**Open:** the previous controller/traffic terminals, MAS window if used, and **GitHub ? repository ? Actions**.
-
-1. If work is still progressing normally, let it finish and collect its evidence. If intentionally abandoning a stuck run, stop only the old controller/traffic processes belonging to this study (Ctrl+C in their terminals; close its MAS window). If process ownership is unclear, stop here and identify it. Do not kill every Java, Python or Node process.
-2. Inspect the old trial's saved GitHub run IDs and the repository Actions page for running, queued or approval-waiting jobs, including diagnosis, restart, rollback and resets. Let them finish, or explicitly cancel **only the old experiment runs** using the GitHub UI. Verify each becomes terminal; a cancellation request alone is not sufficient. Leave the runner and Docker running.
-3. For an interrupted BDI execution, restore GitHub login if needed and reconcile its durable execution state:
-
-```powershell
-. {
-    $ErrorActionPreference = 'Stop'
-    if (-not $previousStudy) { throw 'Load the old study in Step 0.1 first.' }
-    Remove-Item Env:GH_TOKEN,Env:GITHUB_TOKEN,Env:GITHUB_API_URL -ErrorAction SilentlyContinue
-    $env:GITHUB_REPOSITORY = $previousStudy.repository
-    $env:BDI_WORKFLOW_REF = $previousStudy.worker_ref
-    $env:BDI_RELEASE_SHA = $previousStudy.v2_sha
-    $env:GITHUB_TOKEN = gh auth token --hostname github.com
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) { throw 'Restore GitHub login.' }
-    Remove-Item Env:BDI_SCENARIO,Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
-    py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only
-    if ($LASTEXITCODE -ne 0) { throw 'Reconciliation did not complete. Inspect the output; do not launch a reset or new trial.' }
-}
-```
-
-Reconciliation does not resume the old campaign. **An unresolved execution remains a stop condition even if you have a new pair or pointer.** Never delete controller locks, pending-execution files or dispatch intents to bypass it. For conventional dispatch uncertainty, use Step 10's `dispatch_trial.py --resolve-only` against the **old** study and trial, not a newly created study. Read-only evidence collection may continue while resolving a blocker.
-
-4. Save available logs/results and record interrupted outcomes using the old frozen study's tools where compatible. Preserve existing records unchanged; do not manufacture a final state after a later reset. Missing evidence stays missing. Add a dated note inside the old study explaining why it was stopped/superseded and which trials remain incomplete. Do not label unrun trials successful or mark the old study complete.
-
-**Expected:** no old execution or traffic can still modify the deployment; unresolved operations have been reconciled. Old evidence remains intact. A clean terminal alone is not proof that remote jobs stopped.
-
-### 0.3. Create the new selection and restore v1
-
-Open a **fresh Controller PowerShell** to avoid stale `$trial`, `$studyDir` and helper variables, then follow this sequence:
-
-| Order | Action | Expected result |
-|---|---|---|
-| 1 | Step 1: commit/publish/select the reviewed control revision if needed | Correct worker tag; existing app v1/v2 SHAs and baseline preserved |
-| 2 | Step 2: load the selected pair and reset helpers | Session variables populated; stale experiment environment overrides cleared |
-| 3 | Step **3.1 once**, then 3.2 | New ten-trial schedule; previous pointer backed up; `current-compact-study.txt` selects the new directory |
-| 4 | Step 3.3 | Reuse the verified v1 baseline receipt; create a baseline only if no valid receipt exists |
-| 5 | Step 4 | Fresh reset receipt verifies **both staging and production at v1** |
-| 6 | Step 5 onward | Start new trial 001; old trial numbering/results belong to the old study |
-
-Do not delete database volumes, run `docker compose down -v`, remove release tags, or delete baseline receipts. This is a reset to the verified v1 application with retained database data, not an empty-database experiment. If Step 4 fails, preserve its logs and resolve the failure before starting a candidate. Merely seeing v1 in the browser is insufficient; both execution identities/readiness checks must pass.
-
-If you only closed the terminal and want to **continue the same unchanged study**, skip Step 0 and Step 3.1: use Step 2 ? Step 3.2 ? Step 7/10 for any already-started trial. For manual-to-agent handoff after trial 004, keep the same pointer and schedule.
-
-## Optional handoff: manual first two cases, automated remaining cases
-
-Use **one study**, one repetition and seed 42 throughout. Follow Steps 1-9 manually for trials **001-004**: healthy BDI, healthy conventional, test-failure BDI, test-failure conventional. A red test-failure run is expected, but it still requires collection, final-state capture, `record_trial.py`, and reset. After trial 004, complete Step 9 and verify both environments at v1. Stop before dispatching trial 005.
-
-Before handoff, evaluate the study (the evaluator command in Step 11 may be used mid-study, but the completion guard will correctly report incomplete). Expect four recorded/eligible trials and two matched pairs; trials 005-010 are pending. If the first four are ineligible, explain/correct evidence through documented amendments before treating them as valid comparisons. Keep the saved pointer, records and reset receipts.
-
-The execution agent must read this guide, load Step 2 and **Step 3.2 only**, confirm the first four records and unused reset, then resume Step 5 at trial 005. Do not create another schedule, overwrite records, repeat completed trials or assume an existing `started.json` is safe to dispatch again. It completes trials 005-010, records each and resets after each, including the final trial; then evaluates and reports the full study. This handoff changes the operator, not the experiment configuration. Human interventions during measured execution must be recorded honestly; routine setup/collection is excluded.
-
-## Step 1. Publish the reviewed control update once
-
-**For the interrupted September 22 study:** keep its six recorded trials and original records unchanged. This revision changes execution logic and workflow layout: publish a new worker tag and create a **new** compact study; do not combine old/new trials as matched pairs. Old evidence remains useful as a pilot and diagnosis record. Do not claim the old study completed all ten runs.
+**Only when execution code or protocol has changed:** preserve the previous study and publish a reviewed control revision before creating a new study. Do not combine different revisions as matched pairs. Documentation wording alone does not require a new experiment series.
 
 In Source Control, review and stage intended code, tests and documentation (including new helper files); exclude results and credentials. Commit them, then verify `git status --short` produces no output. Pushing an existing commit does not include unstaged/uncommitted changes. If the block below stops on a dirty worktree, complete this manual step before proceeding. Never bypass the guard.
 
 
 **Open:** your editor/Source Control and GitHub. Review and commit intended changes, including the refactored agent, supporting scripts and generated manifest. Publish/register the reviewed workflows on the default branch through your normal process. **Do not blindly stage all files.** Keep existing immutable v1/v2 app SHAs.
+
+Before publication, run these read-only checks from the repository root:
+
+```powershell
+. {
+    $ErrorActionPreference = 'Stop'
+    Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
+    py -3 -B bdi-cicd-framework/run_controller.py --validate-only
+    if ($LASTEXITCODE -ne 0) { throw 'Review inputs and explicitly regenerate before publishing.' }
+    py -3 -B ci-cd-conventional/configuration.py --check-bdi-parity
+    if ($LASTEXITCODE -ne 0) { throw 'Resolve policy/configuration parity before publishing.' }
+    py -3 -B ci-cd-conventional/sync_workflows.py --check
+    if ($LASTEXITCODE -ne 0) { throw 'Review and synchronise workflow copies before publishing.' }
+}
+```
 
 **Manual action:** in Source Control review and stage the intended files. Then inspect the staged list:
 
@@ -147,21 +125,6 @@ git diff --cached --stat
 ```
 
 Skip the commit block if this exact revision is already committed and the worktree is clean. Publishing a branch does not merge workflows into the default branch; complete that reviewed publication separately. No tag/pair block or experiment step should follow a failed prerequisite.
-
-Before publication, run these read-only checks from the repository root:
-
-```powershell
-. {
-    $ErrorActionPreference = 'Stop'
-    Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
-    py -3 -B bdi-cicd-framework/run_controller.py --validate-only
-    if ($LASTEXITCODE -ne 0) { throw 'Review inputs and explicitly regenerate before publishing.' }
-    py -3 -B ci-cd-conventional/configuration.py --check-bdi-parity
-    if ($LASTEXITCODE -ne 0) { throw 'Resolve policy/configuration parity before publishing.' }
-    py -3 -B ci-cd-conventional/sync_workflows.py --check
-    if ($LASTEXITCODE -ne 0) { throw 'Review and synchronise workflow copies before publishing.' }
-}
-```
 
 If the current pair already selects this exact published control revision, skip the block below. Otherwise run it from the repository root **after review and commit**. It checks the app is unchanged, creates a fresh control tag and selects a new pair record while retaining the original baseline receipt.
 
@@ -194,11 +157,15 @@ If the current pair already selects this exact published control revision, skip 
 }
 ```
 
-**Expected:** new published control tag; old tags, app SHAs and receipts preserved. Proceed to Step 2. Conventional deployment is triggered by `workflow_dispatch`, not by this push. Its single workflow has six jobs: build, test, security, staging, production and rollback. Health checks run inside deployment jobs; the local collector aggregates saved artifacts after the workflow ends. The BDI worker retains separate **Diagnose candidate** and **Restart candidate** jobs with static names. They run only when requested by the agent; neither is a normal pipeline phase. The obsolete report job is removed.
+**Expected:** new published control tag; old tags, app SHAs and receipts preserved. Proceed to B1. Conventional deployment is triggered by `workflow_dispatch`, not by this push. Its single workflow has six jobs: build, test, security, staging, production and rollback. Health checks run inside deployment jobs; the local collector aggregates saved artifacts after the workflow ends. The BDI worker retains separate **Diagnose candidate** and **Restart candidate** jobs with static names. They run only when requested by the agent; neither is a normal pipeline phase. The obsolete report job is removed.
 
-## Step 2. Load the session and reset helpers
+## B. Setup for this session and the next candidate
 
-**Open:** Controller PowerShell. Run this at the start of each session. It loads `current-pair.txt`, checks publication against local control files, validates configuration parity, and defines the receipt/reset helpers. It does not deploy yet.
+### B1. Load the release pair and reset functions
+
+**Open:** Controller PowerShell at the repository root. Keep this window for the rest of the guide.
+
+**Actions:** run the complete block below once in each new terminal. It clears stale settings, loads the selected pair, checks the control revision and defines functions. **It does not deploy v1 or run a candidate.**
 
 ```powershell
 . {
@@ -221,7 +188,7 @@ If the current pair already selects this exact published control revision, skip 
     $workerSha = gh api "repos/$($pair.repository)/commits/$workerRef" --jq .sha
     if ($LASTEXITCODE -ne 0) { throw 'Publish/select the worker tag first.' }
     py -3 -B experiments/control_revision.py --worker-sha $workerSha
-    if ($LASTEXITCODE -ne 0) { throw 'Control revision mismatch. Fetch missing commits or complete Step 1 with a new control tag.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Control revision mismatch. Fetch missing commits or complete A2 with a new control tag.' }
     py -3 bdi-cicd-framework/run_controller.py --validate-only
     if ($LASTEXITCODE -ne 0) { throw 'Resolve artifact consistency.' }
     py -3 ci-cd-conventional/configuration.py --check-bdi-parity
@@ -248,13 +215,16 @@ If the current pair already selects this exact published control revision, skip 
     }
 
     function Invoke-StudyReset {
+        param([switch]$Headless)
         if (-not $studyDir -or -not $knownGood) { throw 'Load the study and verified baseline first.' }
         foreach ($name in @('BDI_EXECUTION_PLAN','BDI_SCENARIO','BDI_READY_URL','BDI_PROMETHEUS_URL','BDI_PAUSE_AFTER_ENTITY','BDI_PAUSE_MILLISECONDS')) {
             if (Test-Path "Env:$name") { Remove-Item "Env:$name" }
         }
         $env:BDI_RELEASE_SHA = $v1Sha
         $destination = Join-Path $studyDir ('resets/' + (Get-Date -Format yyyyMMdd-HHmmss-fff))
-        py -3 -B bdi-cicd-framework/run_controller.py --known-good "$knownGood" --confirm-compatible-rollback --artifacts-dir "$destination"
+        $displayArgs = @()
+        if (-not $Headless) { $displayArgs += '--gui' }
+        py -3 -B bdi-cicd-framework/run_controller.py @displayArgs --known-good "$knownGood" --confirm-compatible-rollback --artifacts-dir "$destination"
         if ($LASTEXITCODE -ne 0) { throw 'Reset incomplete: inspect evidence; do not launch a candidate.' }
         Assert-V1Receipt (Join-Path $destination 'controller-result.json') (Join-Path $destination 'reset-check.json')
         $destination | Set-Content (Join-Path $studyDir 'current-reset.txt') -Encoding utf8
@@ -265,20 +235,24 @@ If the current pair already selects this exact published control revision, skip 
 }
 ```
 
-**Expected:** repository, worker, v1 and v2 identities are populated. Missing or stale control files must be resolved through Step 1 before launching. A blank baseline path is handled in Step 3.3.
+**Expected:** repository, worker SHA, v1, v2 and baseline are printed. If a control check fails, resolve A2. If only the baseline path is blank, continue through B2 and then use F1 before B4.
 
-## Step 3. Create or reload the five-case schedule
+### B2. Select the study: follow exactly ONE branch
 
-### 3.1. New compact study only
+**Existing study:** skip B2.1. Run **B2.2** to continue the saved study.
 
-**Manual choice - run separately:** keep 1 for the shortest complete set. Do not rerun this subsection when resuming an existing study.
+**New study:** only after old executions are settled (F3), run **B2.1 once**, then **B2.2**. Never recreate the schedule on a terminal restart or operator handoff.
+
+#### B2.1. Create a new study only
+
+**Manual choice:** one repetition is the recommended compact set (ten candidate trials). Choose this before creating the schedule.
 
 ```powershell
 $repetitions = 1
 $seed = 42
 ```
 
-**Then run unchanged:**
+**Actions:** run unchanged. It preserves the old study and backs up the old pointer.
 
 ```powershell
 . {
@@ -288,11 +262,11 @@ $seed = 42
     $catalog = Get-Content experiments/scenarios.json -Raw | ConvertFrom-Json
     if (@($cases | Where-Object { $_ -notin $catalog.PSObject.Properties.Name }).Count) { throw 'Catalog mismatch.' }
     # Starting a new study changes only the selection, never the old evidence.
-    # Complete Step 0 first if the previous study has unfinished work.
+    # Complete F3 first if the previous study has unfinished work.
     $studyPointer = 'experiments/results/current-compact-study.txt'
     if (Test-Path $studyPointer) {
         $oldSelection = (Get-Content $studyPointer -Raw).Trim()
-        if (-not (Test-Path (Join-Path $oldSelection 'study.json'))) { throw 'Previous study pointer is invalid; resolve Step 0.1 before replacing it.' }
+        if (-not (Test-Path (Join-Path $oldSelection 'study.json'))) { throw 'Previous study pointer is invalid; resolve F3.1 before replacing it.' }
         $historyDir = 'experiments/results/study-pointer-history'
         New-Item -ItemType Directory -Force -Path $historyDir | Out-Null
         $pointerBackup = Join-Path $historyDir ('compact-five-' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '.txt')
@@ -320,11 +294,11 @@ $seed = 42
 }
 ```
 
-**Expected:** `candidate trials: 10` for one repetition. Only the five selected cases are scheduled. The pointer is `experiments/results/current-compact-study.txt`; it does not replace the full study's pointer. If a previous compact selection existed, its pointer is backed up in `experiments/results/study-pointer-history/`. The previous study folder and every result remain unchanged. Do not delete the pointer manually.
+**Expected:** a new study folder and `candidate trials: 10`. This has created the schedule only; neither environment has been reset.
 
-### 3.2. Reload the saved compact study
+#### B2.2. Load the saved study and show progress
 
-Run this now, and after reopening PowerShell following Step 2.
+**Actions:** run after B1 on every session, including immediately after creating a study.
 
 ```powershell
 . {
@@ -333,95 +307,43 @@ Run this now, and after reopening PowerShell following Step 2.
     $study = Get-Content (Join-Path $studyDir 'study.json') -Raw | ConvertFrom-Json
     if ($study.repository -ne $pair.repository -or $study.v1_sha -ne $v1Sha -or $study.v2_sha -ne $v2Sha -or $study.worker_sha -ne $workerSha) { throw 'Current pair/control differs from this study. Restore the selection or create a new study.' }
     if ($study.study_set -ne 'compact-five-v1') { throw 'Select this compact study, not the full study.' }
-    $study.trials | Format-Table id,case,repetition,mechanism
-}
-```
-
-### 3.3. Reuse or establish the verified v1 baseline
-
-If `$knownGood` already contains your verified receipt, run this check and continue to Step 4 if it succeeds:
-
-```powershell
-Assert-V1Receipt "$knownGood" ''
-```
-
-**Only if an existing receipt was not linked:** select its full path in this separate block. This does not deploy.
-
-```powershell
-$knownGood = (Read-Host 'Paste the full verified v1 controller-result.json path, without quotes').Trim()
-Assert-V1Receipt "$knownGood" ''
-$pair.known_good_receipt = $knownGood
-$pair | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $pairFile -Encoding utf8
-```
-
-**Only if no verified receipt exists:** ensure the runner is idle and rollback is compatible with retained database data, then run this once:
-
-```powershell
-. {
-    $ErrorActionPreference = 'Stop'
-    $env:BDI_RELEASE_SHA = $v1Sha
-    $baselineDir = Join-Path $studyDir ('baseline-' + (Get-Date -Format yyyyMMdd-HHmmss-fff))
-    $baselineDir | Set-Content (Join-Path $studyDir 'current-baseline.txt') -Encoding utf8
-    py -3 -B bdi-cicd-framework/run_controller.py --baseline --artifacts-dir "$baselineDir"
-    if ($LASTEXITCODE -ne 0) { throw 'Baseline incomplete; inspect its logs before any candidate run.' }
-    $knownGood = Join-Path $baselineDir 'controller-result.json'
-    Assert-V1Receipt "$knownGood" (Join-Path $baselineDir 'reset-check.json')
-    $pair.known_good_receipt = $knownGood
-    $pair | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $pairFile -Encoding utf8
-    $env:BDI_RELEASE_SHA = $v2Sha
-}
-```
-
-**Expected:** the selected pair links an achieved live v1 receipt for both environments. Baseline work is excluded from measured candidate runs. Continue to Step 4.
-
-## Step 4. Restore the first clean v1 starting state
-
-**Open:** Controller PowerShell and GitHub Actions. Settle any previous remote work and stop old traffic first. The same BDI reset routine prepares **both** approaches, outside measured runtime. It retains database volumes; do not claim an empty database or run `down -v`.
-
-```powershell
-Assert-V1Receipt "$knownGood" ''
-Invoke-StudyReset
-```
-
-**Expected:** both environments verified at v1, with a new reset receipt and live identity check. Do not proceed after a failed reset.
-
-## Step 5. Select the next scheduled case and approach
-
-Run this after Step 4, and again after each Step 9. The schedule selects the case automatically; you do not edit fault strings between scenarios.
-
-```powershell
-. {
-    $ErrorActionPreference = 'Stop'
-    $study = Get-Content (Join-Path $studyDir 'study.json') -Raw | ConvertFrom-Json
-    $trial = $study.trials | Where-Object { -not (Test-Path (Join-Path $studyDir "trials/$($_.id)/record.json")) } | Select-Object -First 1
-    if (-not $trial) {
-        'Schedule fully finalised. Continue at Step 11, not another launch.'
-    } else {
-        $trialRoot = Join-Path $studyDir "trials/$($trial.id)"
-        New-Item -ItemType Directory -Force -Path $trialRoot | Out-Null
-        $trial.id | Set-Content (Join-Path $studyDir 'current-trial.txt') -Encoding utf8
-        $trial | ConvertTo-Json | Set-Content (Join-Path $trialRoot 'planned-trial.json') -Encoding utf8
-        $trial | Format-List
+    "Study folder: $studyDir"
+    foreach ($item in $study.trials) {
+        $folder = Join-Path $studyDir "trials/$($item.id)"
+        [pscustomobject]@{ Trial=$item.id; Started=(Test-Path (Join-Path $folder 'started.json')); Recorded=(Test-Path (Join-Path $folder 'record.json')) }
     }
 }
 ```
 
-**Expected:** one trial ID, case and mechanism. If `started.json` already exists, resume Step 7/10 rather than dispatching it again. When the schedule is fully finalised, go to Step 11.
+**Expected:** your study folder and each trial's progress. `Started=True, Recorded=False` means resume evidence collection using F2; do not launch that trial again or reset before preserving its final state.
 
-## Step 6. Execute exactly one trial
+### B3. Load the shared candidate launcher
 
-### 6.1. Dispatch the selected approach
+**Actions:** paste this function once per terminal. It uses the next unrecorded trial in the saved schedule, checks the scenario and approach you requested, verifies an unused v1 reset, then runs **one** candidate. For conventional execution it also waits and collects artifacts. Defining the function does not run anything.
 
-**Open:** Controller PowerShell and GitHub Actions; keep Docker and the existing runner active. The script rechecks v1, consumes this reset, and launches one candidate trial. Fault injection and traffic are automatic. **Do not stop containers manually or add another traffic client.**
-
-BDI runs locally until completion. Conventional execution dispatches the GitHub workflow and returns; use 6.2 to watch it.
+Scenario C instructions call this function with explicit case and approach names. Fault injection, background traffic and repair probes are automatic. Do not add another traffic client or stop containers manually.
 
 ```powershell
-. {
+function Invoke-CompactCandidate {
+    param(
+        [Parameter(Mandatory=$true)][string]$Case,
+        [Parameter(Mandatory=$true)][ValidateSet('bdi','github-actions')][string]$Mechanism,
+        [switch]$Headless
+    )
     $ErrorActionPreference = 'Stop'
-    if (Test-Path (Join-Path $trialRoot 'started.json')) { throw 'This trial already started. Resume Step 7 or Step 10; never redispatch it.' }
+    if (-not $studyDir -or -not $pair) { throw 'Complete B1 and B2 first.' }
+    $study = Get-Content (Join-Path $studyDir 'study.json') -Raw | ConvertFrom-Json
+    $trial = $study.trials | Where-Object { -not (Test-Path (Join-Path $studyDir "trials/$($_.id)/record.json")) } | Select-Object -First 1
+    if (-not $trial) { throw 'All trials are recorded. Complete E if needed, then G; do not launch again.' }
+    if ($trial.case -ne $Case -or $trial.mechanism -ne $Mechanism) { throw "Next scheduled trial is $($trial.id). Use its C instruction; do not skip or repeat trials." }
+    $trialRoot = Join-Path $studyDir "trials/$($trial.id)"
+    if (Test-Path (Join-Path $trialRoot 'started.json')) { throw 'Already started: use F2 to resume collection, never redispatch.' }
+    New-Item -ItemType Directory -Force -Path $trialRoot | Out-Null
+    $trial.id | Set-Content (Join-Path $studyDir 'current-trial.txt') -Encoding utf8
+    $trial | ConvertTo-Json | Set-Content (Join-Path $trialRoot 'planned-trial.json') -Encoding utf8
+    $trial | Format-List
     $resetDir = (Get-Content (Join-Path $studyDir 'current-reset.txt') -Raw).Trim()
-    if (Test-Path (Join-Path $resetDir 'used-by-trial.txt')) { throw 'Reset already used. Complete Step 9 first.' }
+    if (Test-Path (Join-Path $resetDir 'used-by-trial.txt')) { throw 'Reset already used. Complete E first.' }
     $resetResult = Join-Path $resetDir 'controller-result.json'
     $resetCheck = Join-Path $trialRoot 'reset-check.json'
     Assert-V1Receipt "$resetResult" "$resetCheck"
@@ -431,58 +353,213 @@ BDI runs locally until completion. Conventional execution dispatches the GitHub 
     if ($trial.mechanism -eq 'bdi') {
         $resultDir = Join-Path $trialRoot 'bdi'
         $resultDir | Set-Content (Join-Path $trialRoot 'result-path.txt') -Encoding utf8
-        py -3 -B bdi-cicd-framework/run_experiment.py --mechanism bdi --case $trial.case --release-sha "$v2Sha" --known-good "$knownGood" --confirm-compatible-rollback --seed $study.seed --artifacts-dir "$resultDir"
-        "BDI exit code: $LASTEXITCODE. Inspect the stored outcome in Step 7; failure cases may correctly stop delivery."
+        $displayArgs = @()
+        if (-not $Headless) { $displayArgs += '--gui' }
+        py -3 -B bdi-cicd-framework/run_experiment.py @displayArgs --mechanism bdi --case $trial.case --release-sha "$v2Sha" --known-good "$knownGood" --confirm-compatible-rollback --seed $study.seed --artifacts-dir "$resultDir"
+        "BDI exit code: $LASTEXITCODE. Inspect the stored outcome in D; failure cases may correctly stop delivery."
     } elseif ($trial.mechanism -eq 'github-actions') {
         $resultDir = Join-Path $trialRoot 'native/artifacts/native-result/result'
         $resultDir | Set-Content (Join-Path $trialRoot 'result-path.txt') -Encoding utf8
         py -3 -B experiments/dispatch_trial.py --study "$studyDir" --trial $trial.id
-        if ($LASTEXITCODE -ne 0) { throw 'Dispatch failed/uncertain. Use Step 10; never blindly redispatch.' }
+        if ($LASTEXITCODE -ne 0) { throw 'Dispatch failed/uncertain. Use F2; never blindly redispatch.' }
     } else { throw 'Unknown mechanism in schedule.' }
+    if ($trial.mechanism -eq 'github-actions') {
+        $runId = (Get-Content (Join-Path $trialRoot 'github-run-id.txt') -Raw).Trim()
+        $ErrorActionPreference = 'Stop'
+        if ($runId -notmatch '^\d+$') { throw 'Run ID must contain only digits.' }
+        $metadataText = gh run view $runId --repo $pair.repository --json databaseId,displayTitle,headSha,createdAt,status,workflowName,url
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect selected run.' }
+        $remote = $metadataText | ConvertFrom-Json
+        $start = Get-Content (Join-Path $trialRoot 'started.json') -Raw | ConvertFrom-Json
+        if ($remote.headSha -ne $workerSha -or $remote.displayTitle -ne "conventional-$($trial.case)-$v2Sha" -or $remote.workflowName -ne 'Conventional Payment CI/CD' -or [DateTimeOffset]::Parse($remote.createdAt) -lt [DateTimeOffset]::Parse($start.started_at).AddSeconds(-5)) { throw 'Run does not match this trial. Recheck its ID.' }
+        $runId | Set-Content (Join-Path $trialRoot 'github-run-id.txt') -Encoding utf8
+        gh run watch $runId --repo $pair.repository
+        $status = gh run view $runId --repo $pair.repository --json status --jq .status
+        if ($LASTEXITCODE -ne 0 -or $status -ne 'completed') { throw 'Remote work is not known terminal. Use F2.' }
+        $nativeDir = Join-Path $trialRoot 'native'
+        py -3 experiments/collect.py --repo $pair.repository --run-id $runId --output "$nativeDir"
+        $collectionExit = $LASTEXITCODE
+        $resultDir = Join-Path $nativeDir 'artifacts/native-result/result'
+        $resultDir | Set-Content (Join-Path $trialRoot 'result-path.txt') -Encoding utf8
+        "Collection exit: $collectionExit. Keep incomplete evidence and inspect collection.json."
+    }
+    "Candidate command finished. Complete D1-D4, then E before another candidate."
 }
 ```
 
-### 6.2. Conventional only: load its saved run ID, wait and collect
+**Expected now:** PowerShell returns to its prompt without deploying anything. Later, calling the function in C blocks until the controller or GitHub run finishes. For BDI, close the MAS Console only after `Campaign finished` so the function can return. A failed outcome must still be saved and recorded.
 
-Skip this subsection for BDI. The dispatch helper saves the uniquely matching run ID. It verifies the worker SHA, case, candidate SHA and start time; ambiguous matches stop execution.
+### B4. Actually restore both environments to v1
 
-```powershell
-$runId = (Get-Content (Join-Path $trialRoot 'github-run-id.txt') -Raw).Trim()
-```
+**Open:** Controller PowerShell and GitHub Actions. Confirm no previous candidate, repair, rollback or traffic process is active. If uncertain, use F2/F3 first.
 
-**Then run unchanged:**
+**Actions:** run this block. If no valid baseline receipt is linked, complete F1 first and then return here.
 
 ```powershell
 . {
     $ErrorActionPreference = 'Stop'
-    if ($runId -notmatch '^\d+$') { throw 'Run ID must contain only digits.' }
-    $metadataText = gh run view $runId --repo $pair.repository --json databaseId,displayTitle,headSha,createdAt,status,workflowName,url
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect selected run.' }
-    $remote = $metadataText | ConvertFrom-Json
-    $start = Get-Content (Join-Path $trialRoot 'started.json') -Raw | ConvertFrom-Json
-    if ($remote.headSha -ne $workerSha -or $remote.displayTitle -ne "conventional-$($trial.case)-$v2Sha" -or $remote.workflowName -ne 'Conventional Payment CI/CD' -or [DateTimeOffset]::Parse($remote.createdAt) -lt [DateTimeOffset]::Parse($start.started_at).AddSeconds(-5)) { throw 'Run does not match this trial. Recheck its ID.' }
-    $runId | Set-Content (Join-Path $trialRoot 'github-run-id.txt') -Encoding utf8
-    gh run watch $runId --repo $pair.repository
-    $status = gh run view $runId --repo $pair.repository --json status --jq .status
-    if ($LASTEXITCODE -ne 0 -or $status -ne 'completed') { throw 'Remote work is not known terminal. Use Step 10.' }
-    $nativeDir = Join-Path $trialRoot 'native'
-    py -3 experiments/collect.py --repo $pair.repository --run-id $runId --output "$nativeDir"
-    $collectionExit = $LASTEXITCODE
-    $resultDir = Join-Path $nativeDir 'artifacts/native-result/result'
-    $resultDir | Set-Content (Join-Path $trialRoot 'result-path.txt') -Encoding utf8
-    "Collection exit: $collectionExit. Keep incomplete evidence and inspect collection.json."
+    Assert-V1Receipt "$knownGood" ''
+    Invoke-StudyReset
 }
 ```
 
-**Expected:** a terminal run and saved evidence. Red can mean a correct safe stop or rollback. Check results before concluding failure/success.
+**Expected:** a MAS Console opens and deployment jobs run. After `Campaign finished`, inspect `controller_agent` and close the completed console. PowerShell then prints `Both environments verified at v1:` followed by a new reset folder. Both staging and production must pass identity/readiness checks. A browser showing v1 is not enough.
 
-Healthy/background traffic runs for each reached staging/production gate. `test-failure` stops before deployment traffic. `candidate-stopped` uses normal staging traffic and the shared repair worker's production probes instead of the normal production traffic client. Stage markers (`BDI_STAGE`) do not trigger traffic or count as retries.
+**Next:** choose the next pending trial in C. After a successful E reset in this session, go directly to C; do not reset twice. On a new session, an existing unused reset may be replaced by this fresh reset once no candidate is active.
 
-## Step 7. Save and inspect results before reset
+The identical BDI reset routine prepares both approaches outside measured candidate time. Database volumes are retained. Do not use `docker compose down -v`.
 
-### 7.1. Reload the current trial and inspect its files
+## C. Run the five scenarios, one approach at a time
 
-This block also restores trial variables after reopening PowerShell and completing Steps 2 and 3.2.
+For the default **one repetition**, follow C1 through C5 in order. Each scenario has two runs. **After each run, complete D and E before starting the other approach.** Do not paste both approach commands together.
+
+| Scenario | First run | Second run | After both are recorded and reset |
+|---|---|---|---|
+| C1 healthy | 001 BDI | 002 conventional | C2 |
+| C2 test failure | 003 BDI | 004 conventional | C3 or operator handoff in G2 |
+| C3 temporary degradation | 005 BDI | 006 conventional | C4 |
+| C4 persistent degradation | 007 BDI | 008 conventional | C5 |
+| C5 stopped candidate | 009 BDI | 010 conventional | G1 evaluation |
+
+If you deliberately selected multiple repetitions, follow the saved schedule: odd repetitions use BDI first, even repetitions conventional first. Return to C1 for each new repetition; the launcher refuses out-of-order requests.
+
+### C1. Healthy execution (`healthy`)
+
+**Open:** Controller PowerShell and GitHub Actions. Docker and the existing runner must remain running.
+
+**Setup:** B1-B3 must be loaded and B4/E must have produced a fresh unused v1 reset. No injected fault. Normal traffic runs at each reached staging and production gate.
+
+**Run 1 - BDI** (trial 001 for repetition 1):
+
+```powershell
+Invoke-CompactCandidate -Case 'healthy' -Mechanism bdi
+```
+
+**When it finishes:** complete **D1-D4** to save/record this trial, then **E** to reset. Return here for Run 2. If interrupted, use F2; do not rerun the command.
+
+**Run 2 - conventional** (trial 002 for repetition 1), only after Run 1 is recorded and E passes:
+
+```powershell
+Invoke-CompactCandidate -Case 'healthy' -Mechanism github-actions
+```
+
+**When it finishes:** complete **D1-D4**, then **E**, including after a red GitHub run.
+
+**Expected results to inspect:** Both approaches should deliver verified v2. Inspect accepted health gates, normal traffic and total runtime; this is the baseline for orchestration cost.
+
+**Next:** after both records and resets, continue to **C2**. Unexpected outcomes remain part of the study; do not repeat until a preferred result appears.
+
+### C2. Deterministic test failure (`test-failure`)
+
+**Open:** Controller PowerShell and GitHub Actions. Docker and the existing runner must remain running.
+
+**Setup:** B1-B3 must be loaded and B4/E must have produced a fresh unused v1 reset. The script injects a deterministic test failure. No manual file edit is needed.
+
+**Run 1 - BDI** (trial 003 for repetition 1):
+
+```powershell
+Invoke-CompactCandidate -Case 'test-failure' -Mechanism bdi
+```
+
+**When it finishes:** complete **D1-D4** to save/record this trial, then **E** to reset. Return here for Run 2. If interrupted, use F2; do not rerun the command.
+
+**Run 2 - conventional** (trial 004 for repetition 1), only after Run 1 is recorded and E passes:
+
+```powershell
+Invoke-CompactCandidate -Case 'test-failure' -Mechanism github-actions
+```
+
+**When it finishes:** complete **D1-D4**, then **E**, including after a red GitHub run.
+
+**Expected results to inspect:** Build should succeed, test should fail and downstream deployment should stop. Both environments should retain reset v1. No staging/production traffic is expected because deployment gates are never reached. A red test job is expected evidence of safe stopping, not permission to skip recording.
+
+**Next:** after both records and resets, continue to **C3 (or G2 for operator handoff)**. Unexpected outcomes remain part of the study; do not repeat until a preferred result appears.
+
+### C3. Temporary production degradation (`production-temporary`)
+
+**Open:** Controller PowerShell and GitHub Actions. Docker and the existing runner must remain running.
+
+**Setup:** B1-B3 must be loaded and B4/E must have produced a fresh unused v1 reset. The script injects mixed request errors for 35 seconds and then restores normal traffic. Observations begin after a 15-second pause, using the same 30-second rolling window for both approaches.
+
+**Run 1 - BDI** (trial 005 for repetition 1):
+
+```powershell
+Invoke-CompactCandidate -Case 'production-temporary' -Mechanism bdi
+```
+
+**When it finishes:** complete **D1-D4** to save/record this trial, then **E** to reset. Return here for Run 2. If interrupted, use F2; do not rerun the command.
+
+**Run 2 - conventional** (trial 006 for repetition 1), only after Run 1 is recorded and E passes:
+
+```powershell
+Invoke-CompactCandidate -Case 'production-temporary' -Mechanism github-actions
+```
+
+**When it finishes:** complete **D1-D4**, then **E**, including after a red GitHub run.
+
+**Expected results to inspect:** Inspect early unhealthy observations, bounded reobservation and two fresh healthy samples before v2 is accepted. Older errors can remain in the window after second 35. Check for unnecessary restart/rollback; preserve and explain it if it happens.
+
+**Next:** after both records and resets, continue to **C4**. Unexpected outcomes remain part of the study; do not repeat until a preferred result appears.
+
+### C4. Persistent production degradation (`production-persistent`)
+
+**Open:** Controller PowerShell and GitHub Actions. Docker and the existing runner must remain running.
+
+**Setup:** B1-B3 must be loaded and B4/E must have produced a fresh unused v1 reset. Production request errors persist through the observation budget; do not stop the injector yourself.
+
+**Run 1 - BDI** (trial 007 for repetition 1):
+
+```powershell
+Invoke-CompactCandidate -Case 'production-persistent' -Mechanism bdi
+```
+
+**When it finishes:** complete **D1-D4** to save/record this trial, then **E** to reset. Return here for Run 2. If interrupted, use F2; do not rerun the command.
+
+**Run 2 - conventional** (trial 008 for repetition 1), only after Run 1 is recorded and E passes:
+
+```powershell
+Invoke-CompactCandidate -Case 'production-persistent' -Mechanism github-actions
+```
+
+**When it finishes:** complete **D1-D4**, then **E**, including after a red GitHub run.
+
+**Expected results to inspect:** Inspect sustained unhealthy observations, the bounded decision to stop waiting, and verified rollback to v1. Restoring v1 is successful recovery but does not achieve candidate v2 delivery. Compare safe final state, observations, retries and recovery time.
+
+**Next:** after both records and resets, continue to **C5**. Unexpected outcomes remain part of the study; do not repeat until a preferred result appears.
+
+### C5. Recoverable service failure: stopped candidate (`candidate-stopped`)
+
+**Open:** Controller PowerShell and GitHub Actions. Docker and the existing runner must remain running.
+
+**Setup:** B1-B3 must be loaded and B4/E must have produced a fresh unused v1 reset. After successful deployment the helper stops only the correlated candidate app container. Staging uses normal traffic; production uses the repair worker probes instead of a separate normal traffic client.
+
+**Run 1 - BDI** (trial 009 for repetition 1):
+
+```powershell
+Invoke-CompactCandidate -Case 'candidate-stopped' -Mechanism bdi
+```
+
+**When it finishes:** complete **D1-D4** to save/record this trial, then **E** to reset. Return here for Run 2. If interrupted, use F2; do not rerun the command.
+
+**Run 2 - conventional** (trial 010 for repetition 1), only after Run 1 is recorded and E passes:
+
+```powershell
+Invoke-CompactCandidate -Case 'candidate-stopped' -Mechanism github-actions
+```
+
+**When it finishes:** complete **D1-D4**, then **E**, including after a red GitHub run.
+
+**Expected results to inspect:** Inspect diagnosis of the matching stopped candidate, one bounded restart and fresh identity-correlated health verification. Successful repair should continue v2 delivery. A restart command alone is not proof of recovery; if verification fails, inspect verified rollback or safe stop.
+
+**Next:** after both records and resets, continue to **G1 (or C1 for the next scheduled repetition)**. Unexpected outcomes remain part of the study; do not repeat until a preferred result appears.
+
+## D. Finalise EVERY candidate: save, inspect and record
+
+Do this after each individual C command, before resetting or launching another candidate. Most logs are already saved automatically. These steps collect remote logs, capture the current final state and create the comparison record. They also apply to failed trials. Before capturing final state in D3, confirm the controller has stopped and all candidate/diagnostic/repair/rollback jobs are terminal in GitHub Actions. If execution was interrupted or remote status is uncertain, use F2 first.
+
+### D1. Reload this trial and inspect saved evidence
+
+**Open:** Controller PowerShell. If reopened, complete B1 and B2.2 first. Reloading paths avoids relying on variables inside the launcher function.
 
 ```powershell
 . {
@@ -495,7 +572,7 @@ This block also restores trial variables after reopening PowerShell and completi
         $result = Get-Content (Join-Path $resultDir 'controller-result.json') -Raw | ConvertFrom-Json
         $result | Select-Object mode,outcome,recovery_outcome,release_sha,known_good_sha | Format-List
         $result.executions; $result.telemetry; $result.verified_releases
-    } else { 'Result missing: retain this incomplete trial; inspect Step 10.' }
+    } else { 'Result missing: retain this incomplete trial; inspect F2.' }
     if (Test-Path (Join-Path $resultDir 'experiment-metrics.json')) { Get-Content (Join-Path $resultDir 'experiment-metrics.json') -Raw }
     if (Test-Path (Join-Path $resultDir 'experiment-events.jsonl')) {
         Get-Content (Join-Path $resultDir 'experiment-events.jsonl') | Select-String 'action_started|action_finished|diagnosis_|repair_|observation|health_accepted|recovery_started|campaign_finished'
@@ -513,9 +590,9 @@ This block also restores trial variables after reopening PowerShell and completi
 
 Inspect `traffic_by_entity` for required traffic and profile/seed/deployment/release mismatches. Missing evidence is not success. A restart returning `executed` is not verified delivery. Use the five-case table above to inspect the actual fault and response; retain unexpected but well-evidenced outcomes.
 
-### 7.2. BDI only: download acknowledged GitHub job logs
+### D2. BDI only: download acknowledged GitHub job logs
 
-Skip for conventional: its logs were collected in 6.2. The following reads GitHub without dispatching. Missing logs remain an explicit collection problem.
+Skip D2 for conventional: the C launcher already collected its logs. Continue to D3. The following reads GitHub without dispatching. Missing logs remain an explicit collection problem.
 
 ```powershell
 . {
@@ -542,12 +619,14 @@ Skip for conventional: its logs were collected in 6.2. The following reads GitHu
 }
 ```
 
-### 7.3. Both approaches: capture the final live state
+### D3. Both approaches: capture the final live state
 
-Run before reset, including after failed trials. Endpoint failures are retained as errors, not labelled healthy.
+Run before reset, including after failed trials. Run only once for this trial; if `final-state.json` already exists, inspect and preserve it. Never overwrite it with observations taken after a reset. Endpoint failures are retained as errors, not labelled healthy.
 
 ```powershell
 . {
+    $ErrorActionPreference = 'Stop'
+    if (Test-Path (Join-Path $trialRoot 'final-state.json')) { throw 'Final state already saved. Preserve it and continue at D4.' }
     $observed = @{}
     foreach ($entity in @('staging','production')) {
         $port = if ($entity -eq 'staging') { 3001 } else { 3000 }
@@ -563,11 +642,11 @@ Run before reset, including after failed trials. Endpoint failures are retained 
 
 Console logs and traffic logs are automatic. Conventional result JSON/metrics are assembled offline by `collect.py` from terminal job metadata and per-attempt receipts. A missing required receipt is a collection failure, not an inferred success. Screenshots are optional; if wanted, save them in `$trialRoot`. Do not manually recreate missing JSON or rerun to manufacture evidence for an earlier trial.
 
-## Step 8. Finalise this trial's record
+### D4. Save the comparison record
 
-**Open:** Controller PowerShell after Step 7. The helper derives fault exposure and final safety from the saved evidence, reads the reset references from `started.json`, and writes the exact schema required by the evaluator. It never assumes an expected outcome actually occurred. Missing evidence remains unverified/ineligible; failures are still recorded. Do not hand-write another `record.json` format or set eligibility yourself.
+**Open:** Controller PowerShell after D1-D3. If `record.json` already exists, preserve it and continue to E once remote work is terminal. The helper derives fault exposure and final safety from the saved evidence, reads the reset references from `started.json`, and writes the exact schema required by the evaluator. It never assumes an expected outcome actually occurred. Missing evidence remains unverified/ineligible; failures are still recorded. Do not hand-write another `record.json` format or set eligibility yourself.
 
-**Manual input ? only information that logs cannot establish:**
+**Manual input - only information that logs cannot establish:**
 
 ```powershell
 $interventionText = (Read-Host 'Human interventions during candidate execution; blank if unknown').Trim()
@@ -590,32 +669,77 @@ An execution agent may supply these from its own documented action history. Unkn
 }
 ```
 
-**Expected:** path to `record.json`, eligibility and explicit issues. An unexpected valid rollback can be eligible even though the scenario expectation was not met. Recording does not prove remote work has stopped. Preserve the original on corrections; use a separately documented amendment, never silently overwrite old records. Continue to Step 9 only after all remote work is terminal.
+**Expected:** path to `record.json`, eligibility and explicit issues. An unexpected valid rollback can be eligible even though the scenario expectation was not met. Recording does not prove remote work has stopped. Preserve the original on corrections; use a separately documented amendment, never silently overwrite old records. Continue to E only after all remote work is terminal.
 
-## Step 9. Clean up and restore v1
+## E. Clean up and restore v1 after EVERY candidate
 
-Confirm candidate, diagnostic, repair and rollback jobs are terminal. Normal traffic clients stop automatically; stop only a leftover client you started for this trial. Keep Docker and the runner running.
+Confirm candidate, diagnostic, repair and rollback jobs are terminal. Close the completed candidate MAS Console before continuing. The reset below opens its own MAS Console; close that one after `Campaign finished` so v1 verification can complete. Normal traffic clients stop automatically; stop only a leftover client you started for this trial. Keep Docker and the runner running.
 
 ```powershell
-Remove-Item Env:BDI_EXECUTION_PLAN,Env:BDI_SCENARIO -ErrorAction SilentlyContinue
-Invoke-StudyReset
+. {
+    $ErrorActionPreference = 'Stop'
+    if (-not (Test-Path (Join-Path $trialRoot 'record.json'))) { throw 'Complete D4 before reset.' }
+    Remove-Item Env:BDI_EXECUTION_PLAN,Env:BDI_SCENARIO -ErrorAction SilentlyContinue
+    Invoke-StudyReset
+}
 ```
 
 **Expected:** new verified v1 reset in both environments; completed evidence is unchanged. This reset is also required when production already appears v1, and after the final trial. Do not delete database volumes or result folders.
 
-**Next:** return to Step 5 for the paired approach or next case. When all scheduled trials are finalised and the last reset passed, continue to Step 11. Never reuse one reset for two candidate trials.
+**Next:** return to the C scenario you just used: after its first approach run the second; after both, follow its Next instruction. After trial 010, evaluate in G1. Never reuse one reset for two candidate trials.
 
-## Step 10. Resume or troubleshoot only when needed
+## F. Baseline and troubleshooting
+
+### F1. Link or create a verified v1 baseline only if missing
+
+Complete B1 and B2 first. A previously verified baseline can be reused; it does not replace the fresh reset required before each trial.
+
+If `$knownGood` already contains your verified receipt, run this check and continue to B4 if it succeeds:
+
+```powershell
+Assert-V1Receipt "$knownGood" ''
+```
+
+**Only if an existing receipt was not linked:** select its full path in this separate block. This does not deploy.
+
+```powershell
+$knownGood = (Read-Host 'Paste the full verified v1 controller-result.json path, without quotes').Trim()
+Assert-V1Receipt "$knownGood" ''
+$pair.known_good_receipt = $knownGood
+$pair | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $pairFile -Encoding utf8
+```
+
+**Only if no verified receipt exists:** ensure the runner is idle and rollback is compatible with retained database data, then run this once:
+
+```powershell
+. {
+    $ErrorActionPreference = 'Stop'
+    $env:BDI_RELEASE_SHA = $v1Sha
+    $baselineDir = Join-Path $studyDir ('baseline-' + (Get-Date -Format yyyyMMdd-HHmmss-fff))
+    $baselineDir | Set-Content (Join-Path $studyDir 'current-baseline.txt') -Encoding utf8
+    py -3 -B bdi-cicd-framework/run_controller.py --gui --baseline --artifacts-dir "$baselineDir"
+    if ($LASTEXITCODE -ne 0) { throw 'Baseline incomplete; inspect its logs before any candidate run.' }
+    $knownGood = Join-Path $baselineDir 'controller-result.json'
+    Assert-V1Receipt "$knownGood" (Join-Path $baselineDir 'reset-check.json')
+    $pair.known_good_receipt = $knownGood
+    $pair | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $pairFile -Encoding utf8
+    $env:BDI_RELEASE_SHA = $v2Sha
+}
+```
+
+**Expected:** the selected pair links an achieved live v1 receipt for both environments. Baseline work is excluded from measured candidate runs. Continue to B4.
+
+### F2. Resume an interrupted trial or resolve an error
 
 | Situation | Action |
 |---|---|
-| Terminal reopened | Step 2, then 3.2 and 7.1; use saved pointers rather than guessing paths |
-| Trial already has `started.json` | Resume collection/review; never dispatch it again as though it were new |
+| Terminal reopened | B1, B2.2 and D1; use saved pointers rather than guessing paths |
+| Trial already has `started.json` | Run D1 to reload its paths, check terminal status, then resume collection/review; never dispatch it again |
 | BDI interrupted or remote execution unknown | Stop the old local controller if still running, then use the reconciliation command below; inspect GitHub before resetting |
 | Conventional dispatch uncertain | Run `py -3 -B experiments/dispatch_trial.py --study "$studyDir" --trial $trial.id --resolve-only`. Never delete its intent file or assume no response means no run. |
 | Conventional cancelled or runner lost | Inspect all remote jobs and Docker state; preserve incomplete evidence; do not count GitHub `Re-run jobs` as another planned trial |
 | Collection incomplete | Keep the failure record; download again into a fresh folder for inspection and document any correction; never count duplicate downloads as extra trials |
-| Old control tag / file mismatch | Step 1, then start a new compact study if the control revision changed |
+| Old control tag / file mismatch | A2, then start a new compact study if the control revision changed |
 | Security gate blocks a healthy run | Preserve the finding; fix through a reviewed new app/control series rather than disabling the gate |
 | Missing production traffic for `candidate-stopped` | Expected; inspect repair probes, identity and fresh observations; staging traffic remains required |
 | Reset fails | Save the failure, settle remote state, fix the cause and create a new reset; never fabricate verification |
@@ -626,7 +750,118 @@ py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only
 
 Reconciliation reads remote status; it does not resume or dispatch. An unresolved outcome remains a stop condition. Do not delete locks/pending records to bypass it. Finish collecting and recording the interrupted trial, then reset. Document any amended schedule; do not silently replace an unsuccessful observation.
 
-## Step 11. Evaluate the five-case study and archive it
+#### F2.1. Resume conventional waiting/collection without dispatching
+
+**Only if the conventional C command was interrupted:** load B1, B2.2 and D1. Resolve an uncertain dispatch with the read-only `--resolve-only` command above, then run this block. It uses the saved run ID. If `native/` already contains a collection attempt, preserve it and inspect `collection.json`; do not overwrite it with this block.
+
+```powershell
+. {
+    $ErrorActionPreference = 'Stop'
+    if ($trial.mechanism -ne 'github-actions') { throw 'This continuation is conventional only.' }
+    if (Test-Path (Join-Path $trialRoot 'native')) { throw 'Collection already exists. Inspect it and preserve original evidence; see F2.' }
+    $runId = (Get-Content (Join-Path $trialRoot 'github-run-id.txt') -Raw).Trim()
+    $ErrorActionPreference = 'Stop'
+    if ($runId -notmatch '^\d+$') { throw 'Run ID must contain only digits.' }
+    $metadataText = gh run view $runId --repo $pair.repository --json databaseId,displayTitle,headSha,createdAt,status,workflowName,url
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect selected run.' }
+    $remote = $metadataText | ConvertFrom-Json
+    $start = Get-Content (Join-Path $trialRoot 'started.json') -Raw | ConvertFrom-Json
+    if ($remote.headSha -ne $workerSha -or $remote.displayTitle -ne "conventional-$($trial.case)-$v2Sha" -or $remote.workflowName -ne 'Conventional Payment CI/CD' -or [DateTimeOffset]::Parse($remote.createdAt) -lt [DateTimeOffset]::Parse($start.started_at).AddSeconds(-5)) { throw 'Run does not match this trial. Recheck its ID.' }
+    $runId | Set-Content (Join-Path $trialRoot 'github-run-id.txt') -Encoding utf8
+    gh run watch $runId --repo $pair.repository
+    $status = gh run view $runId --repo $pair.repository --json status --jq .status
+    if ($LASTEXITCODE -ne 0 -or $status -ne 'completed') { throw 'Remote work is not known terminal. Use F2.' }
+    $nativeDir = Join-Path $trialRoot 'native'
+    py -3 experiments/collect.py --repo $pair.repository --run-id $runId --output "$nativeDir"
+    $collectionExit = $LASTEXITCODE
+    $resultDir = Join-Path $nativeDir 'artifacts/native-result/result'
+    $resultDir | Set-Content (Join-Path $trialRoot 'result-path.txt') -Encoding utf8
+    "Collection exit: $collectionExit. Keep incomplete evidence and inspect collection.json."
+}
+```
+
+**Next:** D1-D4 and E. Missing evidence stays explicit. A known terminal failure can still be recorded; uncertain remote execution must be settled before reset.
+
+### F3. Retire an old/hanging study before starting fresh
+
+**Do not delete the previous experiment folders or `current-compact-study.txt`.** The text file only selects a study directory; it does not run, stop or reset anything. B2.1 creates a new directory and replaces the pointer automatically, keeping a timestamped copy of the previous pointer. Old results, run IDs and baseline receipts remain available for audit. Keep old directories in place because records contain absolute paths; moving them can break evidence references.
+
+Distinguish **an incomplete study** (some trials have no record) from **an active execution** (a controller, traffic client or GitHub job is still running). Creating a new pointer does not stop an active execution. Use the following order.
+
+#### F3.1. Identify the previous study
+
+**Open:** a new Controller PowerShell at the repository root. This block only reads the old selection; it does not require B1 or change the pointer.
+
+```powershell
+. {
+    $ErrorActionPreference = 'Stop'
+    Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
+    $previousStudyDir = $null
+    $previousStudy = $null
+    if (Test-Path experiments/results/current-compact-study.txt) {
+        $previousStudyDir = (Get-Content experiments/results/current-compact-study.txt -Raw).Trim()
+        if (-not (Test-Path (Join-Path $previousStudyDir 'study.json'))) { throw 'Old pointer is invalid. Locate its existing study folder before replacing the selection.' }
+        $previousStudy = Get-Content (Join-Path $previousStudyDir 'study.json') -Raw | ConvertFrom-Json
+        [pscustomobject]@{ Study=$previousStudyDir; Repository=$previousStudy.repository; Worker=$previousStudy.worker_ref; Pair=$previousStudy.pair_file } | Format-List
+        if (Test-Path (Join-Path $previousStudyDir 'current-trial.txt')) { Get-Content (Join-Path $previousStudyDir 'current-trial.txt') }
+        foreach ($item in $previousStudy.trials) {
+            $folder = Join-Path $previousStudyDir "trials/$($item.id)"
+            [pscustomobject]@{ Trial=$item.id; Started=(Test-Path (Join-Path $folder 'started.json')); Recorded=(Test-Path (Join-Path $folder 'record.json')) }
+        }
+    } else { 'No existing study pointer. Check for any independently started execution before proceeding.' }
+}
+```
+
+#### F3.2. Settle unfinished work before any reset
+
+**Open:** the previous controller/traffic terminals, MAS window if used, and **GitHub > repository > Actions**.
+
+1. If work is still progressing normally, let it finish and collect its evidence. If intentionally abandoning a stuck run, stop only the old controller/traffic processes belonging to this study (Ctrl+C in their terminals; close its MAS window). If process ownership is unclear, stop here and identify it. Do not kill every Java, Python or Node process.
+2. Inspect the old trial's saved GitHub run IDs and the repository Actions page for running, queued or approval-waiting jobs, including diagnosis, restart, rollback and resets. Let them finish, or explicitly cancel **only the old experiment runs** using the GitHub UI. Verify each becomes terminal; a cancellation request alone is not sufficient. Leave the runner and Docker running.
+3. For an interrupted BDI execution, restore GitHub login if needed and reconcile its durable execution state:
+
+```powershell
+. {
+    $ErrorActionPreference = 'Stop'
+    if (-not $previousStudy) { throw 'Load the old study in F3.1 first.' }
+    Remove-Item Env:GH_TOKEN,Env:GITHUB_TOKEN,Env:GITHUB_API_URL -ErrorAction SilentlyContinue
+    $env:GITHUB_REPOSITORY = $previousStudy.repository
+    $env:BDI_WORKFLOW_REF = $previousStudy.worker_ref
+    $env:BDI_RELEASE_SHA = $previousStudy.v2_sha
+    $env:GITHUB_TOKEN = gh auth token --hostname github.com
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) { throw 'Restore GitHub login.' }
+    Remove-Item Env:BDI_SCENARIO,Env:BDI_EXECUTION_PLAN -ErrorAction SilentlyContinue
+    py -3 -B bdi-cicd-framework/run_controller.py --reconcile-only
+    if ($LASTEXITCODE -ne 0) { throw 'Reconciliation did not complete. Inspect the output; do not launch a reset or new trial.' }
+}
+```
+
+Reconciliation does not resume the old campaign. **An unresolved execution remains a stop condition even if you have a new pair or pointer.** Never delete controller locks, pending-execution files or dispatch intents to bypass it. For conventional dispatch uncertainty, use F2's `dispatch_trial.py --resolve-only` against the **old** study and trial, not a newly created study. Read-only evidence collection may continue while resolving a blocker.
+
+4. Save available logs/results and record interrupted outcomes using the old frozen study's tools where compatible. Preserve existing records unchanged; do not manufacture a final state after a later reset. Missing evidence stays missing. Add a dated note inside the old study explaining why it was stopped/superseded and which trials remain incomplete. Do not label unrun trials successful or mark the old study complete.
+
+**Expected:** no old execution or traffic can still modify the deployment; unresolved operations have been reconciled. Old evidence remains intact. A clean terminal alone is not proof that remote jobs stopped.
+
+#### F3.3. Create the new selection and restore v1
+
+Open a **fresh Controller PowerShell** to avoid stale `$trial`, `$studyDir` and helper variables, then follow this sequence:
+
+| Order | Action | Expected result |
+|---|---|---|
+| 1 | A2: commit/publish/select the reviewed control revision if needed | Correct worker tag; existing app v1/v2 SHAs and baseline preserved |
+| 2 | B1: load the selected pair and reset helpers | Session variables populated; stale experiment environment overrides cleared |
+| 3 | B2.1 once, then B2.2 | New ten-trial schedule; previous pointer backed up; `current-compact-study.txt` selects the new directory |
+| 4 | B3; F1 only if the baseline is missing | Load the candidate launcher; reuse the verified baseline |
+| 5 | B4 | Fresh reset receipt verifies **both staging and production at v1** |
+| 6 | C1 onward | Start new trial 001; old trial numbering/results belong to the old study |
+
+Do not delete database volumes, run `docker compose down -v`, remove release tags, or delete baseline receipts. This is a reset to the verified v1 application with retained database data, not an empty-database experiment. If B4 fails, preserve its logs and resolve the failure before starting a candidate. Merely seeing v1 in the browser is insufficient; both execution identities/readiness checks must pass.
+
+If you only closed the terminal and want to **continue the same unchanged study**, skip F3 and B2.1: use B1, B2.2, then D/F2 for any already-started trial. For manual-to-agent handoff after trial 004, keep the same pointer and schedule.
+
+## G. Evaluate the study and hand off remaining work
+
+### G1. Evaluate and back up
 
 **Open:** Controller PowerShell after finalisation and the final reset. The evaluator is read-only; it can also show pending trials mid-study.
 
@@ -667,3 +902,13 @@ Report each case separately:
 `recovery_seconds` measures first adverse production event to accepted rollback. `candidate_repair_seconds` measures restart request to accepted candidate health. They are different paths; compare only like-for-like values. Use matched pairs for conclusions, report ties, and do not infer statistical superiority from one run per case. This set illustrates runtime decision-making; comparative benefit must come from the observed outcomes/costs.
 
 **Archive:** back up the entire compact study directory, reports, selected pair JSON, original baseline receipt directory and frozen revision identifiers. Results are Git-ignored. Keep the final verified v1 deployed unless you deliberately stop the stacks after recording completion. The full study and its pointer remain separate.
+
+### G2. Optional handoff: run C1-C2 manually, delegate C3-C5
+
+Use **one study**, one repetition and seed 42 throughout. Complete B, then C1-C2 with D/E after every trial for trials **001-004**: healthy BDI, healthy conventional, test-failure BDI, test-failure conventional. A red test-failure run is expected, but it still requires collection, final-state capture, `record_trial.py`, and reset. After trial 004, complete E and verify both environments at v1. Stop before dispatching trial 005.
+
+Before handoff, evaluate the study (the evaluator command in G1 may be used mid-study, but the completion guard will correctly report incomplete). Expect four recorded/eligible trials and two matched pairs; trials 005-010 are pending. If the first four are ineligible, explain/correct evidence through documented amendments before treating them as valid comparisons. Keep the saved pointer, records and reset receipts.
+
+The execution agent must read this guide, load B1, **B2.2 only**, and B3, confirm the first four records and unused reset, then resume C3 at trial 005. Do not create another schedule, overwrite records, repeat completed trials or assume an existing `started.json` is safe to dispatch again. It completes trials 005-010, records each and resets after each, including the final trial; then evaluates and reports the full study. This handoff changes the operator, not the experiment configuration. Human interventions during measured execution must be recorded honestly; routine setup/collection is excluded.
+
+For an unattended handoff, the agent must use `-Headless` on every candidate and reset helper call. Otherwise it must inspect and close each completed MAS Console before collection or the next reset can finish. Record this display-mode choice in operator notes.

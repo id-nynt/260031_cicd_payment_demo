@@ -1,0 +1,27 @@
+name: Payment service release with BDI recovery
+project: payment-service
+workflow_file: entity-execution.yml
+execution:
+  max_retries: 1
+jobs:
+  build:
+    job_name: Build entity
+  test:
+    needs: build
+    job_name: Test entity
+  security:
+    needs: test
+    job_name: Security entity
+  staging:
+    needs: security
+    job_name: Staging entity
+    environment: staging
+  production:
+    needs: staging
+    job_name: Production entity
+    environment: production
+recovery:
+  rollback:
+    from: production
+    job_name: Rollback entity
+    environment: production

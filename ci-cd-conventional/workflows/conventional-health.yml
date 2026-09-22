@@ -1,0 +1,60 @@
+# Source of truth: ci-cd-conventional/workflows/. Run sync_workflows.py after editing.
+name: Conventional bounded health gate
+'on':
+  workflow_call:
+    inputs:
+      entity:
+        type: string
+        required: true
+      execution_id:
+        type: string
+        required: true
+      release_sha:
+        type: string
+        required: true
+      scenario:
+        type: string
+        required: true
+      seed:
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  observe:
+    runs-on:
+    - self-hosted
+    - linux
+    - payment-deploy
+    timeout-minutes: 10
+    concurrency:
+      group: payment-deployment-control
+      cancel-in-progress: false
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: python -m pip install PyYAML==6.0.3
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+    - name: Observe health with bounded rechecks
+      env:
+        ENTITY: ${{ inputs.entity }}
+        EXECUTION_ID: ${{ inputs.execution_id }}
+        RELEASE_SHA: ${{ inputs.release_sha }}
+        SCENARIO: ${{ inputs.scenario }}
+        SEED: ${{ inputs.seed }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: python ci-cd-conventional/native-experiment.py gate --directory "evidence/$ENTITY" --entity "$ENTITY" --execution-id "$EXECUTION_ID" --release-sha
+        "$RELEASE_SHA" --scenario "$SCENARIO" --seed "$SEED"
+    - if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-${{ inputs.entity }}-health
+        path: evidence/
+        if-no-files-found: error

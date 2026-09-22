@@ -9,7 +9,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from project_artifacts import generate, validate, ModelError
 from workflow_model import read, compile_sources, compile_inputs, generate_agent
-ARCHIVE=ROOT.parent/'docs/archive/model-inputs-before-four-source'
+ARCHIVE=ROOT.parent/'docs/archives/03_model-inputs-before-four-source'
 
 class FourSourcesTest(unittest.TestCase):
     def setUp(self):

@@ -17,7 +17,7 @@ from workflow_model import runtime_settings
 from experiment_metrics import extract
 from experiment_protocol import protocol_key
 
-CATALOG = json.loads((ROOT.parent/'scripts/experiment-scenarios.json').read_text())
+CATALOG = json.loads((ROOT.parent/'experiments/scenarios.json').read_text())
 CASES = {name: (case['entity'], case['profile'], case['fault']) for name, case in CATALOG.items()}
 
 def main():
@@ -58,7 +58,7 @@ def main():
         # GitHub workflow_dispatch expects a branch/tag ref; retain that ref and record its resolved SHA.
 
     entity, profile, fault = CASES[args.case]
-    campaign = (args.artifacts_dir or ROOT/'runs'/f'{datetime.now().strftime("%Y%m%d-%H%M%S")}-{args.mechanism}-{args.case}-{uuid.uuid4().hex[:6]}').resolve()
+    campaign = (args.artifacts_dir or ROOT.parent/'experiments/results'/('bdi' if args.mechanism == 'bdi' else 'scripted-controller')/f'{datetime.now().strftime("%Y%m%d-%H%M%S")}-{args.mechanism}-{args.case}-{uuid.uuid4().hex[:6]}').resolve()
     if campaign.exists(): raise ModelError('Use a new campaign directory')
     companion = Path(str(campaign)+'-experiment')
     companion.mkdir(parents=True, exist_ok=False)
@@ -68,7 +68,8 @@ def main():
     env['BDI_RELEASE_SHA'] = args.release_sha
     traffic_profile = ROOT.parent/'scripts/traffic-scenarios'/f'{profile}.json' if profile else None
     sources = {str(p.relative_to(ROOT.parent)): digest(p) for p in [
-        ROOT/'run_controller.py', ROOT/'run_experiment.py', ROOT/'experiment_metrics.py',
+        ROOT/'run_controller.py', ROOT/'run_experiment.py', ROOT.parent/'experiments/experiment_metrics.py',
+        ROOT.parent/'experiments/experiment_protocol.py', ROOT.parent/'experiments/scenarios.json',
         ROOT.parent/'scripts/run-traffic-scenario.mjs', *sorted((ROOT/'bdi/harness').glob('*.java'))]}
     comparison = dict(case=args.case, seed=args.seed, candidate=args.release_sha, baseline=baseline_sha,
         repository=env['GITHUB_REPOSITORY'], worker=env['BDI_WORKFLOW_REF'], worker_sha=worker_sha, contract=digest(ROOT/'models/03_workflow_model.yaml'),

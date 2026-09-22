@@ -1,6 +1,6 @@
 # Campaign-linked traffic profiles
 
-Run from the repository root with Node 22+. Use [manual guide C0](../../docs/BDI_MANUAL_EXECUTION_GUIDE.md#c0-scenario-driven-traffic-recommended-for-repeatable-timing) for complete controller setup. Keep the original `generate-experiment-traffic.mjs` for manual traffic.
+Run from the repository root with Node 22+. Use [manual guide C0](../../docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md#c0-scenario-driven-traffic-recommended-for-repeatable-timing) for complete controller setup. Keep the original `generate-experiment-traffic.mjs` for manual traffic.
 
 ```powershell
 node scripts/run-traffic-scenario.mjs --campaign bdi-cicd-framework/runs/YOUR-NEW-CAMPAIGN --scenario temporary-errors --seed 42

@@ -1,10 +1,15 @@
 # Payment Service
 
+Documentation: [reading guide](docs/00_README.md).
+
+Current experiment entry points: [BDI manual](docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md), [standalone conventional manual](docs/execution/guidelines/04_CONVENTIONAL_MANUAL_EXECUTION_GUIDE.md), and [results inspection](docs/execution/guidelines/05_EXPERIMENT_RESULTS_GUIDE.md). Conventional code/workflow sources are in `ci-cd-conventional/`; shared scenarios, metrics and new result directories are in `experiments/`. The root application and existing v1/v2 revisions remain shared.
+
+
 A small payment-service demonstration that can run locally, in Docker, on a VM, or through a GitHub Actions CI/CD pipeline. Its research controller can generate a Jason BDI agent from two canonical pipeline and goal inputs; that agent selects each CI/CD entity while GitHub Actions executes the selected work.
 
 Start with the current controller guide; older audit/demo documents describe historical iterations.
 
-See [the BDI controller guide](bdi-cicd-framework/README.md), [manual execution guide](docs/BDI_MANUAL_EXECUTION_GUIDE.md), [architecture audit](docs/BDI_ARCHITECTURE_AUDIT_AND_PLAN.md), and [experiment results](docs/BDI_CONTROLLER_EXPERIMENT_RESULTS.md).
+See [the BDI controller guide](bdi-cicd-framework/README.md), [manual execution guide](docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md), [architecture audit](docs/archives/02_pre-policy-refactor/01_BDI_ARCHITECTURE_AUDIT_AND_PLAN.md), and [experiment results](docs/archives/02_pre-policy-refactor/02_BDI_CONTROLLER_EXPERIMENT_RESULTS.md).
 
 The default deployment mode is `fake`. It simulates approval and rejection, stores payment records in PostgreSQL, and does not move real money. Stripe is an optional integration for test-mode payment instruments.
 
@@ -375,7 +380,7 @@ payment_service_ready
 
 Prometheus keeps earlier samples, but instant queries show the current app instance. Use the Graph view and a time range covering the experiment to compare modes across restarts. To stop only the isolated stack while keeping its data, run `docker compose down` with the project and port variables still set. Do not use `down -v` unless you intend to delete this stack's payment records and metric history.
 
-The current controller supports both pre-production avoidance and verified post-production recovery. Generate its persistent project artifacts once per configuration revision, then start campaigns using those artifacts. See the [manual experiment walkthrough](docs/BDI_MANUAL_EXECUTION_GUIDE.md). A push runs validation; it does not deploy.
+The current controller supports both pre-production avoidance and verified post-production recovery. Generate its persistent project artifacts once per configuration revision, then start campaigns using those artifacts. See the [manual experiment walkthrough](docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md). A push runs validation; it does not deploy.
 
 ## Run quality checks locally
 
@@ -496,7 +501,7 @@ Before using a VM for important data, add encrypted PostgreSQL backups, log rete
 
 The controller dispatches `.github/workflows/entity-execution.yml` for one selected entity at a time. `.github/workflows/validate-controller.yml` runs non-deploying checks on PRs and main pushes. There is no GitHub job dependency chain controlling deployment.
 
-Follow the [manual experiment walkthrough](docs/BDI_MANUAL_EXECUTION_GUIDE.md) for runner prerequisites, explicit project generation, local rehearsal, a live baseline, candidate delivery, verified rollback and uncertain-execution reconciliation. The controller runs outside the deployment runner checkout and execution slot. Deployment requires an online Linux runner with `payment-deploy`, Docker/Compose and access to the configured staging/production services.
+Follow the [manual experiment walkthrough](docs/execution/guidelines/03_BDI_MANUAL_EXECUTION_GUIDE.md) for runner prerequisites, explicit project generation, local rehearsal, a live baseline, candidate delivery, verified rollback and uncertain-execution reconciliation. The controller runs outside the deployment runner checkout and execution slot. Deployment requires an online Linux runner with `payment-deploy`, Docker/Compose and access to the configured staging/production services.
 
 Generate and validate without deployment:
 

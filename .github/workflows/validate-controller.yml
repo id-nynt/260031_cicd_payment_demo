@@ -41,6 +41,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install PyYAML==6.0.3
+      - run: python ci-cd-conventional/sync_workflows.py --check
+      - run: python ci-cd-conventional/configuration.py --check-bdi-parity
+      - run: python -m unittest discover -s ci-cd-conventional/tests -v
+      - run: python -m unittest discover -s experiments/tests -v
       - run: python -m unittest discover -s bdi-cicd-framework/parser -p 'test_*.py' -v
       - uses: actions/setup-java@v4
         with:

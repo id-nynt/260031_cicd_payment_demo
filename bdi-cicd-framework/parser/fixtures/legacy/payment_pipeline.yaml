@@ -1,0 +1,18 @@
+name: Payment Service BDI-controlled CI/CD
+project_file: payment_project.yaml
+execution:
+  max_retries: 1
+jobs:
+  build: {}
+  test: {}
+  security:
+    needs: [build, test]
+  staging:
+    needs: [build, test, security]
+  production:
+    needs: staging
+    observe_before: staging
+  rollback:
+    recover_from: production
+    recover_on: [failure, telemetry_block, telemetry_unknown, maintenance_violation]
+    observe_after: true

@@ -1,0 +1,143 @@
+{
+  "source_commit": "dd1b5c8",
+  "historical_only": true,
+  "runs": [
+    {
+      "case": "delayed-telemetry",
+      "result": {
+        "timestamp": "2026-09-19T13:11:34.699464200Z",
+        "outcome": "achieved",
+        "project": "payment-service"
+      },
+      "mode": "scenario",
+      "actions": [
+        "build",
+        "test",
+        "security",
+        "staging",
+        "production"
+      ]
+    },
+    {
+      "case": "exit-code-check",
+      "result": {
+        "timestamp": "2026-09-19T13:16:40.741975600Z",
+        "outcome": "unknown",
+        "project": "payment-service"
+      },
+      "mode": "scenario",
+      "actions": [
+        "build",
+        "test",
+        "security",
+        "staging"
+      ]
+    },
+    {
+      "case": "high-error-staging",
+      "result": {
+        "timestamp": "2026-09-19T13:10:39.845172200Z",
+        "outcome": "stopped",
+        "project": "payment-service"
+      },
+      "mode": "scenario",
+      "actions": [
+        "build",
+        "test",
+        "security",
+        "staging"
+      ]
+    },
+    {
+      "case": "missing-telemetry",
+      "result": {
+        "timestamp": "2026-09-19T13:11:09.166790500Z",
+        "outcome": "unknown",
+        "project": "payment-service"
+      },
+      "mode": "scenario",
+      "actions": [
+        "build",
+        "test",
+        "security",
+        "staging"
+      ]
+    },
+    {
+      "case": "production-healthy-pause",
+      "result": {
+        "timestamp": "2026-09-19T13:08:58.501841400Z",
+        "outcome": "achieved",
+        "project": "payment-service"
+      },
+      "mode": "scenario",
+      "actions": [
+        "build",
+        "test",
+        "security",
+        "staging",
+        "production"
+      ]
+    },
+    {
+      "case": "reporting-healthy",
+      "result": {
+        "timestamp": "2026-09-19T13:12:00.553806900Z",
+        "outcome": "achieved",
+        "project": "reporting-service"
+      },
+      "mode": "scenario",
+      "actions": [
+        "package",
+        "verify",
+        "preview"
+      ]
+    },
+    {
+      "case": "retry-exhausted",
+      "result": {
+        "timestamp": "2026-09-19T13:10:13.358763600Z",
+        "outcome": "stopped",
+        "project": "payment-service"
+      },
+      "mode": "scenario",
+      "actions": [
+        "build",
+        "test",
+        "test"
+      ]
+    },
+    {
+      "case": "staging-healthy",
+      "result": {
+        "timestamp": "2026-09-19T13:09:22.253916100Z",
+        "outcome": "achieved",
+        "project": "payment-service"
+      },
+      "mode": "scenario",
+      "actions": [
+        "build",
+        "test",
+        "security",
+        "staging"
+      ]
+    },
+    {
+      "case": "transient-retry",
+      "result": {
+        "timestamp": "2026-09-19T13:09:46.891166300Z",
+        "outcome": "achieved",
+        "project": "payment-service"
+      },
+      "mode": "scenario",
+      "actions": [
+        "build",
+        "test",
+        "test",
+        "security",
+        "staging",
+        "production"
+      ]
+    }
+  ]
+}

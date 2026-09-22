@@ -1,0 +1,17 @@
+{"timestamp":"2026-09-20T15:13:56.786608800Z","event":"controller_started","project":"payment-service","mode":"scenario","scenario":"observation_deadline"}
+{"timestamp":"2026-09-20T15:13:56.935237400Z","event":"bdi_decision","decision":"run","entity":"build","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1}
+{"timestamp":"2026-09-20T15:13:56.938060300Z","event":"entity_execution_started","attempt":1,"entity":"build"}
+{"timestamp":"2026-09-20T15:13:56.946060900Z","event":"entity_execution_finished","attempt":1,"duration_ms":42,"run_url":"scenario://observation_deadline/build/1","github_run_id":0,"execution_id":"scenario-5053043d-a0e8-462c-b7e1-1e2e1db945c5","entity":"build","status":"success"}
+{"timestamp":"2026-09-20T15:13:56.969133Z","event":"bdi_decision","decision":"run","entity":"test","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1}
+{"timestamp":"2026-09-20T15:13:56.971137400Z","event":"entity_execution_started","attempt":1,"entity":"test"}
+{"timestamp":"2026-09-20T15:13:56.972135Z","event":"entity_execution_finished","attempt":1,"duration_ms":42,"run_url":"scenario://observation_deadline/test/1","github_run_id":0,"execution_id":"scenario-2bb720a8-90a4-42cd-8405-939a362a22b6","entity":"test","status":"success"}
+{"timestamp":"2026-09-20T15:13:56.981783900Z","event":"bdi_decision","decision":"run","entity":"security","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1}
+{"timestamp":"2026-09-20T15:13:56.982782500Z","event":"entity_execution_started","attempt":1,"entity":"security"}
+{"timestamp":"2026-09-20T15:13:56.984782600Z","event":"entity_execution_finished","attempt":1,"duration_ms":42,"run_url":"scenario://observation_deadline/security/1","github_run_id":0,"execution_id":"scenario-9a1cebc4-8272-49ce-8955-c55b5928644e","entity":"security","status":"success"}
+{"timestamp":"2026-09-20T15:13:56.993312300Z","event":"bdi_decision","decision":"run","entity":"staging","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1}
+{"timestamp":"2026-09-20T15:13:56.994314500Z","event":"entity_execution_started","attempt":1,"entity":"staging"}
+{"timestamp":"2026-09-20T15:13:56.996927700Z","event":"entity_execution_finished","attempt":1,"duration_ms":42,"run_url":"scenario://observation_deadline/staging/1","github_run_id":0,"execution_id":"scenario-6e635675-6573-4983-a2b7-aa145d8f28be","entity":"staging","status":"success"}
+{"timestamp":"2026-09-20T15:13:57.001452800Z","event":"bdi_decision","decision":"observe","entity":"staging"}
+{"timestamp":"2026-09-20T15:13:57.006453Z","event":"observation_clock","elapsed_ms":3600001,"round":1,"entity":"staging"}
+{"timestamp":"2026-09-20T15:13:57.007452600Z","event":"telemetry_measurement","execution_id":"scenario-6e635675-6573-4983-a2b7-aa145d8f28be","entity":"staging","readiness":"ready","availability":1.0,"round":1,"attempt":1,"data_status":"fresh","latency_p95_ms":20.0,"error_rate":0.0}
+{"timestamp":"2026-09-20T15:13:57.098606900Z","event":"controller_finished","project":"payment-service","outcome":"unknown","recovery_outcome":"not_attempted"}

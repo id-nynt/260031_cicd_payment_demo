@@ -1,0 +1,7 @@
+goal:
+  achieve(A):
+    - preview.status == success
+  avoid(V):
+    - condition: preview.status == success
+      when: verify.status != success
+  duration_unit: milliseconds

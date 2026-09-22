@@ -1,0 +1,13 @@
+{
+  "name": "persistent-errors",
+  "description": "Mixed errors and normal traffic until BDI recovery/finish or duration limit.",
+  "seed": 42,
+  "jitter": 0.25,
+  "phases": [
+    {
+      "seconds": 600,
+      "requests_per_second": 4,
+      "error_fraction": 0.7
+    }
+  ]
+}

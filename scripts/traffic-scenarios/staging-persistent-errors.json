@@ -1,0 +1,14 @@
+{
+  "name": "staging-persistent-errors",
+  "description": "Persistent staging errors block promotion; production should remain at the baseline.",
+  "seed": 42,
+  "jitter": 0.25,
+  "phases": [
+    {
+      "seconds": 600,
+      "requests_per_second": 4,
+      "error_fraction": 0.7
+    }
+  ],
+  "entity": "staging"
+}

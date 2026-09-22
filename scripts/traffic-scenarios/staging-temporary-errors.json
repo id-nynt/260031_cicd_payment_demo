@@ -1,0 +1,19 @@
+{
+  "name": "staging-temporary-errors",
+  "description": "Temporary staging errors clear, allowing promotion if verification succeeds.",
+  "seed": 42,
+  "jitter": 0.25,
+  "phases": [
+    {
+      "seconds": 75,
+      "requests_per_second": 4,
+      "error_fraction": 0.7
+    },
+    {
+      "seconds": 525,
+      "requests_per_second": 4,
+      "error_fraction": 0
+    }
+  ],
+  "entity": "staging"
+}

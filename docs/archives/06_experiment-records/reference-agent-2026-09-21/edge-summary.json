@@ -1,0 +1,52 @@
+[
+  {
+    "case": "unreachable_goals",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_needed",
+    "achieved_goals": [
+      "staging"
+    ],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "negative_execution_uncertain",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production"
+    ],
+    "outcome": "unknown",
+    "recovery": "unresolved",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production"
+    ]
+  },
+  {
+    "case": "negative_retry_unmet",
+    "actual": [
+      "build",
+      "test",
+      "security",
+      "staging",
+      "production",
+      "production"
+    ],
+    "outcome": "stopped",
+    "recovery": "not_needed",
+    "achieved_goals": [],
+    "unmet_goals": [
+      "production"
+    ]
+  }
+]

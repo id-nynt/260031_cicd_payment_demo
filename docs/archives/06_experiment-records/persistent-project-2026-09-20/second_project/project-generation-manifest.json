@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "inputs": {
+    "pipeline": {
+      "path": "../../../../../examples/reporting_pipeline.yaml",
+      "sha256": "3749ae1990323bcafe5d1e61497c10c4189d2de5bae1677a5b44c20f62eece3d"
+    },
+    "goal": {
+      "path": "../../../../../examples/reporting_goal.yaml",
+      "sha256": "0a3fcca8f58f6417f68be43df476e7612aaee309e85da41148615e4e933095ff"
+    }
+  },
+  "generator_sha256": {
+    "project_artifacts.py": "39c9232c04352f95b75299e2eb57f776cc02b66909a50fc6ef0bae07759430ac",
+    "generate_project.py": "de64aac934dd89c56cfb4f1e4557871f00e3cf5d1ec3c20e4e7f78a913bc0dec",
+    "parser/workflow_model.py": "73143e779cfc08a4507748f9d2822dfa1e66192d4b4e03902e40178de8a16291",
+    "parser/model_transform.py": "af3f9874fbe480cb933027d07b81350ed26faf0bf50203b550450a736746d5d7",
+    "generator/controller_generic.asl": "2586cee22429aef22851d66641e6951be0b0435e98ca505385f44569f08cfe56"
+  },
+  "workflow_sha256": "e3d21921ca06c3634b41e91ffb17b07428e3b055e9348c13d8ff4e9389a387d6",
+  "generated_agent_sha256": "a2392259f1949e72b73d7cec0272ad5d5c5b349524038c62e679d3ba5583b31f"
+}

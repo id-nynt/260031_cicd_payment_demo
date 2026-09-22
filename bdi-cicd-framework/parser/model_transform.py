@@ -41,7 +41,7 @@ class Maintenance:
     entity: str
     property: str
     operator: str
-    value: int | float
+    value: int | float | str
 
 
 @dataclass(frozen=True)
@@ -63,6 +63,8 @@ class Model:
     max_retries: int
     promotion_gate: tuple[str, str] | None = None
     observations: tuple[tuple[str, str], ...] = ()
+    recovery_triggers: tuple[tuple[str, str, str], ...] = ()
+    observe_after: tuple[str, ...] = ()
 
     @property
     def final_entity(self) -> str:
@@ -96,6 +98,8 @@ class Model:
 
 
 def _load(path: Path) -> dict[str, Any]:
+    if isinstance(path, dict):
+        return path
     try:
         value = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
@@ -149,7 +153,7 @@ def parse_pipeline(path: Path) -> tuple[str, tuple[str, ...], tuple[tuple[str, s
     for entity, config in jobs.items():
         if not isinstance(config, dict):
             raise ModelError(f"job {entity}: expected mapping")
-        unsupported_job = set(config) - {"needs", "if", "runs-on", "steps", "timeout-minutes", "observe_before"}
+        unsupported_job = set(config) - {"needs", "if", "runs-on", "steps", "timeout-minutes", "observe_before", "recover_from", "recover_on", "observe_after"}
         if unsupported_job:
             raise ModelError(f"job {entity}: unsupported keys {sorted(map(str, unsupported_job))}")
         needs = [_atom(item, f"job {entity}.needs") for item in _list(config.get("needs"), f"job {entity}.needs")]
@@ -160,7 +164,18 @@ def parse_pipeline(path: Path) -> tuple[str, tuple[str, ...], tuple[tuple[str, s
         matches = RECOVERY_IF.findall(condition) if isinstance(condition, str) else []
         if condition is not None and not isinstance(condition, str):
             raise ModelError(f"job {entity}.if: expected string")
-        if matches:
+        if "recover_from" in config:
+            source = _atom(config["recover_from"], f"job {entity}.recover_from")
+            if source not in entity_set or source == entity or needs or condition is not None:
+                raise ModelError(f"job {entity}: recovery requires another known entity and no needs/if")
+            triggers = config.get("recover_on")
+            if not isinstance(triggers, list) or not triggers or set(triggers) - {"failure", "telemetry_block", "telemetry_unknown", "maintenance_violation"}:
+                raise ModelError(f"job {entity}: unsupported recover_on triggers")
+            if config.get("observe_after") is not True:
+                raise ModelError(f"job {entity}: recovery must observe_after: true")
+            recovery_jobs.add(entity)
+            recovery.append((source, entity))
+        elif matches:
             if len(matches) != 1 or len(needs) != 1 or needs[0] != matches[0]:
                 raise ModelError(f"job {entity}: recovery condition must identify its single needs target")
             recovery_jobs.add(entity)
@@ -179,6 +194,10 @@ def parse_pipeline(path: Path) -> tuple[str, tuple[str, ...], tuple[tuple[str, s
             observations.append((entity, source))
     if len(set(recovery)) != len(recovery):
         raise ModelError("duplicate recovery relationship")
+    if len({source for source, _ in recovery}) != len(recovery):
+        raise ModelError("only one recovery entity per source is supported")
+    if any(source in recovery_jobs for source, _ in recovery) or any(source in recovery_jobs or target in recovery_jobs for source, target in dependencies):
+        raise ModelError("recovery must be a conditional leaf outside normal dependencies")
     _check_acyclic(entities, dependencies)
     execution = data.get("execution", {})
     if not isinstance(execution, dict):
@@ -279,16 +298,19 @@ def parse_goals(path: Path, entities: tuple[str, ...], recovery: tuple[tuple[str
     for raw in data.get("achieve(A)", []):
         entity, prop, operator, value = _comparison(raw, "goal.achieve(A)")
         _validate_ref(entity, prop, value, entity_set, "achievement")
-        if operator != "==" or prop != "status" or value != "success":
-            raise ModelError("achievement supports only entity.status == success")
+        if operator != "==" or prop != "status" or value not in {"success", "failure"}:
+            raise ModelError("achievement supports entity.status == success or failure")
         achievements.append(Achievement(entity, prop, operator, value))
     maintenance: list[Maintenance] = []
     for raw in data.get("maintain(M)", []):
         entity, prop, operator, value = _comparison(raw, "goal.maintain(M)")
         _validate_ref(entity, prop, value, entity_set, "maintenance")
-        if prop != "duration" or operator != "<=" or not re.fullmatch(r"-?[0-9]+", value):
-            raise ModelError("maintenance supports only entity.duration <= integer")
-        maintenance.append(Maintenance(entity, prop, operator, int(value)))
+        if (prop, operator, value) == ("health", "==", "healthy"):
+            maintenance.append(Maintenance(entity, prop, operator, value))
+        elif prop == "duration" and operator == "<=" and re.fullmatch(r"[0-9]+", value):
+            maintenance.append(Maintenance(entity, prop, operator, int(value)))
+        else:
+            raise ModelError("maintenance supports duration <= non-negative integer or health == healthy")
     duration_unit = data.get("duration_unit", "milliseconds")
     if duration_unit != "milliseconds":
         raise ModelError("goal.duration_unit: only milliseconds is supported")
@@ -339,12 +361,23 @@ def parse_model(pipeline_path: Path, goal_path: Path, project_path: Path | None 
     achievements, maintenance, (avoidance, duration_unit) = parse_goals(goal_path, entities, recovery)
     if not achievements:
         raise ModelError("goal.achieve(A): at least one achievement is required")
+    recovery_entities = {target for _, target in recovery}
+    if any(item.entity in recovery_entities for item in (*achievements, *maintenance)):
+        raise ModelError("recovery entities cannot be normal goal targets")
+    triggers = ()
+    observe_after = ()
+    if project_path is None:
+        jobs = _load(pipeline_path)["jobs"]
+        triggers = tuple((source, trigger, target) for source, target in recovery
+                         for trigger in jobs[target].get("recover_on", ["failure"]))
+        observe_after = tuple(entity for entity, config in jobs.items() if config.get("observe_after") is True)
     return Model(name, entities, dependencies, recovery, achievements, maintenance, avoidance,
-                 duration_unit, retries, gate, observations)
+                 duration_unit, retries, gate, observations, triggers, observe_after)
 
 
 def workflow_yaml(model: Model) -> str:
     observables: dict[str, Any] = {"status": {"values": SUPPORTED_STATUS}, "duration": {"value": "time"}}
+    observables["health"] = {"values": ["healthy", "unhealthy", "unknown"], "source": "project manifest readiness and run-correlated Prometheus queries"}
     for achievement in model.achievements:
         if achievement.property == "status":
             observables.setdefault("status", {"values": SUPPORTED_STATUS})
@@ -355,6 +388,8 @@ def workflow_yaml(model: Model) -> str:
             "dependencies(D)": [{"from": source, "to": target} for source, target in model.dependencies],
             "observable_properties(O)": observables,
             "recovery(R)": [{"from": source, "to": target} for source, target in model.recovery],
+            "observe_before": [{"entity": target, "source": source} for target, source in model.observations],
+            "observe_after": list(model.observe_after),
         },
         "execution": {
             "max_retries": model.max_retries,
@@ -367,9 +402,9 @@ def workflow_yaml(model: Model) -> str:
         },
         "recovery_policy": {
             recovery_entity: {
-                "run_after": f"{source}_failure",
+                "triggers": [reason for src, reason, target in model.recovery_triggers if target == recovery_entity],
                 "retryable": False,
-                "terminal_on_success": "recovered",
+                "terminal_on_success": "stopped_with_service_restored",
                 "terminal_on_failure": "failed",
             }
             for source, recovery_entity in model.recovery
@@ -391,6 +426,8 @@ def project_beliefs(model: Model) -> str:
         lines.append(f"depends({entity}, [{', '.join(requirements)}]).")
     lines += [""]
     lines += [f"recovery({source}, {target})." for source, target in model.recovery]
+    lines += [f"recover_on({source}, {reason}, {target})." for source, reason, target in model.recovery_triggers]
+    lines += [f"observe_after({entity})." for entity in model.observe_after]
     if model.promotion_gate:
         lines.append(f"gate_before({model.promotion_gate[0]}, {model.promotion_gate[1]}).")
     lines.append(f"final_phase({model.final_entity}).")
@@ -399,7 +436,8 @@ def project_beliefs(model: Model) -> str:
     lines += [f"required({entity})." for entity in model.required_entities]
     lines += [""]
     lines += [f"achievement({item.entity}, {item.value})." for item in model.achievements]
-    lines += [f"max_duration({item.entity}, {item.value})." for item in model.maintenance]
+    lines += [f"max_duration({item.entity}, {item.value})." for item in model.maintenance if item.property == "duration"]
+    lines += [f"require_healthy({item.entity})." for item in model.maintenance if item.property == "health"]
     lines += [f"avoid_missing({item.entity}, {item.required})." for item in model.avoidance]
     lines += ["", f"duration_unit({model.duration_unit}).", f"max_retries({model.max_retries}).", ""]
     lines += ["// Controller-derived attempt counters."]

@@ -1,0 +1,9 @@
+goal:
+  achieve(A):
+  - staging.status == success
+  maintain(M):
+  - staging.health == healthy
+  avoid(V):
+  - condition: staging.status == success
+    when: test.status != success
+  duration_unit: milliseconds

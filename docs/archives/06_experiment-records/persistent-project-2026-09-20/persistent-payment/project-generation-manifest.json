@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "inputs": {
+    "pipeline": {
+      "path": "models/01_pipeline.yaml",
+      "sha256": "a7336fe6163ed80e6754a9f27b0cb8200a9790d44b557793b581613288c619ec"
+    },
+    "goal": {
+      "path": "models/02_goal.yaml",
+      "sha256": "570faacdd336ace0843ba6abab991908461ae606b0f648e4e2497cfe188f56bd"
+    }
+  },
+  "generator_sha256": {
+    "project_artifacts.py": "39c9232c04352f95b75299e2eb57f776cc02b66909a50fc6ef0bae07759430ac",
+    "generate_project.py": "de64aac934dd89c56cfb4f1e4557871f00e3cf5d1ec3c20e4e7f78a913bc0dec",
+    "parser/workflow_model.py": "73143e779cfc08a4507748f9d2822dfa1e66192d4b4e03902e40178de8a16291",
+    "parser/model_transform.py": "af3f9874fbe480cb933027d07b81350ed26faf0bf50203b550450a736746d5d7",
+    "generator/controller_generic.asl": "2586cee22429aef22851d66641e6951be0b0435e98ca505385f44569f08cfe56"
+  },
+  "workflow_sha256": "1c9b3bf2bd70483256dba46217bae99dd653b359657d6c17e4fa7cd5520c4433",
+  "generated_agent_sha256": "76db36cd8566b91e2f6b7b8ba83146767edc9cf10fb07e6425fb2c916b924dbf"
+}

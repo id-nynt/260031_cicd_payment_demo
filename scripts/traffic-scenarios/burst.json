@@ -1,0 +1,23 @@
+{
+  "name": "burst",
+  "description": "Short normal-traffic peak, then steady recovery traffic; not a capacity benchmark.",
+  "seed": 42,
+  "jitter": 0.25,
+  "phases": [
+    {
+      "seconds": 15,
+      "requests_per_second": 2,
+      "error_fraction": 0
+    },
+    {
+      "seconds": 30,
+      "requests_per_second": 10,
+      "error_fraction": 0
+    },
+    {
+      "seconds": 555,
+      "requests_per_second": 3,
+      "error_fraction": 0
+    }
+  ]
+}

@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PaymentBaselineTest {
-    private static final Path PROJECT = Path.of("../models/payment_project.yaml");
+    private static final Path PROJECT = Path.of("../parser/fixtures/legacy/payment_project.yaml");
 
     @Test
     void configMapsRealWorkflowJobsAndMetricQueries() throws Exception {

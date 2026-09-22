@@ -1,0 +1,13 @@
+{
+  "name": "healthy",
+  "description": "Steady normal fake-payment traffic.",
+  "seed": 42,
+  "jitter": 0.25,
+  "phases": [
+    {
+      "seconds": 600,
+      "requests_per_second": 3,
+      "error_fraction": 0
+    }
+  ]
+}

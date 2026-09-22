@@ -1,0 +1,19 @@
+{
+  "original_campaign": "manual-20260921-003920-v1",
+  "recovery_campaign": "campaign-10f87f074f9d435f8b9396574035314f",
+  "cause": "Authorization header rejected locally before HTTP send; token contained a control character",
+  "original_journal_sha256": "d88f5cfc804ffba5c0ae728215b75085994da5a1eca1a9822d582f757e500d51",
+  "original_bytes_preserved": true,
+  "recovery_result": {
+    "candidate_goal_evaluated": false,
+    "operation": "reconcile_only",
+    "execution": {
+      "status": "dispatch_rejected",
+      "durationMs": 18266771,
+      "executionId": "64c467a6-05e3-4264-9617-8d513f0ebe7d",
+      "githubRunId": 0,
+      "runUrl": ""
+    }
+  },
+  "live_dispatch_verified": false
+}

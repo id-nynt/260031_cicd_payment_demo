@@ -15,7 +15,7 @@ public record ProjectConfig(String project, Map<String, String> jobs,
                             Map<String, Environment> environments,
                             Map<String, String> metrics,
                             PromotionGate promotionGate,
-                            double maxErrorRate, double maxLatencyP95Ms) {
+                            double maxErrorRate, double maxLatencyP95Ms, int maxAgeSeconds) {
     public record Environment(URI readyUrl, URI prometheusUrl) { }
     public record PromotionGate(String before, String observe) { }
 
@@ -24,27 +24,24 @@ public record ProjectConfig(String project, Map<String, String> jobs,
         try (var input = Files.newInputStream(path)) {
             parsed = new Yaml().load(input);
         }
+        boolean canonical = parsed instanceof Map<?, ?> document && document.containsKey("schema_version");
+        if (canonical) parsed = WorkflowRuntime.unwrap(parsed);
         if (!(parsed instanceof Map<?, ?> root)) throw new IOException("Project config must be a YAML mapping");
         String name = requiredString(root, "project");
-        Map<String, String> jobs = strings(root.get("jobs"), "jobs");
-        Map<String, String> names = strings(root.get("github_job_names"), "github_job_names");
+        Map<String, String> jobs = canonical ? Map.of() : strings(root.get("jobs"), "jobs");
+        Map<String, String> names = canonical ? Map.of() : strings(root.get("github_job_names"), "github_job_names");
         Map<String, String> metrics = strings(root.get("metrics"), "metrics");
-        if (jobs.isEmpty() || !names.keySet().containsAll(jobs.keySet())) {
+        if (!canonical && (jobs.isEmpty() || !names.keySet().containsAll(jobs.keySet()))) {
             throw new IOException("Every job role needs a GitHub job display name");
         }
         for (String query : new String[]{"error_rate_query", "latency_p95_ms_query", "availability_query"}) {
             if (!metrics.containsKey(query)) throw new IOException("Missing metrics." + query);
         }
-        if (!(root.get("promotion_gate") instanceof Map<?, ?> gate)) {
-            throw new IOException("promotion_gate must be a mapping");
-        }
-        PromotionGate promotionGate = new PromotionGate(requiredString(gate, "before"),
-            requiredString(gate, "observe"));
-        if (!promotionGate.before().matches("[a-z][A-Za-z0-9_]*")
-            || !promotionGate.observe().matches("[a-z][A-Za-z0-9_]*")
-            || promotionGate.before().equals(promotionGate.observe())
-            || !jobs.containsKey(promotionGate.before()) || !jobs.containsKey(promotionGate.observe())) {
-            throw new IOException("promotion_gate references unmapped job roles");
+        PromotionGate promotionGate = null;
+        if (!canonical) {
+            if (!(root.get("promotion_gate") instanceof Map<?, ?> gate)) throw new IOException("promotion_gate required");
+            promotionGate = new PromotionGate(requiredString(gate, "before"), requiredString(gate, "observe"));
+            if (!jobs.containsKey(promotionGate.before()) || !jobs.containsKey(promotionGate.observe())) throw new IOException("Unmapped promotion roles");
         }
         if (!(root.get("environments") instanceof Map<?, ?> rawEnvironments)) {
             throw new IOException("environments must be a mapping");
@@ -67,7 +64,7 @@ public record ProjectConfig(String project, Map<String, String> jobs,
             throw new IOException("Thresholds must be an error rate in [0,1] and positive latency");
         }
         return new ProjectConfig(name, immutable(jobs), immutable(names), immutable(environments),
-            immutable(metrics), promotionGate, errorRate, latency);
+            immutable(metrics), promotionGate, errorRate, latency, root.get("max_age_seconds") instanceof Number age ? age.intValue() : 30);
     }
 
     public Environment environment(String name) {

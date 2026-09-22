@@ -1,0 +1,48 @@
+{
+  "campaign_id" : "campaign-1161a22b39e144c692b938ffc65a5f0e",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\bdi\\build\\policy-refactor-validation\\flapping\\generation-manifest.json",
+  "timestamp" : "2026-09-20T15:13:43.931648900Z",
+  "outcome" : "unknown",
+  "recovery_outcome" : "not_attempted",
+  "project" : "payment-service",
+  "mode" : "scenario",
+  "repository" : "",
+  "release_sha" : "04e0ec211c40978158ad3e0706bd9adaf234196e",
+  "known_good_sha" : "1111111111111111111111111111111111111111",
+  "telemetry" : {
+    "staging" : "unknown"
+  },
+  "executions" : {
+    "build" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-30f4eac4-8224-4998-a9bc-774dbefbecd3",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://telemetry_flapping/build/1"
+    },
+    "test" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-1d94e011-6056-4018-bbff-fc269597436c",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://telemetry_flapping/test/1"
+    },
+    "security" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-c1e29326-abf2-4ced-ace3-2f9b879df547",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://telemetry_flapping/security/1"
+    },
+    "staging" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-1859d209-e254-41bb-b44b-faed65eaab91",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://telemetry_flapping/staging/1"
+    }
+  },
+  "achieved_goals" : [ ],
+  "unmet_goals" : [ "production", "staging" ],
+  "verified_releases" : { }
+}

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="harness.TelemetryFreshnessTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-20T12:44:49.572Z" hostname="DESKTOP-E9V69Q9" time="0.05">
+  <properties/>
+  <testcase name="acceptsFreshAndRejectsOldOrFutureSamples()" classname="harness.TelemetryFreshnessTest" time="0.004"/>
+  <testcase name="freshQueryTimestampDoesNotHideStaleSourceMetrics()" classname="harness.TelemetryFreshnessTest" time="0.036"/>
+  <testcase name="canonicalRuntimeNeedsNoLegacyPromotionGate()" classname="harness.TelemetryFreshnessTest" time="0.009"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

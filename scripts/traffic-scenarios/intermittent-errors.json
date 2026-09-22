@@ -1,0 +1,28 @@
+{
+  "name": "intermittent-errors",
+  "description": "Two fault periods separated by normal traffic; outcome depends on the two-minute metric window.",
+  "seed": 42,
+  "jitter": 0.25,
+  "phases": [
+    {
+      "seconds": 75,
+      "requests_per_second": 4,
+      "error_fraction": 0.7
+    },
+    {
+      "seconds": 20,
+      "requests_per_second": 4,
+      "error_fraction": 0
+    },
+    {
+      "seconds": 20,
+      "requests_per_second": 4,
+      "error_fraction": 0.7
+    },
+    {
+      "seconds": 485,
+      "requests_per_second": 4,
+      "error_fraction": 0
+    }
+  ]
+}

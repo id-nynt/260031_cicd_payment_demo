@@ -35,6 +35,15 @@ public final class StructuredEventLogger {
             all.put("deployment_environment", context.environment());
         }
         all.putAll(fields);
+        String commonPath = System.getenv("EXPERIMENT_EVENTS_FILE");
+        if (commonPath != null && !commonPath.isBlank()) {
+            Map<String, Object> common = normalized(all, System.getenv().getOrDefault("EXPERIMENT_MECHANISM", "bdi"),
+                System.getenv().getOrDefault("BDI_CAMPAIGN_ID", ""));
+            try {
+                Files.writeString(Path.of(commonPath), toJson(common) + System.lineSeparator(), StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } catch (IOException error) { throw new java.io.UncheckedIOException("Cannot retain common experiment evidence", error); }
+        }
         String line = toJson(all);
         LOG.info(line);
         if (output != null) {
@@ -46,6 +55,27 @@ public final class StructuredEventLogger {
                 LOG.warning("structured_log_file_error=" + error.getMessage());
             }
         }
+    }
+
+    static Map<String, Object> normalized(Map<String, Object> source, String mechanism, String campaign) {
+        var result = new LinkedHashMap<String, Object>(source);
+        String name = String.valueOf(source.get("event"));
+        result.put("event", switch (name) {
+            case "controller_started" -> "campaign_started";
+            case "entity_execution_started" -> "action_started";
+            case "entity_execution_finished" -> "action_finished";
+            case "bdi_decision", "conventional_decision" -> "decision";
+            case "bdi_reconciliation", "conventional_reconciliation" -> "reconciliation";
+            case "bdi_recovery_decision", "conventional_recovery_decision" -> "recovery_started";
+            case "controller_pause" -> "deployment_ready";
+            case "telemetry_measurement" -> "observation";
+            case "controller_finished" -> "campaign_finished";
+            default -> name;
+        });
+        result.put("schema_version", 1);
+        result.put("mechanism", mechanism);
+        result.put("campaign_id", campaign);
+        return result;
     }
 
     public void observation(Observation observation, CorrelationContext context, String belief) {
@@ -69,7 +99,12 @@ public final class StructuredEventLogger {
     }
 
     private static String escape(String value) {
-        return value.replace("\\", "\\\\").replace("\"", "\\\"")
-            .replace("\n", "\\n").replace("\r", "\\r");
+        StringBuilder escaped = new StringBuilder();
+        for (char c : value.toCharArray()) {
+            if (c == '\\' || c == '"') escaped.append('\\').append(c);
+            else if (c < 32) escaped.append(String.format("\\u%04x", (int)c));
+            else escaped.append(c);
+        }
+        return escaped.toString();
     }
 }

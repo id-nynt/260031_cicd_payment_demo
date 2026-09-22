@@ -1,0 +1,31 @@
+{
+  "campaign_id" : "campaign-131217bcd0de4f6b85cbf602a0706cd4",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\runs\\connection-check-20260921-054754\\generation-manifest.json",
+  "timestamp" : "2026-09-20T19:48:53.364632Z",
+  "outcome" : "achieved",
+  "recovery_outcome" : "not_needed",
+  "project" : "payment-service",
+  "mode" : "github",
+  "repository" : "id-nynt/260031_cicd_payment_demo",
+  "release_sha" : "caa26dada2a15b807c325e2d931ee123a206ece8",
+  "known_good_sha" : "",
+  "telemetry" : { },
+  "executions" : {
+    "build" : {
+      "status" : "success",
+      "durationMs" : 40923,
+      "executionId" : "d4ee3702-4ea6-43b6-9c0d-c5bb09ff9daf",
+      "githubRunId" : 35533490743,
+      "runUrl" : "https://github.com/id-nynt/260031_cicd_payment_demo/actions/runs/35533490743"
+    }
+  },
+  "requested_goals" : [ {
+    "entity" : "build",
+    "status" : "success"
+  } ],
+  "goal_message" : "Declared goals achieved.",
+  "achieved_goals" : [ "build" ],
+  "unmet_goals" : [ ],
+  "negative_goal_experiment" : false,
+  "verified_releases" : { }
+}

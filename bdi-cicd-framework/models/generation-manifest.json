@@ -1,0 +1,30 @@
+{
+  "schema_version": 2,
+  "inputs": {
+    "pipeline": {
+      "path": "models/01_pipeline.yaml",
+      "sha256": "dd5d37cc061def5b9e546467b31c3c5f4c853fa9ebd9ed40b1316b0bc5b9e2b6"
+    },
+    "goal": {
+      "path": "models/02_goal.yaml",
+      "sha256": "635157a76546b3a701d08a788231fba9c02ca0645fee45a3124669da619d3b37"
+    },
+    "policy": {
+      "path": "config/controller_policy.yaml",
+      "sha256": "275eab0b7691390b274e2cd6131841a7ed1f430580b92e063b1c454fd73302c4"
+    },
+    "bindings": {
+      "path": "config/runtime_bindings.yaml",
+      "sha256": "1cc2152837f04e91c18b06fe43b41ab0b395b02eb4002b363a6fc1286e70a79d"
+    }
+  },
+  "generator_sha256": {
+    "project_artifacts.py": "e1dd58ba8210d0680b066b1c6d554487f57bee3da453e511996a3862ad528ca7",
+    "generate_project.py": "c6f2efea7b4c3099b373471130a8c93f7f9756794163df3db64c98e9de1e2b89",
+    "parser/workflow_model.py": "5e13bea887eccc58bac598e258f2eb2f184e7bcc3e954ac3c05cad156268e593",
+    "parser/model_transform.py": "b633368cad4b5a07ecb4fd792b1a4555f7ba964773809e63ac810853022713c7",
+    "generator/controller_generic.asl": "7ae3bde2446d167afb316dde290a2a73a298c9d549c916faf0d1bd344ffc05b8"
+  },
+  "workflow_sha256": "c324fa03f9e9b1651fe2c26ec421f157dd95eb149a8e4cacfdcf6dfd135bb7d0",
+  "generated_agent_sha256": "13053a85e5c7746429c720ca13fc9aa95c77af7acb1ab43fcf9c9b6a10b97a43"
+}

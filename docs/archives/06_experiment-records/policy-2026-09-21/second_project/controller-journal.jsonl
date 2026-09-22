@@ -1,0 +1,11 @@
+{"timestamp":"2026-09-20T15:19:00.896780200Z","event":"controller_started","mode":"scenario","scenario":"healthy","project":"reporting-service"}
+{"timestamp":"2026-09-20T15:19:01.059152200Z","event":"bdi_decision","entity":"package","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1,"decision":"run"}
+{"timestamp":"2026-09-20T15:19:01.061161100Z","event":"entity_execution_started","attempt":1,"entity":"package"}
+{"timestamp":"2026-09-20T15:19:01.070322700Z","event":"entity_execution_finished","duration_ms":42,"run_url":"scenario://healthy/package/1","github_run_id":0,"execution_id":"scenario-11cdafbd-b4b1-41fa-893e-84882c6f5281","entity":"package","status":"success","attempt":1}
+{"timestamp":"2026-09-20T15:19:01.093079100Z","event":"bdi_decision","entity":"verify","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1,"decision":"run"}
+{"timestamp":"2026-09-20T15:19:01.096209700Z","event":"entity_execution_started","attempt":1,"entity":"verify"}
+{"timestamp":"2026-09-20T15:19:01.097215900Z","event":"entity_execution_finished","duration_ms":42,"run_url":"scenario://healthy/verify/1","github_run_id":0,"execution_id":"scenario-00a5447f-f13a-43f0-a6c6-00ec5844f1d0","entity":"verify","status":"success","attempt":1}
+{"timestamp":"2026-09-20T15:19:01.107737400Z","event":"bdi_decision","entity":"preview","relevant_beliefs":"dependencies_satisfied_and_goal_required","attempt":1,"decision":"run"}
+{"timestamp":"2026-09-20T15:19:01.108737500Z","event":"entity_execution_started","attempt":1,"entity":"preview"}
+{"timestamp":"2026-09-20T15:19:01.110356700Z","event":"entity_execution_finished","duration_ms":42,"run_url":"scenario://healthy/preview/1","github_run_id":0,"execution_id":"scenario-c373a77b-890b-466e-bf85-239eb652c429","entity":"preview","status":"success","attempt":1}
+{"timestamp":"2026-09-20T15:19:01.184881200Z","event":"controller_finished","outcome":"achieved","recovery_outcome":"not_needed","project":"reporting-service"}

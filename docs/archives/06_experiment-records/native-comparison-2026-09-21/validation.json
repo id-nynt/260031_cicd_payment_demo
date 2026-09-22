@@ -1,0 +1,25 @@
+{
+  "python_tests": 55,
+  "java": {
+    "tests": 40,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "traffic_tests": 14,
+  "powershell_blocks_parsed": 36,
+  "actionlint": "1.7.12: passed; shellcheck/pyflakes disabled",
+  "project_artifacts": "consistent; not regenerated",
+  "live_runs": false,
+  "sources": {
+    ".github/workflows/ci-cd.yml": "0c909ea465df234341d5ef2563b7e66638f87205b4ae46a7a68e923550b542f4",
+    ".github/workflows/conventional-entity.yml": "f3ed89c163e5904b5320630ccd52b545fe5be8dce53cbad25b64374d47cf28f9",
+    ".github/workflows/entity-execution.yml": "8380e03f67bda27744cdb6f5e06e9adf38c8ced9be2993e1ae56a5ead37dd222",
+    "scripts/native-experiment.py": "4bd5fba81f88880ea141da3b79f4da122835e89a85a647823bbe417ead740f46",
+    "scripts/experiment-scenarios.json": "fef4168572edd8af92f3884556474821ba508eb15e75a523df2a0a8d90c9005a",
+    "scripts/run-traffic-scenario.mjs": "93593a7463c10e5ce5b3e1c9d8581c0a434d8b96664f6621c64e5146f34691c1",
+    "bdi-cicd-framework/run_experiment.py": "b3a2319939a65c9e801e529a8d1749d870c992df8895fdda4cc6b08ef3ad5186",
+    "bdi-cicd-framework/experiment_metrics.py": "bc6f4c7046b504493cbe9b7c08436f2323070f89481cfbd3118ce7801e262d1a",
+    "bdi-cicd-framework/experiment_protocol.py": "44c14a0d4b3e04b0b84d6c6472fde1a812275ce51c3d0749daa2637a78a1abbd"
+  }
+}

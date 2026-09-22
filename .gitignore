@@ -1,5 +1,67 @@
+# Payment app: dependencies and reproducible build/test output.
 node_modules/
-dist/
+/dist/
+/coverage/
+*.tsbuildinfo
+
+# Local environment values. Keep sanitized setup examples/templates versioned.
 .env
-coverage/
+.env.*
+!.env.example
+!.env.*.example
+!.env.template
+!.env.*.template
+
+# Python caches and local virtual environments.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Java/Gradle runtime products, not wrapper binaries or generated agent sources.
+.gradle/
+*.class
+/bdi-cicd-framework/bdi/build/
+/bdi-cicd-framework/bdi/bin/
+/bdi-cicd-framework/config/build/
+
+# Per-trial results: retain locally and back up separately, including failed runs.
+# Use these locations for new results instead of arbitrary folders in the repo.
+/bdi-cicd-framework/runs/
+/experiments/results/
+/experiments/reports/
+/experiments/.tmp/
+
+# Runner scratch output when conventional helper commands are rehearsed locally.
+/evidence/
+/downloaded/
+
+# Durable controller state normally lives in Git's common directory.
+# Ignore fallback copies; do not delete them to bypass reconciliation.
+bdi-controller.lock
+bdi-execution-pending.json
+
+# Diagnostic logs and machine/editor scratch files.
 *.log
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Reviewed historical evidence belongs in version control, including selected logs.
+!/docs/archives/**/*.log
+
+# Intentionally NOT ignored:
+# - docs/ and archives/ (review historical material before adding)
+# - experiments/*.py, scenarios.json and tests/
+# - ci-cd-conventional/config.json, snapshots/ and workflow sources
+# - .github/workflows/ installation copies
+# - BDI models/03_workflow_model.yaml, generation-manifest.json, controller_agent.asl
+# - package-lock.json, Gradle wrapper files, model/worker/test fixtures
+# BDI-specific IDE and parser scratch rules also live in its nested .gitignore.

@@ -1,0 +1,69 @@
+{
+  "campaign_id" : "campaign-9a2de62ac8b949ceb4de86c07c1d11cd",
+  "generation_manifest" : "C:\\NHI\\2026_IT-Project\\260031_payment-repair\\bdi-cicd-framework\\bdi\\build\\policy-persistent-smoke\\generation-manifest.json",
+  "timestamp" : "2026-09-20T15:24:20.670062400Z",
+  "outcome" : "achieved",
+  "recovery_outcome" : "not_needed",
+  "project" : "payment-service",
+  "mode" : "scenario",
+  "repository" : "",
+  "release_sha" : "04e0ec211c40978158ad3e0706bd9adaf234196e",
+  "known_good_sha" : "1111111111111111111111111111111111111111",
+  "telemetry" : {
+    "staging" : "allow",
+    "production" : "allow"
+  },
+  "executions" : {
+    "build" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-7e9eb001-8348-40eb-9a56-05f29e90c812",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/build/1"
+    },
+    "test" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-7bd086c6-6f99-4fa0-8960-7ee37c4be00b",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/test/1"
+    },
+    "security" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-03dc034e-39ca-445a-b6e2-d53516aa6e49",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/security/1"
+    },
+    "staging" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-d8f2c76b-b693-4805-a3f9-ed7e05cef10c",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/staging/1"
+    },
+    "production" : {
+      "status" : "success",
+      "durationMs" : 42,
+      "executionId" : "scenario-8aa14dc0-4236-4d78-84c2-ae092209e797",
+      "githubRunId" : 0,
+      "runUrl" : "scenario://healthy/production/1"
+    }
+  },
+  "achieved_goals" : [ "production", "staging" ],
+  "unmet_goals" : [ ],
+  "verified_releases" : {
+    "staging" : {
+      "environment" : "staging",
+      "release_sha" : "04e0ec211c40978158ad3e0706bd9adaf234196e",
+      "github_run_id" : 0,
+      "execution_id" : "scenario-d8f2c76b-b693-4805-a3f9-ed7e05cef10c"
+    },
+    "production" : {
+      "environment" : "production",
+      "release_sha" : "04e0ec211c40978158ad3e0706bd9adaf234196e",
+      "github_run_id" : 0,
+      "execution_id" : "scenario-8aa14dc0-4236-4d78-84c2-ae092209e797"
+    }
+  }
+}

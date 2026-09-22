@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "execution": {
+      "max_retries": 1,
+      "observation_attempts": 36,
+      "observation_interval_seconds": 5,
+      "observation_timeout_seconds": 180,
+      "healthy_observations": 2,
+      "retry_interval_seconds": 5,
+      "reconciliation_attempts": 3,
+      "reconciliation_interval_seconds": 5,
+      "retry_safe": [
+        "build",
+        "test",
+        "security",
+        "staging",
+        "production"
+      ]
+    },
+    "max_production_ms": 1800000,
+    "thresholds": {
+      "error_rate_high_gt": 0.05,
+      "latency_p95_ms_high_gt": 500
+    },
+    "recovery_triggers": [
+      "failure",
+      "telemetry_block",
+      "telemetry_unknown",
+      "maintenance_violation"
+    ]
+  },
+  "bindings": {
+    "project": "payment-service",
+    "controller": {
+      "workflow_file": "entity-execution.yml",
+      "jobs": {
+        "build": "Build entity",
+        "test": "Test entity",
+        "security": "Security entity",
+        "staging": "Staging entity",
+        "production": "Production entity",
+        "rollback": "Rollback entity"
+      },
+      "environments": {
+        "staging": "staging",
+        "production": "production",
+        "rollback": "production"
+      }
+    },
+    "environments": {
+      "staging": {
+        "ready_url": "http://127.0.0.1:3001/ready",
+        "prometheus_url": "http://127.0.0.1:9091"
+      },
+      "production": {
+        "ready_url": "http://127.0.0.1:3000/ready",
+        "prometheus_url": "http://127.0.0.1:9090"
+      }
+    },
+    "metrics": {
+      "error_rate_query": "(sum(rate(payment_http_errors_total{ci_run_id=\"{{run_id}}\",route=\"/payments\",status_code=~\"5..\"}[2m])) or vector(0)) / clamp_min(sum(rate(payment_http_requests_total{ci_run_id=\"{{run_id}}\",route=\"/payments\"}[2m])), 0.001)",
+      "latency_p95_ms_query": "histogram_quantile(0.95, sum by (le) (rate(payment_http_request_duration_milliseconds_bucket{ci_run_id=\"{{run_id}}\",route=\"/payments\"}[2m])))",
+      "availability_query": "min(payment_service_ready{ci_run_id=\"{{run_id}}\"})",
+      "sample_age_seconds_query": "time() - max(timestamp(payment_service_ready{ci_run_id=\"{{run_id}}\"}))"
+    },
+    "max_age_seconds": 30,
+    "thresholds": {
+      "error_rate_high_gt": 0.05,
+      "latency_p95_ms_high_gt": 500
+    }
+  },
+  "contract_sha256": "c324fa03f9e9b1651fe2c26ec421f157dd95eb149a8e4cacfdcf6dfd135bb7d0",
+  "configuration_inputs": {
+    "pipeline": {
+      "path": "models/01_pipeline.yaml",
+      "sha256": "dd5d37cc061def5b9e546467b31c3c5f4c853fa9ebd9ed40b1316b0bc5b9e2b6"
+    },
+    "goal": {
+      "path": "models/02_goal.yaml",
+      "sha256": "635157a76546b3a701d08a788231fba9c02ca0645fee45a3124669da619d3b37"
+    },
+    "policy": {
+      "path": "config/controller_policy.yaml",
+      "sha256": "275eab0b7691390b274e2cd6131841a7ed1f430580b92e063b1c454fd73302c4"
+    },
+    "bindings": {
+      "path": "config/runtime_bindings.yaml",
+      "sha256": "1cc2152837f04e91c18b06fe43b41ab0b395b02eb4002b363a6fc1286e70a79d"
+    }
+  }
+}

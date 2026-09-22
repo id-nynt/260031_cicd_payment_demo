@@ -13,18 +13,72 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ControllerComponentsTest {
+    @Test void oldCanonicalSchemaRequiresRegeneration() {
+        var error = assertThrows(java.io.IOException.class,
+            () -> WorkflowRuntime.unwrap(java.util.Map.of("schema_version", 1)));
+        assertTrue(error.getMessage().contains("regenerate"));
+    }
+
+    @Test
+    void onlyRecoveryUsesPinnedKnownGoodSource() throws Exception {
+        var config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));
+        String candidate = "a".repeat(40);
+        String baseline = "b".repeat(40);
+        assertEquals(candidate, GitHubEntityExecution.sourceFor("production", candidate, baseline, config));
+        assertEquals(baseline, GitHubEntityExecution.sourceFor("rollback", candidate, baseline, config));
+        assertThrows(IllegalArgumentException.class, () -> GitHubEntityExecution.sourceFor("rollback", candidate, "", config));
+        assertThrows(IllegalArgumentException.class, () -> GitHubEntityExecution.sourceFor("rollback", candidate, "main", config));
+    }
+
+    @Test
+    void stillRunningRemoteJobReturnsUnknownInsteadOfTriggeringRecovery() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/repos/example/repository/actions/workflows/entity-execution.yml/dispatches", exchange ->
+            respond(exchange, 200, "{\"workflow_run_id\":321}"));
+        server.createContext("/repos/example/repository/actions/runs/321", exchange ->
+            respond(exchange, 200, "{\"status\":\"in_progress\"}"));
+        server.start();
+        try {
+            var config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));
+            var adapter = new GitHubEntityExecution(config, new StructuredEventLogger(null),
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "example/repository", "test-token",
+                "main", "a".repeat(40), "timeout-test", Duration.ofMillis(1), Duration.ofMillis(100));
+            assertEquals("unknown", adapter.execute("production", 1).status());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void operatorCanChangeFaultsBetweenDispatches() throws Exception {
+        Path file = Files.createTempFile("controller-injection", ".properties");
+        try {
+            var plan = new ExperimentExecutionPlan(file.toString());
+            assertEquals("none", plan.next("build").failureMode());
+            Files.writeString(file, "test.1.failure_mode=force_failure\n");
+            assertEquals("force_failure", plan.next("test").failureMode());
+            assertEquals("none", plan.next("test").failureMode());
+            Files.writeString(file, "staging.force_error_rate=1\n");
+            assertEquals("1", plan.next("staging").forceErrorRate());
+            Files.writeString(file, "");
+            assertEquals("0", plan.next("staging").forceErrorRate());
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
     @Test
     void paymentExecutionMappingIsConfigurable() throws Exception {
-        ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("../models/payment_project.yaml"));
+        ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));
         assertEquals("entity-execution.yml", config.workflowFile());
         assertEquals("Build entity", config.jobNames().get("build"));
         assertEquals("staging", config.environments().get("staging"));
-        assertEquals(18, config.observationAttempts());
+        assertEquals(36, config.observationAttempts());
     }
 
     @Test
     void secondProjectHasDifferentEntitiesWithoutRuntimeCodeChanges() throws Exception {
-        ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("../examples/reporting_project.yaml"));
+        ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("fixtures/reporting-workflow.yaml"));
         assertEquals(java.util.Set.of("package", "verify", "preview"), config.jobNames().keySet());
         assertTrue(config.environments().isEmpty());
     }
@@ -32,11 +86,11 @@ class ControllerComponentsTest {
     @Test
     void scenarioExecutorSupportsRetryAndExhaustionInputs() throws Exception {
         var transientFailure = new ScenarioEntityExecution("transient_test_failure");
-        assertEquals("failure", transientFailure.execute("test", 1).status());
+        assertEquals("transient_failure", transientFailure.execute("test", 1).status());
         assertEquals("success", transientFailure.execute("test", 2).status());
         var persistentFailure = new ScenarioEntityExecution("exhausted_test_failure");
-        assertEquals("failure", persistentFailure.execute("test", 1).status());
-        assertEquals("failure", persistentFailure.execute("test", 2).status());
+        assertEquals("transient_failure", persistentFailure.execute("test", 1).status());
+        assertEquals("transient_failure", persistentFailure.execute("test", 2).status());
     }
 
     @Test
@@ -53,7 +107,7 @@ class ControllerComponentsTest {
             respond(exchange, 200, "{\"status\":\"completed\"}"));
         server.start();
         try {
-            ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("../models/payment_project.yaml"));
+            ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));
             Path journalFile = Files.createTempFile("controller-adapter", ".jsonl");
             var adapter = new GitHubEntityExecution(config, new StructuredEventLogger(journalFile),
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "example/repository", "test-token",
@@ -81,13 +135,13 @@ class ControllerComponentsTest {
             respond(exchange, 200, "{\"status\":\"completed\"}"));
         server.start();
         try {
-            ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("../models/payment_project.yaml"));
+            ControllerProjectConfig config = ControllerProjectConfig.load(Path.of("fixtures/controller-workflow.yaml"));
             var adapter = new GitHubEntityExecution(config, new StructuredEventLogger(null),
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "example/repository", "test-token",
                 "experiment-v2", "0123456789abcdef0123456789abcdef01234567", "campaign-test",
                 Duration.ofMillis(1), Duration.ofSeconds(2));
-            java.io.IOException error = assertThrows(java.io.IOException.class, () -> adapter.execute("build", 1));
-            assertTrue(error.getMessage().contains("absent or skipped"));
+            assertEquals("unknown", adapter.execute("build", 1).status());
+            assertEquals("unknown", adapter.reconcile("build", 1).status());
         } finally {
             server.stop(0);
         }

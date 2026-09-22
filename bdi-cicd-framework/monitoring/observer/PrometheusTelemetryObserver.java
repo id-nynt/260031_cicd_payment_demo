@@ -19,6 +19,8 @@ public final class PrometheusTelemetryObserver implements TelemetryObserver {
     private final String errorRateQuery;
     private final String latencyP95MsQuery;
     private final String availabilityQuery;
+    private final int maxAgeSeconds;
+    private final String sampleAgeQuery;
 
     /** Compatibility for the older payment-only environment; new projects pass manifest queries. */
     @Deprecated
@@ -31,6 +33,19 @@ public final class PrometheusTelemetryObserver implements TelemetryObserver {
 
     public PrometheusTelemetryObserver(HttpClient client, String baseUrl, String errorRateQuery,
                                        String latencyP95MsQuery, String availabilityQuery) {
+        this(client, baseUrl, errorRateQuery, latencyP95MsQuery, availabilityQuery, 30);
+    }
+
+    public PrometheusTelemetryObserver(HttpClient client, String baseUrl, String errorRateQuery,
+                                       String latencyP95MsQuery, String availabilityQuery, int maxAgeSeconds) {
+        this(client, baseUrl, errorRateQuery, latencyP95MsQuery, availabilityQuery, maxAgeSeconds, null);
+    }
+
+    public PrometheusTelemetryObserver(HttpClient client, String baseUrl, String errorRateQuery,
+                                       String latencyP95MsQuery, String availabilityQuery, int maxAgeSeconds, String sampleAgeQuery) {
+        this.sampleAgeQuery = sampleAgeQuery;
+        if (maxAgeSeconds < 1) throw new IllegalArgumentException("Positive sample age required");
+        this.maxAgeSeconds = maxAgeSeconds;
         this.client = client;
         this.baseUrl = baseUrl.replaceAll("/+$", "");
         this.errorRateQuery = errorRateQuery;
@@ -40,6 +55,10 @@ public final class PrometheusTelemetryObserver implements TelemetryObserver {
 
     @Override
     public TelemetrySample observe(String environment) throws IOException, InterruptedException {
+        if (sampleAgeQuery != null) {
+            double age = query(sampleAgeQuery);
+            if (age < -5 || age > maxAgeSeconds) throw new IOException("Source telemetry is stale");
+        }
         return new TelemetrySample(
             query(errorRateQuery),
             query(latencyP95MsQuery),
@@ -54,7 +73,16 @@ public final class PrometheusTelemetryObserver implements TelemetryObserver {
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("HTTP " + response.statusCode());
         }
-        return firstValue(response.body());
+        return firstValue(response.body(), java.time.Instant.now().getEpochSecond(), maxAgeSeconds);
+    }
+
+    public static double firstValue(String body, long now, int maxAgeSeconds) throws IOException {
+        JsonNode results = JSON.readTree(body).path("data").path("result");
+        if (!results.isArray() || results.size() != 1) throw new IOException("Expected exactly one aggregate sample");
+        JsonNode stamp = results.get(0).path("value").path(0);
+        if (!stamp.isNumber() || !Double.isFinite(stamp.asDouble()) || stamp.asDouble() > now + 5
+            || now - stamp.asDouble() > maxAgeSeconds) throw new IOException("Stale or invalid telemetry timestamp");
+        return firstValue(body);
     }
 
     public static double firstValue(String body) throws IOException {

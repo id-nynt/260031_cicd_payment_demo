@@ -56,6 +56,7 @@ Desktop.ini
 
 # Reviewed historical evidence belongs in version control, including selected logs.
 /docs/archives/*
+/docs/paper/
 
 # Intentionally NOT ignored:
 # - docs/ and archives/ (review historical material before adding)

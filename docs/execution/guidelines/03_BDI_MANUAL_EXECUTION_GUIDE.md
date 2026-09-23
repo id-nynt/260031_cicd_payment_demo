@@ -17,6 +17,12 @@ This is the single operational guide for BDI setup, baseline, runtime preparatio
 
 The repeatable cycle is **B -> one C scenario -> D -> E -> one C scenario**. The C subsections are alternatives, not successive tasks. Do not run every C section after one another without finalising and resetting.
 
+**Manual fault injection:** use **C3** to choose a controlled job failure, **C4** to start and stop production request errors yourself, or **C5** to keep request errors active until rollback. C4 also offers a manual rollback-reconsideration variant. These sections are alternatives: after one run, complete **D then E**. C1/C2 remain available for scripted timing.
+
+**Keep manual demonstrations separate from the paired study in guide 07.** Complete any active guide-07 trial and its recording/reset first. This guide uses `current-bdi-trial.json`, not `current-compact-study.txt`. Manual fault timing, request rate and operator intervention differ from the seeded paired protocol; do not append these runs to that study or claim they are equivalent repetitions. No manual fault should target a deployment controlled by another active experiment.
+
+**Copy/paste:** copy only an entire code block, without `PS ...>`, `>>`, or error text. Run one block, read its output, then proceed. A `>>` prompt means PowerShell is still accepting a multiline command; if you pasted the wrong block, cancel that incomplete input with Ctrl+C before pasting again. Do not use Ctrl+C in the Controller window while a campaign is running.
+
 **Terminals:** keep Controller PowerShell for BDI commands, Traffic PowerShell only when a scenario requests it, and Observation PowerShell only for manual timing. Keep Docker Desktop and the existing Linux runner open. Commands assume `C:\NHI\2026_IT-Project\260031_payment-repair`. Values that you must choose appear in a separate short **Manual selection** block; run the following execution block unchanged. Paste complete `. { ... }` blocks: they stop on an error and retain variables in the current terminal.
 
 | Local selection file | Meaning |
@@ -466,11 +472,16 @@ Wait for the final MAS result. Close the completed MAS window, then run the veri
         if ($verified.release_sha -ne $v1Sha -or -not $verified.github_run_id -or
             $health.appVersion -ne 'v1' -or $health.experimentMode -ne 'normal' -or
             $health.deploymentRunId -ne $verified.execution_id) { throw "Reset identity/health mismatch in $environment" }
+        $inventoryPath = Join-Path $resetDir ("container-preflight-$environment-" + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '.json')
+        py -3 -B scripts/candidate-repair.py preflight --project "payment-$environment" --app app --dependency postgres --expected $verified.execution_id --output "$inventoryPath"
+        if ($LASTEXITCODE -ne 0) { throw 'Container inventory is not clean. Inspect the saved preflight before launching a candidate.' }
     }
     $env:BDI_RELEASE_SHA = $v2Sha
     'Both environments verified at v1. Ready to choose ONE scenario.'
 }
 ```
+
+**If container preflight fails after an achieved reset:** the deployment may have succeeded but an obsolete/ambiguous container is blocking the next trial. Inspect the saved inventory. A stopped stale container does not occupy a port. Remove only a confirmed obsolete container by exact ID without force or volume deletion; then rerun only the B3 verification block if both live identities still match this reset. Do not rerun the deployment merely because that post-check failed. If identities changed, a fresh B3 reset is required.
 
 Keep `$knownGood` as the original pair baseline. Do not replace it with a v2 result. Refresh `http://localhost:3001/checkout` and `http://localhost:3000/checkout`: both should show v1. Continue to C.
 
@@ -478,7 +489,7 @@ Keep `$knownGood` as the original pair baseline. Do not replace it with a v2 res
 
 | Purpose | Choose |
 |---|---|
-| Matched BDI versus conventional study, 13 available shared cases | **C1**: automatic traffic/probes, fault timing, console capture and metrics |
+| Matched BDI versus conventional study, 14 available shared cases | **C1**: automatic traffic/probes, fault timing, console capture and metrics |
 | Interactive MAS GUI with healthy/error traffic | **C2**: replaces both old C0 and C0-S |
 | Direct manual faults or a different goal | C3-C7 below (optional) |
 
@@ -512,7 +523,8 @@ $case = 'healthy'
 | `staging-temporary` | Stage request-fault mode; 35s mixed errors, then normal traffic | Recheck; promote if health recovers within budget |
 | `staging-persistent` | Stage request-fault mode; persistent mixed errors | Exhaust bounded observations; block promotion |
 | `production-temporary` | Production request-fault mode; 35s mixed errors, then normal traffic | Recheck; accept v2 if health recovers within budget |
-| `production-persistent` | Production request-fault mode; persistent mixed errors | Exhaust observations; restore and verify v1 |
+| `production-persistent` | Production request-fault mode; persistent mixed errors | Exhaust initial observations and eligible final recheck; restore and verify v1 |
+| `rollback-reconsideration` | Production request faults for 195s, then normal traffic | Select rollback, recheck for up to 60s, cancel before dispatch if two healthy correlated observations arrive; otherwise restore v1 |
 
 **Scope:** build/test failures are controlled job failures, not yet independent commits with compiler/test defects. “Service unavailable” means the deployed payment service; “infrastructure failure” means its staging database, not the entire host/cloud. The timeout is a controlled pre-deployment hang. A host loss, runner loss, deployment API outage and real network partition remain additional experiments; do not report these scoped faults as proving resilience to those broader failures.
 
@@ -646,7 +658,7 @@ The MAS log reports BDI decisions; the journal records detailed observations and
 | `test.failure_mode=transient_failure` | Both test attempts fail; stop, production stays v1 |
 | `production.1.failure_mode=transient_failure` | First production attempt fails before deployment; retry can deliver v2 |
 
-**Manual selection:** Controller PowerShell, select one fault from the table; run this short block separately:
+**Manual selection:** Controller PowerShell, select one fault from the table; this requests the worker fault in advance, rather than asking you to edit a running GitHub job. Do not change the saved fault file after launching. Run this short block separately:
 
 ```powershell
 $faultLine = 'test.1.failure_mode=transient_failure'
@@ -695,6 +707,17 @@ Then run this execution block unchanged:
 
 Use the direct `node` commands below. In the observed Windows invocation, the npm wrapper did not forward `--continuous`. Direct invocation removes that argument-forwarding dependency. Do not change missing metrics to zero or extend the observation budget just to conceal missing traffic.
 
+**Manual selection - choose when YOU will stop errors:** read this separately before launching. No agent or Java configuration change is needed.
+
+| Demonstration | When to switch from error traffic to normal traffic | What it demonstrates |
+|---|---|---|
+| Temporary degradation (default) | After a fresh bad production measurement and `wait_reconsider` | Reobservation allows delivery after the condition recovers |
+| Rollback reconsideration | Keep errors until the journal records `rollback_selected`, then switch immediately | The selected rollback is still pending; two healthy correlated observations can cancel it and resume `master_goal` |
+
+For the second variant, the current policy permits only 60 seconds after rollback selection. The 30-second metric window must clear within it. Recovery is not guaranteed. `bdi_recovery_decision` / `BDI_DECISION=rollback source=...` means rollback was actually committed: switching traffic then cannot resume this candidate. Do not confuse `wait_reconsider` (a normal observation wait) with `rollback_selected`.
+
+The direct error client sends fault headers on every payment, in batches of six with a one-second pause between batches. This differs from the automatic profile's nominal 70% errors at four requests/second. Record actual start/stop times; do not label the manual run a fixed 35-second or 195-second experiment unless its evidence supports that duration.
+
 **Actions 1 - launch:** Controller PowerShell:
 
 ```powershell
@@ -717,7 +740,7 @@ Use the direct `node` commands below. In the observed Windows invocation, the np
 - The release assignment selects v2; the directory assignment identifies this campaign.
 - `$faultFile` resolves an absolute file path; `Set-Content` enables header-triggered production errors.
 - `BDI_EXECUTION_PLAN` selects that file; the next command prints the campaign directory.
-- The launcher pauses for 60 seconds **after the production GitHub job finishes, before the agent receives its result and observes health**. The pause is automatic, not a prompt waiting for you.
+- The launcher pauses for 15 seconds **after the production GitHub job finishes, before the agent receives its result and observes health**. The pause is automatic, not a prompt waiting for you.
 
 **Actions 2 - watch immediately:** Observation PowerShell:
 
@@ -747,9 +770,26 @@ This excerpt identifies a 15-second pause that resumes automatically. It is not 
 . {
     $ErrorActionPreference = 'Stop'
     Set-Location C:\NHI\2026_IT-Project\260031_payment-repair
+    $manualTrial = Get-Content experiments/results/current-bdi-trial.json -Raw | ConvertFrom-Json
+    $manualDir = $manualTrial.campaign
+    if ($manualTrial.route -ne 'manual' -or -not $manualDir) { throw 'Launch C4 or C5 first.' }
+    if (Test-Path (Join-Path $manualDir 'controller-result.json')) { throw 'Campaign already ended; do not inject.' }
+    $events = @(Get-Content (Join-Path $manualDir 'controller-journal.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
+    if ($events | Where-Object { $_.event -eq 'bdi_recovery_decision' }) { throw 'Recovery already dispatched; do not inject.' }
+    $deployment = $events | Where-Object { $_.event -eq 'execution_configuration' -and $_.entity -eq 'production' } | Select-Object -Last 1
+    if (-not $deployment.execution_id) { throw 'No production deployment identity yet; wait for its pause.' }
     $health = Invoke-RestMethod http://localhost:3000/health
     $health
-    if ($health.experimentMode -ne 'request_faults') { throw 'Wrong app mode; inspect this campaign before injecting' }
+    if ($health.appVersion -ne 'v2' -or $health.experimentMode -ne 'request_faults' -or $health.deploymentRunId -ne $deployment.execution_id) {
+        throw 'Wrong production version, mode or deployment identity; do not inject.'
+    }
+    function Write-ManualEvent([string]$Action) {
+        [pscustomobject]@{ timestamp=(Get-Date).ToUniversalTime().ToString('o'); action=$Action; deployment_execution_id=$deployment.execution_id } |
+            ConvertTo-Json -Compress | Add-Content (Join-Path $manualDir 'manual-injection.jsonl') -Encoding utf8
+    }
+    $trafficLog = Join-Path $manualDir ('manual-traffic-' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '.txt')
+    Start-Transcript -Path $trafficLog -NoClobber
+    Write-ManualEvent 'error_traffic_start_requested'
     $env:PAYMENT_BASE_URL = 'http://localhost:3000'
     node scripts/generate-experiment-traffic.mjs inject_error 6 --continuous
 }
@@ -767,10 +807,17 @@ This excerpt identifies a 15-second pause that resumes automatically. It is not 
 - Six responses followed by a prompt means the client stopped. The final `Wait 10-20 seconds...` message also means the script exited; it is not running in the background.
 - Keep the Traffic terminal visible. If it exits with an error, retain that error and check the app/mode before restarting.
 
-**Actions 4 - stop the temporary fault:** keep errors running through the end of the pause until the journal shows a production `telemetry_measurement` with `data_status: fresh` and an error rate above `0.05` and MAS shows `BDI_DECISION=wait_reconsider`. Then **immediately Ctrl+C in Traffic PowerShell**, and run:
+**Actions 4 - stop the fault at your chosen checkpoint:** for the default case, wait for a fresh production `telemetry_measurement` with error rate above `0.05` and `BDI_DECISION=wait_reconsider`. For the reconsideration variant, wait instead for `rollback_selected`. Then **press Ctrl+C only in Traffic PowerShell**, and immediately run this complete block in that same window. Keep the Controller/MAS running:
 
 ```powershell
-node scripts/generate-experiment-traffic.mjs normal 6 --continuous
+. {
+    $ErrorActionPreference = 'Stop'
+    Write-ManualEvent 'error_traffic_stopped_by_operator'
+    $health = Invoke-RestMethod http://localhost:3000/health
+    if ($health.deploymentRunId -ne $deployment.execution_id) { throw 'Candidate identity changed; inspect rollback before sending more traffic.' }
+    Write-ManualEvent 'normal_traffic_start_requested'
+    node scripts/generate-experiment-traffic.mjs normal 6 --continuous
+}
 ```
 
 - This sends successful requests while the 30-second metric window clears. Do not wait another 30 seconds before starting normal traffic.
@@ -789,9 +836,16 @@ node scripts/generate-experiment-traffic.mjs normal 6 --continuous
 - The agent actually observes unhealthy production before you remove the cause; otherwise this is not a demonstrated fault-recovery experiment.
 - It rechecks rather than redispatching production. If health clears within the count/time budget, two consecutive healthy samples allow `achieved / not_needed`; production stays v2.
 - Current `config/controller_policy.yaml` maximum: 36 observations, five seconds apart, within 180 seconds from the first observation. This is a maximum, not a mandatory wait; two healthy observations can finish quickly.
-- If errors clear too late or another metric remains unhealthy, rollback is a valid outcome. Record it, rather than claiming temporary recovery succeeded.
+- In the reconsideration variant, require `rollback_selected`, fresh correlated samples, `rollback_cancelled`, final `achieved`, and no rollback execution. If errors clear too late or another metric remains unhealthy, rollback is a valid outcome. Record it rather than claiming temporary recovery succeeded.
 
-**Finish:** stop normal traffic after the final result, perform D, then use E to reset. If you missed the pause and the campaign already succeeded, it cannot be faulted retrospectively: reset and start a fresh campaign.
+**Finish:** after the final result, press Ctrl+C in Traffic PowerShell, then run there:
+
+```powershell
+Write-ManualEvent 'traffic_stopped_after_result'
+Stop-Transcript
+```
+
+Close MAS only after its final message asks you to close. Perform D, then E to reset. If you missed the pause and the campaign already succeeded, it cannot be faulted retrospectively: reset and start a fresh campaign.
 
 ### C5. Persistent production error traffic, then rollback
 
@@ -823,11 +877,18 @@ node scripts/generate-experiment-traffic.mjs normal 6 --continuous
 - The plan assignment selects it; printing the directory lets you follow the correct journal.
 - The launcher starts the campaign and gives the same 15-second production pause.
 
-Follow **C4 Actions 2 and 3** to watch the journal and start error traffic at the pause. This time **keep errors running throughout the observation period**. When MAS prints `BDI_DECISION=rollback` or the journal records `bdi_recovery_decision`, stop error traffic with Ctrl+C.
+Follow **C4 Actions 2 and 3** to watch the journal and start error traffic at the pause. This time **keep errors running throughout initial observations AND the final reconsideration window**. Do not stop at `rollback_selected`: that is still a pending decision. When the journal records `bdi_recovery_decision` or MAS prints `BDI_DECISION=rollback source=...`, press Ctrl+C only in Traffic PowerShell and run:
+
+```powershell
+Write-ManualEvent 'error_traffic_stopped_after_rollback_commit'
+Stop-Transcript
+```
+
+The rollback worker supplies its verification probes. Do not send intentional fault traffic into the restored baseline. If the error client exits on an unexpected response or identity change, preserve its transcript and record that event; do not blindly restart it.
 
 **Expected results:**
 
-- Repeated unhealthy observations and `wait_reconsider`, then rollback when the configured budget is exhausted.
+- Repeated unhealthy observations and `wait_reconsider`, then `rollback_selected`; persistent errors during the additional 60-second window lead to `rollback_committed` and actual rollback.
 - GitHub runs **Rollback entity** using verified v1 source.
 - MAS ends `BDI_CONTROLLER_RESULT=stopped recovery=restored` after recovery health is verified.
 - A new payment on production shows v1. Staging may still show v2: automatic rollback restores production only.
@@ -936,9 +997,29 @@ Most evidence is already written automatically. Do not manually copy JSON output
 | C1 wrapper console and experiment plan | `<campaign>-experiment/controller-console.log`, `plan.json` |
 | Route C1 derived metrics | `<campaign>/experiment-metrics.json` |
 | Downloaded diagnosis/restart receipts, Docker identity and probe counts | `<campaign>/operation-<operation UUID>/receipt.json`; `download.log` reports download problems |
-| Traffic settings, requests, summary | Sibling `<campaign>-traffic*` folders |
+| Scripted traffic settings, requests, summary (C1/C2) | Sibling `<campaign>-traffic*` folders |
+| Manually started/stopped traffic (C4/C5) | `<campaign>/manual-traffic-*.txt` and `manual-injection.jsonl` |
 
 **Automatic C1 evidence:** `<candidateDir>-experiment/plan.json` declares `traffic_targets`. Every reached staging/production gate needs matching profile, seed, execution ID, release SHA and successful traffic evidence. Build/test failures before deployment legitimately have no traffic; stopped-candidate production uses repair probes instead. Inspect `traffic_by_entity` in `experiment-metrics.json`. The launcher also saves `launch-status.json` and per-client `traffic-<entity>-console.log` beside the plan. If the result is missing, inspect these files and reconcile before another run; do not label an interrupted launcher as a deployment outcome.
+
+**Manual C3-C7 evidence:** retain the chosen fault file and actual outcome even if it differs from your intention. For C4/C5, action timestamps record operator requests; HTTP 503 output proves responses were produced, and unhealthy agent observations prove the controller saw the disturbance. None substitutes for the others. Manual traffic has no automatic seeded-profile `summary.json`; do not manufacture one or run guide 07's D4 against a manual campaign. Save the following notes after the run (Controller PowerShell, separate from the inspection block):
+
+```powershell
+$manualNotes = Read-Host 'Describe the chosen fault, when you removed it, unexpected behaviour and any repair/approval intervention'
+```
+
+```powershell
+. {
+    $ErrorActionPreference = 'Stop'
+    $saved = Get-Content experiments/results/current-bdi-trial.json -Raw | ConvertFrom-Json
+    if ($saved.route -ne 'manual') { throw 'These notes are for C3-C7 manual runs.' }
+    $notePath = Join-Path $saved.campaign ('operator-notes-' + (Get-Date -Format yyyyMMdd-HHmmss-fff) + '.txt')
+    $manualNotes | Set-Content -LiteralPath $notePath -Encoding utf8
+    $notePath
+}
+```
+
+Record planned fault injection separately from unplanned intervention to help the candidate recover. Closing the completed MAS window and collecting evidence are not candidate-repair actions. Finalise every run before reset; do not infer a successful manual experiment merely from GitHub job success.
 
 **Reading the agent sequence:** the console records `BDI_STAGE=1` (previous-job post-observations), `2` (next-job pre-observations), `3` (job dispatch) and `4` (goal assessment). Repeated stages are normal when percepts arrive or health is rechecked; count actual execution/retry events for metrics. Diagnosis, restart, fresh verification and rollback remain visible as `BDI_DECISION` events. A job returning success is not proof of healthy delivery; inspect the final result and verified-release evidence below.
 
@@ -963,7 +1044,7 @@ Close the **completed** MAS window, then run this block in Controller PowerShell
     $result.telemetry
     $result.verified_releases
     Get-Content -LiteralPath (Join-Path $candidateDir 'controller-journal.jsonl') |
-        Select-String 'bdi_decision|diagnosis_|repair_|telemetry_measurement|bdi_recovery_decision|controller_finished'
+        Select-String 'bdi_decision|diagnosis_|repair_|telemetry_measurement|rollback_selected|bdi_recovery_decision|controller_finished'
     $parent = Split-Path -Parent $candidateDir
     $leaf = Split-Path -Leaf $candidateDir
     Get-ChildItem -LiteralPath $parent -Directory | Where-Object { $_.Name -like "$leaf-traffic*" } | ForEach-Object {
@@ -1139,6 +1220,8 @@ Then run the F1 verification/save block above. It checks the exact v1 SHA and bo
 | Runner says Docker permission denied | Fix Docker access for the Linux runner account; Controller PowerShell's Docker access alone is insufficient. |
 | Ports 3000/3001 do not respond | Inspect Docker and deployment logs; B3 redeploys and verifies both environments after prerequisites are resolved. Starting the local port-3002 rehearsal does not start production. |
 | Fault command says wrong experiment mode | The new request-fault deployment has not arrived, or you targeted the wrong port. Inspect `/health` and the current journal before injecting. |
+| Manual traffic transcript still open | After stopping that traffic client with Ctrl+C, run `Stop-Transcript` in the Traffic window. Keep all saved logs. |
+| `rollback_selected` appears but no rollback job runs | The agent is checking fresh health before dispatch. Healthy observations may cancel the pending rollback; inspect `rollback_cancelled` and the final result. |
 | Campaign succeeds just after the pause | Both observed samples were healthy. Enabling request faults alone injects nothing. The error profiles require actual HTTP 503 traffic and a confirmed bad observation. |
 | Traffic prints six responses and returns to PowerShell | It is a single batch, not continuous traffic. Use the direct `node ... --continuous` commands in C4; verify repeated batches and no returned prompt. |
 | No pause message in the agent tab | Follow C4 Actions 2 in Observation PowerShell. `controller_pause` is in the campaign journal, not the `controller_agent` log. |

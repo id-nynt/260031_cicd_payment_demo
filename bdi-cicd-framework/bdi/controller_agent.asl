@@ -71,8 +71,7 @@ reconsideration_window(production, 60000).
 
 // Project-specific beliefs above are generated solely from 03_workflow_model.yaml.
 // Generic event-driven plans: post-observations -> pre-observations -> dispatch -> assess.
-// Java actions publish later percepts. Result handlers, not action return alone,
-// resume the loop. Final-job post-observations remain mandatory for achievement.
+// Java actions publish later percepts. Result handlers, not action return alone, resume the loop. Final-job post-observations remain mandatory for achievement.
 // Internal execution_failed is distinct from an explicitly requested failure goal.
 workflow_active.
 
@@ -214,7 +213,6 @@ all_goals_satisfied :-
 
 // ======================
 // 1. CHECK POST-OBSERVATIONS OF PREVIOUS JOBS
-// Health callbacks return to run_pipeline, which rechecks the outstanding work.
 // ======================
 +!check_post_observations
     : workflow_active & required(Entity) & phase_result(Entity, success)
@@ -239,8 +237,6 @@ all_goals_satisfied :-
 
 // ======================
 // 2. CHECK PRE-OBSERVATIONS OF THE NEXT JOB
-// An already accepted source observation satisfies the current model's precondition.
-// If delivery is already complete, proceed directly to stage 4.
 // ======================
 +!check_pre_observations
     : workflow_active & all_goals_satisfied
@@ -290,8 +286,6 @@ all_goals_satisfied :-
 
 // ======================
 // 4. ASSESS GOALS AFTER A JOB RESULT
-// Declaring success requires all goals, health, maintenance and safety checks.
-// If observations or jobs remain, stage 1 begins the next cycle.
 // ======================
 +!assess_goals
     : not workflow_active
@@ -330,7 +324,6 @@ all_goals_satisfied :-
     <- +phase_result(Entity, success).
 
 // If the goal asks for this job to fail and it fails, record that outcome.
-// Do not retry merely to make it succeed. This does not describe ordinary fault injection.
 +status(Entity, Attempt, failure)
     : running(Entity) & run_attempt(Entity, Attempt) & achievement(Entity, failure)
       & (not max_duration(Entity, _) | duration(Entity, Attempt, _))
@@ -439,8 +432,7 @@ all_goals_satisfied :-
        !end(stopped, failed).
 
 // Select rollback as a pending intention, never as an already-dispatched action.
-// Only exhausted request-degradation observations can be reconsidered; failed jobs
-// and failed/uncertain repair operations retain their existing safe fallback.
+// Only exhausted request-degradation observations can be reconsidered; failed jobs and failed/uncertain repair operations retain their existing safe fallback.
 +!recover(Entity)
     : workflow_active & failure_context(Entity, telemetry_block, _)
       & recovery(Entity, Recovery) & recover_on(Entity, telemetry_block, Recovery)
@@ -534,7 +526,7 @@ all_goals_satisfied :-
 // HEALTH OBSERVATION AND REOBSERVATION
 // ======================
 
-// Measurements are data. These AgentSpeak rules apply engineer-defined constraints.
+// Measurements are data
 +telemetry_measurement(Entity, Attempt, Round, unavailable, _, _, _, _, Time)
     : observing(Entity) & attempt_count(Entity, Attempt)
     <- +telemetry_sample(Entity, Attempt, Round, unknown, Time).
@@ -598,8 +590,7 @@ observation_open(Round, Time) :- observation_limit(Max) & Round < Max & observat
     & (Count + 1 < Need | Time > Deadline) & not observation_open(Round, Time)
     <- !accept_sample(Entity, unknown).
 // Diagnose unavailable services early; ready-but-degraded services reobserve.
-// Repairs are subgoals,
-// not normal pipeline achievements; the original deployment result stays intact.
+// Repairs are subgoals, not normal pipeline achievements; the original deployment result stays intact.
 +telemetry_sample(Entity, Attempt, Round, Decision, Time)
     : observing(Entity) & attempt_count(Entity, Attempt) & Decision \== allow
       & repair_enabled(Entity) & not repair_checked(Entity) & observation_open(Round, Time)
